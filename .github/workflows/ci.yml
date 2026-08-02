@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Gates the product's own promises: the suite passes, and the shipped tree
+  # matches the hashes in suite-manifest.json. The manifest check is separate
+  # because a stale manifest tells every installer the suite is tampered, which
+  # is exactly the failure that reached a pull request before this workflow
+  # existed.
+  test:
+    name: tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --disable-pip-version-check pytest==9.1.1
+      - name: pytest
+        run: python -m pytest -q
+      - name: suite manifest matches the shipped tree
+        run: python tools/verify_suite.py skills/short-drama
+
+  # Tool versions are pinned on purpose. This repository has no dependency
+  # manifest, so an unpinned `pip install ruff` turns main red the next time
+  # ruff changes its default rule set — with nobody having touched the code.
+  # Bumping these is a deliberate pull request, not a surprise.
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check ruff==0.15.11 mypy==2.3.0
+      - name: ruff
+        run: ruff check skills tests tools
+      - name: mypy
+        run: >
+          mypy skills/short-drama/scripts/project_tool.py
+          skills/short-drama/scripts/dashboard_server.py
+          --ignore-missing-imports
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: dashboard script parses
+        run: node --check skills/short-drama/assets/dashboard/app.js
