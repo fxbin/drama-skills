@@ -94,14 +94,16 @@ reviewer 对新 hash 做 re-review；任何无法取得独立上下文的环节�
    python3 <short-drama-skill-dir>/scripts/dashboard_server.py --workspace <workspace> --port 0 --open
    ```
 
-4. 保持进程运行，回报脚本打印的回环地址和停止方式。若浏览器无法自动
-   打开，仍保留服务并让用户打开该地址，不改绑公网地址。
+4. 保持进程运行，回报脚本打印的完整回环地址（包含本次启动的会话片段）和停止方式。
+   浏览器无法自动打开时，保留服务并让用户打开该完整地址。
 
 Dashboard 仅编辑 UTF-8 的 Markdown、JSON、JSONL、TXT、SRT 和 ASS；
 `short-drama.json`、`.short-drama/**` 与 `交付/**` 只读。图片和视频仅预览。
 Markdown 与结构化数据默认安全预览；JSON/JSONL 保存前由浏览器和服务端双重校验；
 媒体标签必须把“本地预演”与“正式成片”分开，不从文件存在推断创作者已经接受。
 它不连接外部数据源、不调用媒体生成接口，也不向浏览器注入密钥。
+每次启动生成独立会话凭证和 API 路径；浏览器用地址片段换取 `HttpOnly` 本机会话，
+项目 API 仅接受该会话。
 具体参数见 [lifecycle-commands.md](references/lifecycle-commands.md#dashboard-启动)。
 
 ## 确定性工具

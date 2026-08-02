@@ -105,7 +105,7 @@ environmental sound, music, and burned-in Chinese subtitles.
 
 **Online video (15 seconds, native audio, burned-in Chinese subtitles)**
 
-https://github.com/user-attachments/assets/3e9fd876-d3b1-4043-bae4-6007b19ec60e
+https://github.com/worldwonderer/drama-skills/releases/download/v0.2.0/gushenrumo-15s-demo.mp4
 
 - **Video specification:** 15.000 seconds, 720×1280, 24 fps, H.264 + AAC
 - **Project dashboard:** Chinese project folders, text editing, media preview, and project status
@@ -190,7 +190,7 @@ distinguish visual assets, motion previs, and generated footage awaiting review:
 
 ```bash
 python3 skills/short-drama/scripts/dashboard_server.py --workspace /path/to/projects --open
-# Open http://127.0.0.1:8765
+# The script prints and opens the complete local URL for this session
 ```
 
 In Codex, invoke `$short-drama dashboard` directly. The skill selects the current
@@ -198,11 +198,13 @@ project or workspace, allocates an available loopback port, and opens the browse
 
 The server only binds to loopback. Text saves use SHA-256 version checks and atomic
 replacement so two tabs cannot silently overwrite each other. JSON and JSONL are
-validated in both browser and server before replacement. `short-drama.json`,
-`.short-drama/**`, and `交付/**` remain read-only; symlinks and paths outside the
-project root are rejected. Project-content access requires the secure directory-FD
-support available on macOS/Linux; unsupported platforms fail closed instead of
-falling back to race-prone path operations. The dashboard never connects to a
+validated in both browser and server before replacement. Each launch creates a
+separate capability and API path. The URL fragment establishes an
+`HttpOnly`, same-site browser session, and project APIs require that session.
+`short-drama.json`, `.short-drama/**`, and `交付/**` remain read-only; symlinks and paths outside the
+project root are rejected. The dashboard requires the secure directory-FD support
+available on macOS/Linux; on an unsupported platform the server refuses to start
+rather than falling back to race-prone path operations. The dashboard never connects to a
 creator database or sends media-generation credentials to the browser.
 
 See [demo/](demo/) for a creator-facing excerpt chain: one episode's script →

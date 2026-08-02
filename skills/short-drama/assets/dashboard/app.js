@@ -8,6 +8,9 @@ const state = {
   selected: null,
   version: null,
   dirty: false,
+  saving: false,
+  saveSequence: 0,
+  apiBase: "",
   view: "preview",
   loadSequence: 0,
 };
@@ -140,20 +143,58 @@ function pathParts(path) {
 
 function toneFor(states) {
   const names = Object.keys(states || {});
-  if (names.some((name) => ["blocked", "rejected"].includes(name))) return "danger";
-  if (names.some((name) => ["pending", "provisional", "not_run", "stale"].includes(name))) {
+  if (names.some((name) => ["blocked", "rejected", "revise", "fail", "failed"].includes(name))) {
+    return "danger";
+  }
+  const successful = new Set([
+    "materialized",
+    "validated",
+    "accepted",
+    "approved",
+    "approve",
+    "approve_with_notes",
+    "pass",
+    "pass_with_warnings",
+    "ready",
+    "delivered",
+    "complete",
+  ]);
+  if (!names.length || names.some((name) => !successful.has(name))) {
     return "warning";
   }
   return "success";
 }
 
 async function api(path, options) {
-  const response = await fetch(path, options);
+  const requestPath =
+    state.apiBase && path.startsWith("/api/") ? `${state.apiBase}${path}` : path;
+  const response = await fetch(requestPath, options);
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || `HTTP ${response.status}`);
   }
   return data;
+}
+
+async function establishSession() {
+  const token = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+  const storageKey = "shortDramaApiBase";
+  if (!token) {
+    state.apiBase = sessionStorage.getItem(storageKey) || "";
+    return;
+  }
+  const response = await fetch("/api/session", {
+    method: "POST",
+    headers: { "X-Short-Drama-Token": token },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  if (typeof data.apiBase !== "string" || !data.apiBase.startsWith("/_short_drama/")) {
+    throw new Error("本机会话响应无效");
+  }
+  state.apiBase = data.apiBase;
+  sessionStorage.setItem(storageKey, state.apiBase);
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
 }
 
 function flatten(nodes, out = []) {
@@ -178,8 +219,8 @@ function setMessage(text, tone = "neutral") {
 
 function setDirty(value) {
   state.dirty = value;
-  $("save").disabled = !value || !state.selected?.writable;
-  $("save").textContent = value ? "保存更改" : "已保存";
+  $("save").disabled = state.saving || !value || !state.selected?.writable;
+  $("save").textContent = state.saving ? "保存中…" : value ? "保存更改" : "已保存";
   document.title = `${value ? "● " : ""}短剧项目控制台`;
   updateFileMeta();
 }
@@ -443,12 +484,23 @@ function setView(view) {
   if (!isMedia && view === "preview") renderPreview();
 }
 
-function mediaBadge(path, kind) {
+function mediaBadge(path, kind, lifecycle = null) {
   if (/fallback|preview|previs/i.test(path)) return ["本地预演", "warning"];
-  if (/final|正式|成片/i.test(path) && kind === "video") {
+  if (
+    kind === "video" &&
+    lifecycle?.creator_acceptance === "accepted" &&
+    ["approve", "approve_with_notes"].includes(lifecycle?.independent_review) &&
+    ["ready", "delivered"].includes(lifecycle?.delivery_gate)
+  ) {
     return ["正式成片", "success"];
   }
-  if (/demo|演示/i.test(path) && kind === "video") return ["音画演示", "success"];
+  if (
+    lifecycle?.creator_acceptance === "rejected" ||
+    lifecycle?.independent_review === "revise"
+  ) {
+    return ["已退回", "danger"];
+  }
+  if (/demo|演示/i.test(path) && kind === "video") return ["音画演示", "info"];
   if (kind === "video") return ["生成视频 · 待审", "warning"];
   return ["视觉资产", "info"];
 }
@@ -460,7 +512,7 @@ function renderMedia(info) {
   const facts = document.createElement("div");
   const badge = document.createElement("span");
   const technical = document.createElement("span");
-  const [badgeText, tone] = mediaBadge(state.selected.path, info.kind);
+  const [badgeText, tone] = mediaBadge(state.selected.path, info.kind, info.lifecycle);
   shell.className = "media-shell";
   stage.className = "media-stage";
   facts.className = "media-facts";
@@ -502,7 +554,10 @@ function renderMedia(info) {
 }
 
 async function openFile(file) {
-  if (state.selected?.path !== file.path && !warnLeave()) return;
+  // Unconditional: re-clicking the file that is already open is the natural
+  // reaction to a save conflict, and short-circuiting on the path comparison
+  // let that reload discard the unsaved buffer without asking.
+  if (!warnLeave()) return;
   const sequence = ++state.loadSequence;
   cleanupMedia();
   state.selected = file;
@@ -580,13 +635,70 @@ function summaryCard(label, value, detail, tone) {
   return card;
 }
 
+function deliverySummary(lifecycle, recovery, layout = null) {
+  if (layout?.mode === "mixed") {
+    return {
+      value: "中英文目录重复",
+      detail: "合并平行目录后继续交付",
+      tone: "danger",
+    };
+  }
+  const gate = lifecycle?.delivery_gate || {};
+  const blocked = gate.blocked || 0;
+  const ready = (gate.ready || 0) + (gate.delivered || 0);
+  const waiting = Object.entries(gate)
+    .filter(([name]) => !["ready", "delivered", "blocked"].includes(name))
+    .reduce((total, [, count]) => total + count, 0);
+  const pending = lifecycle?.creator_acceptance?.pending || 0;
+  if (blocked) {
+    return {
+      value: `${blocked} 项阻塞`,
+      detail: pending ? `${pending} 项等待创作者确认` : "查看生命周期中的阻塞项",
+      tone: "danger",
+    };
+  }
+  if (ready > 0 && waiting === 0 && !recovery?.needed) {
+    return {
+      value: "可以进入交付",
+      detail: `${ready} 项通过交付检查`,
+      tone: "success",
+    };
+  }
+  if (waiting > 0 || pending > 0) {
+    return {
+      value: "交付检查待完成",
+      detail: pending ? `${pending} 项等待创作者确认` : `${waiting} 项等待检查`,
+      tone: "warning",
+    };
+  }
+  return {
+    value: "尚无可交付产物",
+    detail: "从项目文本开始推进",
+    tone: "warning",
+  };
+}
+
+function savedContentIsCurrent(submitted, current) {
+  return submitted === current;
+}
+
+function statusRefreshFailureMessage() {
+  return "文件已保存，项目状态刷新失败，请刷新重试";
+}
+
+function renderStatusUnavailable() {
+  $("summary").replaceChildren(
+    summaryCard("项目状态", "需要刷新", "重新读取最新项目状态", "warning"),
+  );
+  $("lifecycle").replaceChildren();
+}
+
 function renderStatus(status) {
   $("projectTitle").textContent = status.title || "未命名项目";
   $("projectPath").textContent = state.projectPath;
   $("axisCount").textContent = `${Object.keys(status.lifecycle || {}).length} 个状态轴`;
   const recovery = status.recovery || {};
-  const blocked = status.lifecycle?.delivery_gate?.blocked || 0;
-  const pending = status.lifecycle?.creator_acceptance?.pending || 0;
+  const delivery = deliverySummary(status.lifecycle, recovery, status.layout);
   $("summary").replaceChildren(
     summaryCard(
       "当前检查点",
@@ -602,9 +714,9 @@ function renderStatus(status) {
     ),
     summaryCard(
       "交付状态",
-      blocked ? `${blocked} 项阻塞` : "可以进入交付",
-      pending ? `${pending} 项等待创作者确认` : "没有待确认候选",
-      blocked ? "danger" : "success",
+      delivery.value,
+      delivery.detail,
+      delivery.tone,
     ),
   );
   renderLifecycle(status.lifecycle);
@@ -650,30 +762,66 @@ async function selectProject(id, preferredPath = "") {
 }
 
 async function save() {
-  if (!state.dirty || !state.selected) return;
+  if (!state.dirty || !state.selected || state.saving) return;
+  const snapshot = {
+    sequence: ++state.saveSequence,
+    project: state.project,
+    path: state.selected.path,
+    version: state.version,
+    content: $("editor").value,
+  };
+  state.saving = true;
+  setDirty(true);
   try {
-    const content = $("editor").value;
-    validateStructuredText(state.selected.path, content);
+    validateStructuredText(snapshot.path, snapshot.content);
     const result = await api(
-      `/api/file?project=${encodeURIComponent(state.project)}&path=${encodeURIComponent(state.selected.path)}`,
+      `/api/file?project=${encodeURIComponent(snapshot.project)}&path=${encodeURIComponent(snapshot.path)}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, expectedVersion: state.version }),
+        body: JSON.stringify({ content: snapshot.content, expectedVersion: snapshot.version }),
       },
     );
+    if (
+      snapshot.sequence !== state.saveSequence ||
+      state.project !== snapshot.project ||
+      state.selected?.path !== snapshot.path
+    ) {
+      return;
+    }
     state.version = result.version;
-    state.selected.size = new TextEncoder().encode(content).length;
-    setDirty(false);
+    state.selected.size = new TextEncoder().encode(snapshot.content).length;
+    setDirty(!savedContentIsCurrent(snapshot.content, $("editor").value));
     renderFiles();
     setMessage(`已保存 · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, "success");
+    try {
+      const refreshed = await api(
+        `/api/status?project=${encodeURIComponent(snapshot.project)}`,
+      );
+      if (state.project === snapshot.project) renderStatus(refreshed);
+    } catch (_error) {
+      renderStatusUnavailable();
+      setMessage(statusRefreshFailureMessage(), "warning");
+    }
   } catch (error) {
-    setMessage(error.message, "danger");
+    if (
+      snapshot.sequence === state.saveSequence &&
+      state.project === snapshot.project &&
+      state.selected?.path === snapshot.path
+    ) {
+      setMessage(error.message, "danger");
+    }
+  } finally {
+    if (snapshot.sequence === state.saveSequence) {
+      state.saving = false;
+      setDirty(state.dirty);
+    }
   }
 }
 
 async function boot() {
   try {
+    await establishSession();
     const data = await api("/api/projects");
     $("warnings").textContent = data.warnings.join("\n");
     const options = data.projects.map((project) => {
@@ -695,45 +843,58 @@ async function boot() {
   }
 }
 
-$("projects").onchange = (event) => selectProject(event.target.value);
-$("search").oninput = renderFiles;
-$("editor").oninput = () => setDirty(true);
-$("save").onclick = save;
-$("refresh").onclick = () => selectProject(state.project, state.selected?.path || "");
+function start() {
+  $("projects").onchange = (event) => selectProject(event.target.value);
+  $("search").oninput = renderFiles;
+  $("editor").oninput = () => setDirty(true);
+  $("save").onclick = save;
+  $("refresh").onclick = () => selectProject(state.project, state.selected?.path || "");
 
-document.querySelectorAll(".domain").forEach((button) => {
-  button.onclick = () => {
-    document.querySelectorAll(".domain").forEach((item) => {
-      item.classList.toggle("active", item === button);
-      item.setAttribute("aria-pressed", String(item === button));
-    });
-    renderFiles();
+  document.querySelectorAll(".domain").forEach((button) => {
+    button.onclick = () => {
+      document.querySelectorAll(".domain").forEach((item) => {
+        item.classList.toggle("active", item === button);
+        item.setAttribute("aria-pressed", String(item === button));
+      });
+      renderFiles();
+    };
+  });
+
+  $("editMode").onclick = () => setView("edit");
+  $("previewMode").onclick = () => setView("preview");
+
+  addEventListener("beforeunload", (event) => {
+    if (state.dirty) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+  addEventListener("pagehide", cleanupMedia);
+  addEventListener("keydown", (event) => {
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && key === "s") {
+      event.preventDefault();
+      save();
+    } else if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+      event.preventDefault();
+      $("search").focus();
+    } else if (event.key === "Escape" && document.activeElement === $("search")) {
+      $("search").value = "";
+      renderFiles();
+      $("search").blur();
+    }
+  });
+
+  boot();
+}
+
+if (typeof document !== "undefined") start();
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    deliverySummary,
+    mediaBadge,
+    savedContentIsCurrent,
+    statusRefreshFailureMessage,
+    toneFor,
   };
-});
-
-$("editMode").onclick = () => setView("edit");
-$("previewMode").onclick = () => setView("preview");
-
-addEventListener("beforeunload", (event) => {
-  if (state.dirty) {
-    event.preventDefault();
-    event.returnValue = "";
-  }
-});
-addEventListener("pagehide", cleanupMedia);
-addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-  if ((event.ctrlKey || event.metaKey) && key === "s") {
-    event.preventDefault();
-    save();
-  } else if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
-    event.preventDefault();
-    $("search").focus();
-  } else if (event.key === "Escape" && document.activeElement === $("search")) {
-    $("search").value = "";
-    renderFiles();
-    $("search").blur();
-  }
-});
-
-boot();
+}

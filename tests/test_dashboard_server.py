@@ -3,11 +3,12 @@ import hashlib
 import http.client
 import importlib.util
 import json
+import shutil
+import subprocess
 import tempfile
 import threading
-import time
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -35,12 +36,21 @@ def make_project(root: Path, title: str = "测试短剧") -> None:
 
 class ProjectStoreTests(unittest.TestCase):
     def store(self, workspace: Path, **limits: int) -> ProjectStore:
+        canonical = dashboard_server.load_project_tool(SKILL)
         tool = SimpleNamespace(
-            project_status=lambda root: {
-                "title": json.loads((root / "short-drama.json").read_text())["title"]
-            }
+            project_status_at=canonical.project_status_at,
+            is_protected_project_text=canonical.is_protected_project_text,
+            coordinated_project_text_edit_at=canonical.coordinated_project_text_edit_at,
+            project_path_lifecycle_at=canonical.project_path_lifecycle_at,
         )
         return ProjectStore(workspace, tool, **limits)
+
+    def test_rejects_a_project_tool_without_the_dashboard_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "Dashboard contract"):
+                ProjectStore(
+                    Path(directory), SimpleNamespace(project_status=lambda _root: {})
+                )
 
     def test_discovers_manifests_without_following_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -254,28 +264,11 @@ class ProjectStoreTests(unittest.TestCase):
             stores = [self.store(workspace), self.store(workspace)]
             project_id = stores[0].discover()[0][0]["id"]
             version = stores[0].read_text(project_id, "notes.txt")["version"]
+            # Two stores each load their own project-tool module instance, so the
+            # only thing serializing them is the project's own transaction flock
+            # held across the compare-and-replace. If that lock were absent both
+            # writers would observe the same version and both would save.
             barrier = threading.Barrier(3)
-            lock_guard = threading.Lock()
-            active_locks = 0
-            max_active_locks = 0
-            lock_entries = 0
-            real_lock = dashboard_server._interprocess_lock
-
-            @contextlib.contextmanager
-            def monitored_lock(path: Path):
-                nonlocal active_locks, lock_entries, max_active_locks
-                with real_lock(path):
-                    with lock_guard:
-                        active_locks += 1
-                        lock_entries += 1
-                        max_active_locks = max(max_active_locks, active_locks)
-                    time.sleep(0.05)
-                    try:
-                        yield
-                    finally:
-                        with lock_guard:
-                            active_locks -= 1
-
             outcomes = []
 
             def write(store: ProjectStore, content: str) -> None:
@@ -290,15 +283,13 @@ class ProjectStoreTests(unittest.TestCase):
                 threading.Thread(target=write, args=(store, f"client-{index}"))
                 for index, store in enumerate(stores)
             ]
-            with patch.object(dashboard_server, "_interprocess_lock", monitored_lock):
-                for writer in writers:
-                    writer.start()
-                barrier.wait()
-                for writer in writers:
-                    writer.join(timeout=2)
+            for writer in writers:
+                writer.start()
+            barrier.wait()
+            for writer in writers:
+                writer.join(timeout=5)
 
-            self.assertEqual(lock_entries, 2)
-            self.assertEqual(max_active_locks, 1)
+            self.assertFalse(any(writer.is_alive() for writer in writers))
             self.assertCountEqual(outcomes, ["saved", 409])
             self.assertIn(target.read_text(encoding="utf-8"), {"client-0", "client-1"})
 
@@ -311,6 +302,8 @@ class ProjectStoreTests(unittest.TestCase):
             (project / ".short-drama/state.json").write_text("{}", encoding="utf-8")
             (project / "delivery").mkdir()
             (project / "delivery/result.txt").write_text("locked", encoding="utf-8")
+            (project / "交付").mkdir()
+            (project / "交付/result.txt").write_text("locked", encoding="utf-8")
             (project / "notes.txt").write_text("ok", encoding="utf-8")
             outside = workspace / "outside.txt"
             outside.write_text("secret", encoding="utf-8")
@@ -333,6 +326,7 @@ class ProjectStoreTests(unittest.TestCase):
                 "short-drama.json",
                 ".short-drama/state.json",
                 "delivery/result.txt",
+                "交付/result.txt",
             ):
                 opened = store.read_text(project_id, protected)
                 self.assertFalse(opened["writable"])
@@ -354,6 +348,230 @@ class ProjectStoreTests(unittest.TestCase):
             )
             self.assertIn("short-drama.json", visible_paths)
             self.assertIn("delivery/result.txt", visible_paths)
+            self.assertIn("交付/result.txt", visible_paths)
+
+    def test_stale_discovery_cannot_resolve_a_project_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            container = Path(directory)
+            workspace = container / "workspace"
+            project = workspace / "show"
+            outside = container / "outside"
+            make_project(project, "原项目")
+            make_project(outside, "外部项目")
+            store = self.store(workspace)
+            discovered = store.discover()
+            project_id = discovered[0][0]["id"]
+
+            shutil.rmtree(project)
+            try:
+                project.symlink_to(outside, target_is_directory=True)
+            except OSError:
+                self.skipTest("directory symlinks are unavailable")
+
+            with patch.object(store, "discover", return_value=discovered):
+                with self.assertRaises(DashboardError) as caught:
+                    store.status(project_id)
+
+            self.assertEqual(caught.exception.status, 403)
+
+    def test_status_and_tree_read_from_a_pinned_project_root(self) -> None:
+        if not dashboard_server.SECURE_DIR_FD:
+            self.skipTest("secure dir-fd traversal is unavailable on this platform")
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "workspace"
+            project = workspace / "show"
+            outside = Path(directory) / "outside"
+            make_project(project, "原项目")
+            make_project(outside, "外部项目")
+            (project / "inside.md").write_text("inside", encoding="utf-8")
+            (outside / "outside-secret.md").write_text("outside", encoding="utf-8")
+            store = ProjectStore(
+                workspace, dashboard_server.load_project_tool(SKILL)
+            )
+            project_id = store.discover()[0][0]["id"]
+
+            def swap_while(call):
+                entered = threading.Event()
+                proceed = threading.Event()
+                original = call[0]
+
+                def delayed(*args, **kwargs):
+                    entered.set()
+                    self.assertTrue(proceed.wait(timeout=3))
+                    return original(*args, **kwargs)
+
+                call[1](delayed)
+                result: list[object] = []
+                thread = threading.Thread(target=lambda: result.append(call[2]()))
+                thread.start()
+                self.assertTrue(entered.wait(timeout=3))
+                saved = workspace / "show-original"
+                project.rename(saved)
+                project.symlink_to(outside, target_is_directory=True)
+                proceed.set()
+                thread.join(timeout=3)
+                project.unlink()
+                saved.rename(project)
+                self.assertFalse(thread.is_alive())
+                return result[0]
+
+            original_status = store.project_tool.project_status_at
+            status = swap_while(
+                (
+                    original_status,
+                    lambda replacement: setattr(
+                        store.project_tool, "project_status_at", replacement
+                    ),
+                    lambda: store.status(project_id),
+                )
+            )
+            store.project_tool.project_status_at = original_status
+            self.assertEqual(status["title"], "原项目")
+
+            original_tree = store._tree_from_root
+            tree = swap_while(
+                (
+                    original_tree,
+                    lambda replacement: setattr(
+                        store, "_tree_from_root", replacement
+                    ),
+                    lambda: store.tree(project_id),
+                )
+            )
+            store._tree_from_root = original_tree
+            visible = json.dumps(tree, ensure_ascii=False)
+            self.assertIn("inside.md", visible)
+            self.assertNotIn("outside-secret.md", visible)
+            store.close()
+
+    def test_dashboard_edit_invalidates_tracked_lifecycle_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            project = workspace / "show"
+            tool = dashboard_server.load_project_tool(SKILL)
+            tool.initialize_project(
+                project,
+                title="状态测试",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SKILL,
+            )
+            target = project / "剧集/EP001/screenplay.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("旧版本\n", encoding="utf-8")
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            state_path = project / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["artifacts"]["EP001:script"] = {
+                "owner": "short-drama-write",
+                "candidate_targets": {"剧集/EP001/screenplay.md": digest},
+                "accepted_targets": {"剧集/EP001/screenplay.md": digest},
+                "build_state": "materialized",
+                "validation_state": "pass",
+                "creator_acceptance": "accepted",
+                "independent_review": "approve",
+                "delivery_gate": "ready",
+            }
+            tool.atomic_json(state_path, state)
+            store = ProjectStore(workspace, tool)
+            project_id = store.discover()[0][0]["id"]
+            opened = store.read_text(project_id, "剧集/EP001/screenplay.md")
+
+            store.write_text(
+                project_id,
+                "剧集/EP001/screenplay.md",
+                "新版本\n",
+                opened["version"],
+            )
+
+            status = store.status(project_id)
+            self.assertEqual(status["lifecycle"]["build_state"], {"stale": 1})
+            self.assertEqual(
+                status["lifecycle"]["creator_acceptance"], {"not_requested": 1}
+            )
+            self.assertEqual(status["lifecycle"]["delivery_gate"], {"blocked": 1})
+            persisted = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                persisted["artifacts"]["EP001:script"]["build_state"], "stale"
+            )
+
+    def test_status_overlays_live_hash_drift_after_an_external_edit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            project = workspace / "show"
+            tool = dashboard_server.load_project_tool(SKILL)
+            tool.initialize_project(
+                project,
+                title="状态测试",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SKILL,
+            )
+            target = project / "剧集/EP001/screenplay.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("已确认\n", encoding="utf-8")
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            state_path = project / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["artifacts"]["EP001:script"] = {
+                "accepted_targets": {"剧集/EP001/screenplay.md": digest},
+                "build_state": "materialized",
+                "validation_state": "pass",
+                "creator_acceptance": "accepted",
+                "independent_review": "approve",
+                "delivery_gate": "ready",
+            }
+            tool.atomic_json(state_path, state)
+            target.write_text("磁盘外部改动\n", encoding="utf-8")
+            store = ProjectStore(workspace, tool)
+            project_id = store.discover()[0][0]["id"]
+
+            status = store.status(project_id)
+
+            self.assertEqual(status["lifecycle"]["build_state"], {"stale": 1})
+            self.assertEqual(status["lifecycle"]["delivery_gate"], {"blocked": 1})
+
+    def test_status_treats_a_tracked_symlink_as_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            project = workspace / "show"
+            tool = dashboard_server.load_project_tool(SKILL)
+            tool.initialize_project(
+                project,
+                title="状态测试",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SKILL,
+            )
+            target = project / "剧集/EP001/screenplay.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("已确认\n", encoding="utf-8")
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            state_path = project / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["artifacts"]["EP001:script"] = {
+                "accepted_targets": {"剧集/EP001/screenplay.md": digest},
+                "build_state": "materialized",
+                "validation_state": "pass",
+                "creator_acceptance": "accepted",
+                "independent_review": "approve",
+                "delivery_gate": "ready",
+            }
+            tool.atomic_json(state_path, state)
+            outside = workspace / "outside.md"
+            outside.write_text("外部内容\n", encoding="utf-8")
+            target.unlink()
+            try:
+                target.symlink_to(outside)
+            except OSError:
+                self.skipTest("symbolic links are unavailable")
+            store = ProjectStore(workspace, tool)
+            project_id = store.discover()[0][0]["id"]
+
+            status = store.status(project_id)
+
+            self.assertEqual(status["lifecycle"]["build_state"], {"stale": 1})
+            self.assertEqual(status["lifecycle"]["delivery_gate"], {"blocked": 1})
 
     def test_parent_directory_swap_cannot_redirect_a_text_write(self) -> None:
         if not dashboard_server.SECURE_DIR_FD:
@@ -373,23 +591,23 @@ class ProjectStoreTests(unittest.TestCase):
             store = self.store(workspace)
             project_id = store.discover()[0][0]["id"]
             version = store.read_text(project_id, "inside/notes.txt")["version"]
-            original_safe_path = store._safe_path
             swapped = False
 
-            def swap_parent(
-                selected_project: str, relative: str, *, must_exist: bool = True
-            ):
+            original_open_parent = dashboard_server._open_parent_directory_at
+
+            @contextlib.contextmanager
+            def swap_parent(root_fd: int, relative: PurePosixPath):
                 nonlocal swapped
-                result = original_safe_path(
-                    selected_project, relative, must_exist=must_exist
-                )
-                if relative == "inside/notes.txt" and not swapped:
+                if relative.as_posix() == "inside/notes.txt" and not swapped:
                     inside.rename(project / "inside-original")
                     inside.symlink_to(outside, target_is_directory=True)
                     swapped = True
-                return result
+                with original_open_parent(root_fd, relative) as opened:
+                    yield opened
 
-            with patch.object(store, "_safe_path", side_effect=swap_parent):
+            with patch.object(
+                dashboard_server, "_open_parent_directory_at", swap_parent
+            ):
                 with self.assertRaises(DashboardError) as caught:
                     store.write_text(
                         project_id, "inside/notes.txt", "redirected", version
@@ -418,23 +636,23 @@ class ProjectStoreTests(unittest.TestCase):
             outside_target.write_bytes(b"OUTSIDE-SECRET")
             store = self.store(workspace)
             project_id = store.discover()[0][0]["id"]
-            original_safe_path = store._safe_path
             swapped = False
 
-            def swap_parent(
-                selected_project: str, relative: str, *, must_exist: bool = True
-            ):
+            original_open_parent = dashboard_server._open_parent_directory_at
+
+            @contextlib.contextmanager
+            def swap_parent(root_fd: int, relative: PurePosixPath):
                 nonlocal swapped
-                result = original_safe_path(
-                    selected_project, relative, must_exist=must_exist
-                )
-                if relative == "promo/clip.mp4" and not swapped:
+                if relative.as_posix() == "promo/clip.mp4" and not swapped:
                     promo.rename(project / "promo-original")
                     promo.symlink_to(outside, target_is_directory=True)
                     swapped = True
-                return result
+                with original_open_parent(root_fd, relative) as opened:
+                    yield opened
 
-            with patch.object(store, "_safe_path", side_effect=swap_parent):
+            with patch.object(
+                dashboard_server, "_open_parent_directory_at", swap_parent
+            ):
                 with self.assertRaises(DashboardError) as caught:
                     store.open_media(project_id, "promo/clip.mp4")
 
@@ -448,25 +666,13 @@ class ProjectStoreTests(unittest.TestCase):
             make_project(project)
             (project / "notes.txt").write_text("text", encoding="utf-8")
             (project / "clip.mp4").write_bytes(b"media")
-            store = self.store(workspace)
-            project_id = store.discover()[0][0]["id"]
-            version = store.read_text(project_id, "notes.txt")["version"]
 
+            # Patched before construction: the store refuses to exist at all
+            # without directory descriptors, rather than serving a browse tree
+            # whose every file, save and preview answers 501.
             with patch.object(dashboard_server, "SECURE_DIR_FD", False):
-                operations = (
-                    lambda: store.read_text(project_id, "notes.txt"),
-                    lambda: store.write_text(
-                        project_id, "notes.txt", "changed", version
-                    ),
-                    lambda: store.open_media(project_id, "clip.mp4"),
-                )
-                for operation in operations:
-                    with (
-                        self.subTest(operation=operation),
-                        self.assertRaises(DashboardError) as caught,
-                    ):
-                        operation()
-                    self.assertEqual(caught.exception.status, 501)
+                with self.assertRaisesRegex(RuntimeError, "unsupported"):
+                    self.store(workspace)
 
     def test_media_has_an_independent_preview_limit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -555,9 +761,57 @@ class DashboardEntrypointTests(unittest.TestCase):
         self.assertNotIn("innerHTML", javascript)
         self.assertIn("prefers-reduced-motion", stylesheet)
 
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_status_labels_require_explicit_evidence(self) -> None:
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const result = {{
+  filenameOnly: logic.mediaBadge("宣发/final.mp4", "video"),
+  accepted: logic.mediaBadge("宣发/final.mp4", "video", {{
+    creator_acceptance: "accepted",
+    independent_review: "approve",
+    delivery_gate: "ready"
+  }}),
+  emptyDelivery: logic.deliverySummary({{}}, {{needed: false}}),
+  pendingDelivery: logic.deliverySummary({{delivery_gate: {{not_evaluated: 1}}}}, {{needed: false}}),
+  readyDelivery: logic.deliverySummary({{delivery_gate: {{ready: 1}}}}, {{needed: false}}),
+  mixedDelivery: logic.deliverySummary(
+    {{delivery_gate: {{ready: 1}}}},
+    {{needed: false}},
+    {{mode: "mixed"}}
+  ),
+  typedDuringSave: logic.savedContentIsCurrent("sent", "sent plus more"),
+  unknownTone: logic.toneFor({{not_evaluated: 1}}),
+  failedTone: logic.toneFor({{fail: 1}}),
+  refreshFailure: logic.statusRefreshFailureMessage()
+}};
+process.stdout.write(JSON.stringify(result));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        result = json.loads(completed.stdout)
+
+        self.assertEqual(result["filenameOnly"], ["生成视频 · 待审", "warning"])
+        self.assertEqual(result["accepted"], ["正式成片", "success"])
+        self.assertEqual(result["emptyDelivery"]["value"], "尚无可交付产物")
+        self.assertEqual(result["pendingDelivery"]["tone"], "warning")
+        self.assertEqual(result["readyDelivery"]["tone"], "success")
+        self.assertEqual(result["mixedDelivery"]["tone"], "danger")
+        self.assertEqual(result["mixedDelivery"]["value"], "中英文目录重复")
+        self.assertFalse(result["typedDuringSave"])
+        self.assertEqual(result["unknownTone"], "warning")
+        self.assertEqual(result["failedTone"], "danger")
+        self.assertIn("状态刷新失败", result["refreshFailure"])
+
     def test_open_flag_is_opt_in(self) -> None:
         class FakeServer:
             server_address = ("127.0.0.1", 43210)
+            access_token = "test-capability"
 
             def serve_forever(self) -> None:
                 raise KeyboardInterrupt
@@ -582,12 +836,25 @@ class DashboardEntrypointTests(unittest.TestCase):
                     dashboard_server.main(["--workspace", directory, "--open"]),
                     0,
                 )
-                browser.assert_called_once_with("http://127.0.0.1:43210")
+                browser.assert_called_once_with(
+                    "http://127.0.0.1:43210/#test-capability"
+                )
 
     def test_ipv6_loopback_is_rejected_until_the_server_supports_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "IPv4 loopback"):
                 create_server(Path(directory), host="::1", port=0)
+
+    def test_each_server_uses_a_distinct_session_path_and_cookie(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = create_server(Path(directory), port=0)
+            second = create_server(Path(directory), port=0)
+            try:
+                self.assertNotEqual(first.api_prefix, second.api_prefix)
+                self.assertNotEqual(first.session_cookie, second.session_cookie)
+            finally:
+                first.server_close()
+                second.server_close()
 
 
 class DashboardHTTPTests(unittest.TestCase):
@@ -611,6 +878,8 @@ class DashboardHTTPTests(unittest.TestCase):
     def request(self, method: str, path: str, *, headers=None, body=None):
         connection = http.client.HTTPConnection(self.host, self.port, timeout=3)
         request_headers = {"Host": f"127.0.0.1:{self.port}"}
+        if "/api/" in path.split("?", 1)[0]:
+            request_headers["X-Short-Drama-Token"] = self.server.access_token
         request_headers.update(headers or {})
         connection.request(method, path, body=body, headers=request_headers)
         response = connection.getresponse()
@@ -618,6 +887,66 @@ class DashboardHTTPTests(unittest.TestCase):
         response_headers = dict(response.getheaders())
         connection.close()
         return response.status, response_headers, data
+
+    def test_api_requires_a_per_launch_session_capability(self) -> None:
+        status, _, _ = self.request(
+            "GET", "/api/projects", headers={"X-Short-Drama-Token": ""}
+        )
+        self.assertEqual(status, 401)
+        status, _, _ = self.request(
+            "GET", "/api/projects", headers={"X-Short-Drama-Token": "wrong"}
+        )
+        self.assertEqual(status, 401)
+
+        status, headers, body = self.request("POST", "/api/session")
+        self.assertEqual(status, 200)
+        session = json.loads(body)
+        self.assertEqual(session["status"], "ready")
+        self.assertEqual(session["apiBase"], self.server.api_prefix)
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
+        self.assertIn("HttpOnly", headers["Set-Cookie"])
+        self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+        self.assertIn(f"Path={self.server.api_prefix}/", headers["Set-Cookie"])
+        status, _, _ = self.request(
+            "GET",
+            f"{session['apiBase']}/api/projects",
+            headers={"X-Short-Drama-Token": "", "Cookie": cookie},
+        )
+        self.assertEqual(status, 200)
+
+    def test_a_non_ascii_capability_is_answered_not_dropped(self) -> None:
+        # hmac.compare_digest raises TypeError on a str holding a codepoint
+        # above U+007F, and header bytes arrive decoded as iso-8859-1. Raised
+        # from _security_ok, which runs outside every handler's try block, that
+        # closed the socket with no status line at all — pre-authentication.
+        # Only latin-1-encodable values reach the header at all; every byte
+        # from 0x80 up decodes to a codepoint compare_digest refused.
+        for token in ("\xff\xfe", "é", "\x80"):
+            with self.subTest(token=token):
+                status, _, _ = self.request(
+                    "GET", "/api/projects", headers={"X-Short-Drama-Token": token}
+                )
+                self.assertEqual(status, 401)
+
+    def test_a_malformed_project_manifest_is_reported_not_dropped(self) -> None:
+        # Valid JSON that is not an object reached project.get() and raised
+        # AttributeError, which no handler's except tuple listed.
+        broken = self.workspace / "broken"
+        make_project(broken)
+        (broken / "short-drama.json").write_text("[]", encoding="utf-8")
+        try:
+            status, _, body = self.request("GET", "/api/projects")
+            self.assertEqual(status, 200)
+            identifier = next(
+                item["id"]
+                for item in json.loads(body)["projects"]
+                if item["path"] == "broken"
+            )
+            status, _, body = self.request("GET", f"/api/status?project={identifier}")
+            self.assertEqual(status, 500)
+            self.assertIn("error", json.loads(body))
+        finally:
+            shutil.rmtree(broken)
 
     def project_id(self) -> str:
         status, _, body = self.request("GET", "/api/projects")
@@ -695,6 +1024,25 @@ class DashboardHTTPTests(unittest.TestCase):
             "PUT", path, headers={"Content-Type": "application/json"}, body=good
         )
         self.assertEqual(status, 409)
+
+    def test_http_put_allows_json_escaping_within_the_file_limit(self) -> None:
+        project_id = self.project_id()
+        path = f"/api/file?project={project_id}&path=notes.md"
+        status, _, body = self.request("GET", path)
+        self.assertEqual(status, 200)
+        opened = json.loads(body)
+        content = "\x00" * 370_000
+        payload = json.dumps(
+            {"content": content, "expectedVersion": opened["version"]}
+        ).encode()
+        self.assertGreater(len(payload), 2 * 1024 * 1024 + 64 * 1024)
+
+        status, _, _ = self.request(
+            "PUT", path, headers={"Content-Type": "application/json"}, body=payload
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(self.project.joinpath("notes.md").stat().st_size, len(content))
 
     def test_media_endpoint_serves_complete_image_with_safe_headers(self) -> None:
         media = self.project / "promo/poster.png"

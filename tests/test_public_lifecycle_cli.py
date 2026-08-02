@@ -1,10 +1,13 @@
+import contextlib
 import hashlib
 import importlib.util
 import json
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -214,6 +217,158 @@ class PublicLifecycleCliTests(unittest.TestCase):
                 outputs={"剧集/EP001/screenplay.md": "# 第一集\n"},
             )
             self.assertTrue((root / "剧集/EP001/screenplay.md").is_file())
+
+    def test_first_stage_publication_pins_one_project_wide_layout(self) -> None:
+        for first_root, conflicting_root, expected_mode in (
+            ("剧集", "episodes", "canonical"),
+            ("episodes", "剧集", "legacy"),
+        ):
+            with self.subTest(mode=expected_mode), tempfile.TemporaryDirectory() as directory:
+                root = self.make_project(directory)
+                initial = project_tool.project_status(root)["layout"]
+                self.assertFalse(initial["pinned"])
+                project_tool.publish_candidate(
+                    root,
+                    artifact_id="EP001:script",
+                    owner="short-drama-write",
+                    outputs={f"{first_root}/EP001/screenplay.md": "# 第一集\n"},
+                )
+
+                resolved = project_tool.project_status(root)["layout"]
+                self.assertEqual(resolved["mode"], expected_mode)
+                self.assertTrue(resolved["pinned"])
+                with self.assertRaisesRegex(ValueError, "平行目录"):
+                    project_tool.publish_candidate(
+                        root,
+                        artifact_id="EP002:script",
+                        owner="short-drama-write",
+                        outputs={
+                            f"{conflicting_root}/EP002/screenplay.md": "# 第二集\n"
+                        },
+                    )
+
+    def test_concurrent_first_publications_cannot_pin_opposite_layouts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            barrier = threading.Barrier(2)
+            original_lock = project_tool._transaction_lock
+            outcomes: list[tuple[str, str]] = []
+
+            @contextlib.contextmanager
+            def synchronized_lock(selected_root: Path):
+                barrier.wait(timeout=3)
+                with original_lock(selected_root):
+                    yield
+
+            def publish(stage_root: str) -> None:
+                try:
+                    project_tool.publish_candidate(
+                        root,
+                        artifact_id=f"{stage_root}:script",
+                        owner="short-drama-write",
+                        outputs={f"{stage_root}/EP001/screenplay.md": "# 第一集\n"},
+                    )
+                    outcomes.append((stage_root, "committed"))
+                except ValueError:
+                    outcomes.append((stage_root, "blocked"))
+
+            with patch.object(
+                project_tool, "_transaction_lock", synchronized_lock
+            ):
+                threads = [
+                    threading.Thread(target=publish, args=(stage_root,))
+                    for stage_root in ("剧集", "episodes")
+                ]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=5)
+
+            self.assertFalse(any(thread.is_alive() for thread in threads))
+            self.assertEqual(
+                sorted(result for _, result in outcomes), ["blocked", "committed"]
+            )
+            layout = project_tool.project_status(root)["layout"]
+            self.assertIn(layout["mode"], {"canonical", "legacy"})
+            self.assertNotEqual(
+                (root / "剧集/EP001/screenplay.md").exists(),
+                (root / "episodes/EP001/screenplay.md").exists(),
+            )
+            self.assertFalse(project_tool.recover_project(root)["blocked"])
+
+    def test_mixed_layout_is_reported_and_blocks_new_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            project_tool.publish_candidate(
+                root,
+                artifact_id="EP001:script",
+                owner="short-drama-write",
+                outputs={"episodes/EP001/screenplay.md": "# 第一集\n"},
+            )
+            parallel = root / "剧集/EP002"
+            parallel.mkdir(parents=True)
+            (parallel / "screenplay.md").write_text("# 第二集\n", encoding="utf-8")
+
+            layout = project_tool.project_status(root)["layout"]
+
+            self.assertEqual(layout["mode"], "mixed")
+            with self.assertRaisesRegex(ValueError, "请先迁移并合并"):
+                project_tool.publish_candidate(
+                    root,
+                    artifact_id="EP003:script",
+                    owner="short-drama-write",
+                    outputs={"episodes/EP003/screenplay.md": "# 第三集\n"},
+                )
+
+    def test_nonstandard_stage_root_casing_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+
+            with self.assertRaisesRegex(ValueError, "大小写或拼写"):
+                project_tool.publish_candidate(
+                    root,
+                    artifact_id="EP001:script",
+                    owner="short-drama-write",
+                    outputs={"Episodes/EP001/screenplay.md": "# 第一集\n"},
+                )
+
+            parallel = root / "Episodes/EP001"
+            parallel.mkdir(parents=True)
+            (parallel / "screenplay.md").write_text("# 第一集\n", encoding="utf-8")
+            layout = project_tool.project_status(root)["layout"]
+            self.assertEqual(layout["mode"], "mixed")
+            self.assertEqual(layout["nonstandardRoots"], ["Episodes"])
+
+    def test_a_non_pinning_root_cannot_choose_the_project_layout(self) -> None:
+        # `宣发/` and `输入/` are excluded from layout *detection*, so they must
+        # not be able to *pin* one either. A single --allow-unregistered-path
+        # write into `publicity/` used to record legacy for the whole project —
+        # while no legacy directory existed — and every later Chinese publish
+        # was then refused, with no supported way to undo the pin.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+
+            project_tool.publish_candidate(
+                root,
+                artifact_id="promo:1",
+                owner="short-drama-develop",
+                outputs={"publicity/campaign.md": "# 宣发\n"},
+                allow_unregistered_path=True,
+            )
+
+            layout = project_tool.project_status(root)["layout"]
+            self.assertFalse(layout["pinned"])
+            self.assertEqual(layout["mode"], "canonical")
+
+            project_tool.publish_candidate(
+                root,
+                artifact_id="EP001:script",
+                owner="short-drama-write",
+                outputs={"剧集/EP001/screenplay.md": "# 第一集\n"},
+            )
+            resolved = project_tool.project_status(root)["layout"]
+            self.assertEqual(resolved["mode"], "canonical")
+            self.assertTrue(resolved["pinned"])
 
     def test_unattested_fallback_can_only_record_provisional_review(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

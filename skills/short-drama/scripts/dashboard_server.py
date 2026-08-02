@@ -5,19 +5,22 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hmac
 import hashlib
 import importlib.util
 import ipaddress
 import json
 import os
+import re
+import secrets
 import stat
 import sys
-import tempfile
 import threading
 import uuid
 import webbrowser
 from collections.abc import Iterator
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from types import ModuleType
@@ -53,7 +56,8 @@ DEFAULT_MAX_DEPTH = 8
 DEFAULT_MAX_NODES = 2_000
 DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_MEDIA_BYTES = 256 * 1024 * 1024
-DEFAULT_MAX_REQUEST_BYTES = DEFAULT_MAX_FILE_BYTES + 64 * 1024
+MAX_JSON_EXPANSION = 6
+REQUEST_OVERHEAD_BYTES = 64 * 1024
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = SKILL_ROOT / "assets/dashboard"
 SECURE_DIR_FD = (
@@ -123,71 +127,22 @@ def _validate_structured_text(path: PurePosixPath, content: str) -> None:
 
 
 @contextlib.contextmanager
-def _open_parent_directory(
-    root: Path, relative: PurePosixPath
+def _open_parent_directory_at(
+    root_fd: int, relative: PurePosixPath
 ) -> Iterator[tuple[int, str]]:
-    """Pin every parent directory without following a replaced symlink."""
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    descriptor = os.open(root, flags)
+    descriptor = os.dup(root_fd)
     try:
         for part in relative.parts[:-1]:
-            child = os.open(part, flags, dir_fd=descriptor)
+            child = os.open(
+                part,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=descriptor,
+            )
             os.close(descriptor)
             descriptor = child
         yield descriptor, relative.name
     finally:
         os.close(descriptor)
-
-
-@contextlib.contextmanager
-def _interprocess_lock(target: Path) -> Iterator[None]:
-    """Serialize writes to one resolved path across dashboard processes."""
-    lock_root = Path(tempfile.gettempdir()) / "short-drama-dashboard-locks"
-    lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    root_details = os.lstat(lock_root)
-    if (
-        not stat.S_ISDIR(root_details.st_mode)
-        or root_details.st_uid != os.geteuid()
-        or stat.S_IMODE(root_details.st_mode) & 0o077
-    ):
-        raise DashboardError(
-            HTTPStatus.FORBIDDEN, "dashboard lock directory is not private"
-        )
-    digest = hashlib.sha256(str(target).encode("utf-8")).hexdigest()
-    root_fd = os.open(lock_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    descriptor = -1
-    try:
-        lock_name = f"{digest}.lock"
-        try:
-            descriptor = os.open(
-                lock_name,
-                os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                0o600,
-                dir_fd=root_fd,
-            )
-        except FileExistsError:
-            descriptor = os.open(
-                lock_name,
-                os.O_RDWR | os.O_NOFOLLOW,
-                dir_fd=root_fd,
-            )
-        details = os.fstat(descriptor)
-        if not stat.S_ISREG(details.st_mode) or details.st_uid != os.geteuid():
-            raise DashboardError(
-                HTTPStatus.FORBIDDEN, "dashboard lock file is not trusted"
-            )
-        os.fchmod(descriptor, 0o600)
-        import fcntl
-
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
-        os.close(root_fd)
 
 
 class ProjectStore:
@@ -210,7 +165,51 @@ class ProjectStore:
         self.max_nodes = max_nodes
         self.max_file_bytes = max_file_bytes
         self.max_media_bytes = max_media_bytes
+        # JSON can encode one content byte as a six-byte ``\u00xx`` escape.
+        # Size the transport envelope from the configured file limit so a
+        # valid text file is never rejected only because of JSON escaping.
+        self.max_request_bytes = (
+            max_file_bytes * MAX_JSON_EXPANSION + REQUEST_OVERHEAD_BYTES
+        )
+        # The four entry points this server actually invokes. Everything the
+        # dashboard touches goes through a pinned directory descriptor, so the
+        # path-based twins are not part of the contract.
+        required_contract = (
+            "project_status_at",
+            "is_protected_project_text",
+            "coordinated_project_text_edit_at",
+            "project_path_lifecycle_at",
+        )
+        missing = [
+            name
+            for name in required_contract
+            if not callable(getattr(project_tool, name, None))
+        ]
+        if missing:
+            raise RuntimeError(
+                "project tool does not support the Dashboard contract: "
+                + ", ".join(missing)
+            )
+        # Fail closed once, here, instead of serving a half-working dashboard.
+        # Without directory descriptors every file read, write and media preview
+        # answers 501, so the browse tree and status card are all that render —
+        # and the only way to keep them working was a second, path-based
+        # traversal of every walk, which is precisely the symlink-race-prone
+        # lane this server exists to avoid.
+        if not SECURE_DIR_FD:
+            raise RuntimeError(
+                "the short-drama dashboard needs POSIX directory descriptors; "
+                "this platform is unsupported"
+            )
+        self._workspace_fd = os.open(
+            workspace, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        )
         self._write_lock = threading.Lock()
+
+    def close(self) -> None:
+        if self._workspace_fd >= 0:
+            os.close(self._workspace_fd)
+            self._workspace_fd = -1
 
     @staticmethod
     def _project_id(relative: str) -> str:
@@ -223,17 +222,15 @@ class ProjectStore:
         depth_truncated = False
         node_truncated = False
 
-        def walk(directory: Path, depth: int) -> None:
+        def walk_fd(directory_fd: int, parts: tuple[str, ...], depth: int) -> None:
             nonlocal depth_truncated, node_truncated, nodes
             if nodes >= self.max_nodes:
                 return
             try:
-                with os.scandir(directory) as iterator:
+                with os.scandir(directory_fd) as iterator:
                     entries = sorted(iterator, key=lambda item: item.name.casefold())
             except OSError as exc:
-                warnings.append(
-                    f"无法读取 {directory.relative_to(self.workspace)}: {exc}"
-                )
+                warnings.append(f"无法读取 {'/'.join(parts) or '.'}: {exc}")
                 return
             for entry in entries:
                 if nodes >= self.max_nodes:
@@ -242,49 +239,99 @@ class ProjectStore:
                 nodes += 1
                 if entry.is_symlink():
                     continue
-                path = Path(entry.path)
                 if (
                     entry.is_file(follow_symlinks=False)
                     and entry.name == "short-drama.json"
                 ):
-                    root = path.parent
-                    relative = root.relative_to(self.workspace).as_posix() or "."
+                    relative = "/".join(parts) or "."
                     projects.append(
                         {"id": self._project_id(relative), "path": relative}
                     )
                     continue
-                if entry.is_dir(follow_symlinks=False):
-                    if depth >= self.max_depth:
-                        depth_truncated = True
-                        continue
-                    walk(path, depth + 1)
+                if not entry.is_dir(follow_symlinks=False):
+                    continue
+                if depth >= self.max_depth:
+                    depth_truncated = True
+                    continue
+                try:
+                    child_fd = os.open(
+                        entry.name,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=directory_fd,
+                    )
+                except OSError:
+                    continue
+                try:
+                    walk_fd(child_fd, (*parts, entry.name), depth + 1)
+                finally:
+                    os.close(child_fd)
 
-        walk(self.workspace, 0)
+        walk_fd(self._workspace_fd, (), 0)
         if node_truncated:
             warnings.append(f"项目发现达到节点上限 {self.max_nodes}，结果已截断")
         if depth_truncated:
             warnings.append(f"项目发现达到深度上限 {self.max_depth}，更深目录已截断")
         return projects, warnings
 
-    def project(self, project_id: str) -> Path:
-        for item in self.discover()[0]:
-            if item["id"] == project_id:
-                candidate = (
-                    self.workspace
-                    if item["path"] == "."
-                    else self.workspace / item["path"]
+    @contextlib.contextmanager
+    def _pinned_project(self, project_id: str) -> Iterator[tuple[int, Path]]:
+        """Pin the project root by descriptor and report its creator-facing path.
+
+        Every parent is opened with O_NOFOLLOW from the workspace descriptor, so
+        a directory swapped for a symlink mid-request fails instead of
+        redirecting the operation. The yielded path is for display only — no
+        caller reads through it.
+        """
+
+        selected = next(
+            (item for item in self.discover()[0] if item["id"] == project_id), None
+        )
+        if selected is None:
+            raise DashboardError(HTTPStatus.NOT_FOUND, "project not found")
+        display = (
+            self.workspace
+            if selected["path"] == "."
+            else self.workspace / selected["path"]
+        )
+        descriptor = os.dup(self._workspace_fd)
+        marker_fd = -1
+        try:
+            for part in PurePosixPath(selected["path"]).parts:
+                if part == ".":
+                    continue
+                child = os.open(
+                    part,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptor,
                 )
-                return candidate.resolve(strict=True)
-        raise DashboardError(HTTPStatus.NOT_FOUND, "project not found")
+                os.close(descriptor)
+                descriptor = child
+            marker_fd = os.open(
+                "short-drama.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor
+            )
+            if not stat.S_ISREG(os.fstat(marker_fd).st_mode):
+                raise OSError("project manifest is not a regular file")
+        except OSError as exc:
+            if marker_fd >= 0:
+                os.close(marker_fd)
+            os.close(descriptor)
+            raise DashboardError(
+                HTTPStatus.FORBIDDEN, "project root cannot be opened safely"
+            ) from exc
+        os.close(marker_fd)
+        try:
+            yield descriptor, display
+        finally:
+            os.close(descriptor)
 
     def status(self, project_id: str) -> dict[str, Any]:
-        root = self.project(project_id)
-        return self.project_tool.project_status(root)
+        with self._pinned_project(project_id) as (directory_fd, root):
+            return self.project_tool.project_status_at(
+                directory_fd, project_root=str(root)
+            )
 
-    def _safe_path(
-        self, project_id: str, relative: str, *, must_exist: bool = True
-    ) -> tuple[Path, PurePosixPath]:
-        root = self.project(project_id)
+    @staticmethod
+    def _safe_relative(relative: str) -> PurePosixPath:
         raw = unquote(relative).replace("\\", "/")
         pure = PurePosixPath(raw)
         if (
@@ -293,32 +340,18 @@ class ProjectStore:
             or any(part in ("", ".", "..") for part in pure.parts)
         ):
             raise DashboardError(HTTPStatus.BAD_REQUEST, "unsafe project-relative path")
-        current = root
-        for part in pure.parts:
-            current = current / part
-            if current.is_symlink():
-                raise DashboardError(
-                    HTTPStatus.FORBIDDEN, "symbolic links are not allowed"
-                )
-        try:
-            resolved = current.resolve(strict=must_exist)
-        except FileNotFoundError as exc:
-            raise DashboardError(HTTPStatus.NOT_FOUND, "file not found") from exc
-        if resolved != root and root not in resolved.parents:
-            raise DashboardError(HTTPStatus.FORBIDDEN, "path leaves project root")
-        return resolved, pure
+        return pure
 
-    @staticmethod
-    def _is_protected(relative: PurePosixPath) -> bool:
-        folded = tuple(part.casefold() for part in relative.parts)
-        return (
-            relative.name.casefold() == "short-drama.json"
-            or bool(folded and folded[0] == ".short-drama")
-            or bool(folded and folded[0] == "delivery")
+    def _is_protected(self, relative: PurePosixPath) -> bool:
+        return bool(
+            self.project_tool.is_protected_project_text(relative.as_posix())
         )
 
     def tree(self, project_id: str) -> dict[str, Any]:
-        root = self.project(project_id)
+        with self._pinned_project(project_id) as (directory_fd, _root):
+            return self._tree_from_root(directory_fd)
+
+    def _tree_from_root(self, directory_fd: int) -> dict[str, Any]:
         nodes = 0
         warnings: list[str] = []
         depth_truncated = False
@@ -326,12 +359,14 @@ class ProjectStore:
         oversized_text = 0
         oversized_media = 0
 
-        def scan(directory: Path, depth: int) -> list[dict[str, Any]]:
+        def scan_fd(
+            parent_fd: int, parts: tuple[str, ...], depth: int
+        ) -> list[dict[str, Any]]:
             nonlocal depth_truncated, node_truncated, nodes
             nonlocal oversized_media, oversized_text
             children: list[dict[str, Any]] = []
             try:
-                with os.scandir(directory) as iterator:
+                with os.scandir(parent_fd) as iterator:
                     entries = sorted(
                         iterator,
                         key=lambda item: (
@@ -340,14 +375,13 @@ class ProjectStore:
                         ),
                     )
             except OSError as exc:
-                warnings.append(f"无法读取 {directory.relative_to(root)}: {exc}")
+                warnings.append(f"无法读取 {'/'.join(parts) or '.'}: {exc}")
                 return children
             for entry in entries:
                 if entry.is_symlink():
                     continue
-                path = Path(entry.path)
-                relative = path.relative_to(root).as_posix()
-                if PurePosixPath(relative).parts[0].casefold() == ".short-drama":
+                relative = "/".join((*parts, entry.name))
+                if parts == () and entry.name.casefold() == ".short-drama":
                     continue
                 if nodes >= self.max_nodes:
                     node_truncated = True
@@ -361,13 +395,26 @@ class ProjectStore:
                         "children": [],
                     }
                     if depth < self.max_depth:
-                        node["children"] = scan(path, depth + 1)
+                        try:
+                            child_fd = os.open(
+                                entry.name,
+                                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                dir_fd=parent_fd,
+                            )
+                        except OSError:
+                            continue
+                        try:
+                            node["children"] = scan_fd(
+                                child_fd, (*parts, entry.name), depth + 1
+                            )
+                        finally:
+                            os.close(child_fd)
                     else:
                         depth_truncated = True
                         node["truncated"] = True
                     children.append(node)
                     continue
-                suffix = path.suffix.casefold()
+                suffix = PurePosixPath(entry.name).suffix.casefold()
                 if suffix not in TEXT_EXTENSIONS and suffix not in MEDIA_EXTENSIONS:
                     continue
                 try:
@@ -397,7 +444,7 @@ class ProjectStore:
                 )
             return children
 
-        tree = scan(root, 0)
+        tree = scan_fd(directory_fd, (), 0)
         if node_truncated:
             warnings.append(f"文件树达到节点上限 {self.max_nodes}，结果已截断")
         if depth_truncated:
@@ -422,22 +469,18 @@ class ProjectStore:
         }
 
     def read_text(self, project_id: str, relative: str) -> dict[str, Any]:
-        root = self.project(project_id)
-        path, pure = self._safe_path(project_id, relative)
-        if path.suffix.casefold() not in TEXT_EXTENSIONS:
+        pure = self._safe_relative(relative)
+        if pure.suffix.casefold() not in TEXT_EXTENSIONS:
             raise DashboardError(
                 HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "file type is not editable text"
             )
-        if not path.is_file():
-            raise DashboardError(HTTPStatus.BAD_REQUEST, "path is not a file")
-        if not SECURE_DIR_FD:
-            raise DashboardError(
-                HTTPStatus.NOT_IMPLEMENTED,
-                "safe text access is unavailable on this platform",
-            )
         try:
-            with _open_parent_directory(root, pure) as (parent_fd, name):
-                data, _ = self._read_regular_at(parent_fd, name)
+            with self._pinned_project(project_id) as (directory_fd, _root):
+                with _open_parent_directory_at(directory_fd, pure) as (
+                    parent_fd,
+                    name,
+                ):
+                    data, _ = self._read_regular_at(parent_fd, name)
         except OSError as exc:
             raise DashboardError(
                 HTTPStatus.FORBIDDEN, "text file cannot be opened safely"
@@ -521,12 +564,32 @@ class ProjectStore:
                 except FileNotFoundError:
                     pass
 
+    @contextlib.contextmanager
+    def _coordinated_edit(
+        self, directory_fd: int, relative: PurePosixPath, expected_version: str
+    ) -> Iterator[None]:
+        try:
+            with self.project_tool.coordinated_project_text_edit_at(
+                directory_fd, relative.as_posix(), expected_version
+            ):
+                yield
+        except Exception as exc:
+            if exc.__class__.__name__ in {
+                "StaleReadSetError",
+                "TransactionConflictError",
+            }:
+                raise DashboardError(HTTPStatus.CONFLICT, str(exc)) from exc
+            if isinstance(exc, ValueError):
+                raise DashboardError(
+                    HTTPStatus.FORBIDDEN, "project path changed during the save"
+                ) from exc
+            raise
+
     def write_text(
         self, project_id: str, relative: str, content: Any, expected_version: Any
     ) -> dict[str, Any]:
-        root = self.project(project_id)
-        path, pure = self._safe_path(project_id, relative)
-        if path.suffix.casefold() not in TEXT_EXTENSIONS:
+        pure = self._safe_relative(relative)
+        if pure.suffix.casefold() not in TEXT_EXTENSIONS:
             raise DashboardError(
                 HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "file type is not editable text"
             )
@@ -539,24 +602,38 @@ class ProjectStore:
                 HTTPStatus.BAD_REQUEST,
                 "content and expectedVersion are required strings",
             )
+        if re.fullmatch(r"[0-9a-f]{64}", expected_version) is None:
+            raise DashboardError(
+                HTTPStatus.BAD_REQUEST, "expectedVersion must be a SHA-256 digest"
+            )
         encoded = content.encode("utf-8")
         if len(encoded) > self.max_file_bytes:
             raise DashboardError(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "content exceeds file limit"
             )
         _validate_structured_text(pure, content)
-        if not SECURE_DIR_FD:
-            raise DashboardError(
-                HTTPStatus.NOT_IMPLEMENTED,
-                "safe text writes are unavailable on this platform",
-            )
-        with self._write_lock, _interprocess_lock(path):
-            # Serialize the compare-and-replace sequence so concurrent dashboard
-            # clients cannot both satisfy the same expectedVersion. On POSIX,
-            # pin each parent directory so a concurrent symlink swap cannot
-            # redirect the replace outside the project.
+        with (
+            self._write_lock,
+            self._pinned_project(project_id) as (directory_fd, _root),
+            self._coordinated_edit(directory_fd, pure, expected_version),
+        ):
+            # Two layers, each earning its place. `_write_lock` serializes this
+            # process's own threads, including the lock-directory setup that
+            # runs before any file lock can exist. `_coordinated_edit` then
+            # holds the project's transaction flock across the whole
+            # compare-and-replace, which is what excludes a second dashboard
+            # process and the publish/recover/accept/review commands. A third
+            # lock in the temp directory used to sit between them, keyed on
+            # `workspace / <project-hash> / path` — a path that names nothing on
+            # disk, so two dashboards over overlapping workspaces hashed the
+            # same file to different lock files and never actually excluded
+            # each other. Each parent directory is pinned so a concurrent
+            # symlink swap cannot redirect the replace outside the project.
             try:
-                with _open_parent_directory(root, pure) as (parent_fd, name):
+                with _open_parent_directory_at(directory_fd, pure) as (
+                    parent_fd,
+                    name,
+                ):
                     current, mode = self._read_regular_at(parent_fd, name)
                     if _version(current) != expected_version:
                         raise DashboardError(
@@ -573,9 +650,14 @@ class ProjectStore:
         return {"path": pure.as_posix(), "version": _version(encoded), "saved": True}
 
     def media_info(self, project_id: str, relative: str) -> dict[str, Any]:
-        handle, pure, content_type, size = self.open_media(project_id, relative)
-        handle.close()
-        return {
+        pure = self._safe_relative(relative)
+        with self._pinned_project(project_id) as (directory_fd, _root):
+            handle, content_type, size = self._open_media_at(directory_fd, pure)
+            handle.close()
+            lifecycle = self.project_tool.project_path_lifecycle_at(
+                directory_fd, pure.as_posix()
+            )
+        result = {
             "path": pure.as_posix(),
             "kind": "video" if content_type.startswith("video/") else "image",
             "contentType": content_type,
@@ -584,25 +666,29 @@ class ProjectStore:
             "contentUrl": f"/api/media/content?{urlencode({'project': project_id, 'path': pure.as_posix()})}",
             "status": "ready",
         }
+        if lifecycle is not None:
+            result["lifecycle"] = lifecycle
+        return result
 
     def open_media(
         self, project_id: str, relative: str
     ) -> tuple[BinaryIO, PurePosixPath, str, int]:
-        root = self.project(project_id)
-        path, pure = self._safe_path(project_id, relative)
-        content_type = MEDIA_TYPES.get(path.suffix.casefold())
+        pure = self._safe_relative(relative)
+        with self._pinned_project(project_id) as (directory_fd, _root):
+            handle, content_type, size = self._open_media_at(directory_fd, pure)
+        return handle, pure, content_type, size
+
+    def _open_media_at(
+        self, directory_fd: int, pure: PurePosixPath
+    ) -> tuple[BinaryIO, str, int]:
+        content_type = MEDIA_TYPES.get(pure.suffix.casefold())
         if content_type is None:
             raise DashboardError(
                 HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported preview media"
             )
-        if not SECURE_DIR_FD:
-            raise DashboardError(
-                HTTPStatus.NOT_IMPLEMENTED,
-                "safe media access is unavailable on this platform",
-            )
         flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         try:
-            with _open_parent_directory(root, pure) as (parent_fd, name):
+            with _open_parent_directory_at(directory_fd, pure) as (parent_fd, name):
                 descriptor = os.open(name, flags, dir_fd=parent_fd)
         except OSError as exc:
             raise DashboardError(
@@ -616,7 +702,7 @@ class ProjectStore:
                 raise DashboardError(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "media exceeds preview limit"
                 )
-            return os.fdopen(descriptor, "rb"), pure, content_type, details.st_size
+            return os.fdopen(descriptor, "rb"), content_type, details.st_size
         except Exception:
             os.close(descriptor)
             raise
@@ -627,6 +713,10 @@ class DashboardHTTPServer(ThreadingHTTPServer):
 
     def __init__(self, server_address: tuple[str, int], store: ProjectStore) -> None:
         self.store = store
+        self.access_token = secrets.token_urlsafe(32)
+        self.api_prefix = f"/_short_drama/{secrets.token_urlsafe(18)}"
+        cookie_suffix = hashlib.sha256(self.api_prefix.encode("utf-8")).hexdigest()[:16]
+        self.session_cookie = f"short_drama_{cookie_suffix}"
         super().__init__(server_address, DashboardHandler)
 
     def allowed_authority(self, authority: str) -> bool:
@@ -645,15 +735,18 @@ class DashboardHTTPServer(ThreadingHTTPServer):
             return False
         return port == self.server_address[1]
 
+    def server_close(self) -> None:
+        try:
+            super().server_close()
+        finally:
+            self.store.close()
+
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     server: DashboardHTTPServer
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(STATIC_ROOT), **kwargs)
-
-    def log_message(self, format: str, *args: Any) -> None:
-        super().log_message(format, *args)
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
@@ -665,7 +758,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         )
         super().end_headers()
 
-    def _security_ok(self) -> bool:
+    def _request_token(self) -> str:
+        header = self.headers.get("X-Short-Drama-Token")
+        if header:
+            return header
+        cookies = SimpleCookie()
+        try:
+            cookies.load(self.headers.get("Cookie", ""))
+        except Exception:
+            return ""
+        morsel = cookies.get(self.server.session_cookie)
+        return morsel.value if morsel is not None else ""
+
+    def _security_ok(self, *, require_token: bool = False) -> bool:
         host = self.headers.get("Host", "")
         if not host or not self.server.allowed_authority(host):
             self._json(HTTPStatus.FORBIDDEN, {"error": "invalid Host header"})
@@ -681,21 +786,39 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             ):
                 self._json(HTTPStatus.FORBIDDEN, {"error": "invalid Origin header"})
                 return False
+        # Compare bytes, not str: `hmac.compare_digest` raises TypeError on a
+        # str operand holding any codepoint above U+007F, and http.client
+        # decodes header bytes as iso-8859-1, so a single 0x80+ byte in the
+        # header would escape this pre-auth check and drop the connection with
+        # no response at all.
+        if require_token and not hmac.compare_digest(
+            self._request_token().encode("utf-8", "surrogateescape"),
+            self.server.access_token.encode("utf-8"),
+        ):
+            self._json(HTTPStatus.UNAUTHORIZED, {"error": "dashboard session required"})
+            return False
         return True
 
-    def _json(self, status: int, value: Any) -> None:
+    def _json(
+        self, status: int, value: Any, *, headers: dict[str, str] | None = None
+    ) -> None:
         body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode(
             "utf-8"
         )
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        for name, content in (headers or {}).items():
+            self.send_header(name, content)
         self.end_headers()
         self.wfile.write(body)
 
     def _query(self) -> tuple[str, dict[str, list[str]]]:
         parsed = urlsplit(self.path)
-        return parsed.path, parse_qs(parsed.query, keep_blank_values=True)
+        path = parsed.path
+        if path.startswith(f"{self.server.api_prefix}/api/"):
+            path = path[len(self.server.api_prefix) :]
+        return path, parse_qs(parsed.query, keep_blank_values=True)
 
     @staticmethod
     def _one(query: dict[str, list[str]], name: str) -> str:
@@ -780,9 +903,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             handle.close()
 
     def do_GET(self) -> None:
-        if not self._security_ok():
-            return
         path, query = self._query()
+        if not self._security_ok(require_token=path.startswith("/api/")):
+            return
         try:
             if path == "/api/projects":
                 projects, warnings = self.server.store.discover()
@@ -807,11 +930,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 )
                 return
             if path == "/api/media":
+                info = self.server.store.media_info(
+                    self._one(query, "project"), self._one(query, "path")
+                )
+                info["contentUrl"] = (
+                    f"{self.server.api_prefix}{info['contentUrl']}"
+                )
                 self._json(
                     HTTPStatus.OK,
-                    self.server.store.media_info(
-                        self._one(query, "project"), self._one(query, "path")
-                    ),
+                    info,
                 )
                 return
             if path == "/api/media/content":
@@ -827,11 +954,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json(exc.status, {"error": exc.message})
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+        except Exception:
+            # A handler that lets anything escape closes the socket without a
+            # status line, so the browser reports a network failure it cannot
+            # act on. Every unexpected type still becomes an answered request.
+            self._json(
+                HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal dashboard error"}
+            )
 
     def do_HEAD(self) -> None:
-        if not self._security_ok():
-            return
         path, query = self._query()
+        if not self._security_ok(require_token=path.startswith("/api/")):
+            return
         if path == "/api/media/content":
             try:
                 self._serve_media(query, send_body=False)
@@ -839,6 +973,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self._json(exc.status, {"error": exc.message})
             except OSError as exc:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+            except Exception:
+                self._json(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": "internal dashboard error"},
+                )
             return
         if path.startswith("/api/"):
             self._json(
@@ -851,9 +990,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def do_PUT(self) -> None:
-        if not self._security_ok():
-            return
         path, query = self._query()
+        if not self._security_ok(require_token=path.startswith("/api/")):
+            return
         if path != "/api/file":
             self._json(HTTPStatus.NOT_FOUND, {"error": "API endpoint not found"})
             return
@@ -864,7 +1003,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     HTTPStatus.LENGTH_REQUIRED, "Content-Length is required"
                 )
             length = int(raw_length)
-            if length < 0 or length > DEFAULT_MAX_REQUEST_BYTES:
+            if length < 0 or length > self.server.store.max_request_bytes:
                 raise DashboardError(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body is too large"
                 )
@@ -891,6 +1030,28 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid JSON request"})
         except OSError as exc:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+        except Exception:
+            self._json(
+                HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal dashboard error"}
+            )
+
+    def do_POST(self) -> None:
+        path, _ = self._query()
+        if not self._security_ok(require_token=path.startswith("/api/")):
+            return
+        if path != "/api/session":
+            self._json(HTTPStatus.NOT_FOUND, {"error": "API endpoint not found"})
+            return
+        self._json(
+            HTTPStatus.OK,
+            {"status": "ready", "apiBase": self.server.api_prefix},
+            headers={
+                "Set-Cookie": (
+                    f"{self.server.session_cookie}={self.server.access_token}; "
+                    f"HttpOnly; SameSite=Strict; Path={self.server.api_prefix}/"
+                )
+            },
+        )
 
 
 def create_server(
@@ -944,7 +1105,7 @@ def main(argv: list[str] | None = None) -> int:
     host = raw_host.decode("ascii") if isinstance(raw_host, bytes) else raw_host
     display_host = f"[{host}]" if ":" in host else host
     scheme = "http"
-    url = f"{scheme}://{display_host}:{port}"
+    url = f"{scheme}://{display_host}:{port}/#{server.access_token}"
     print(f"Dashboard: {url}", flush=True)
     if args.open:
         webbrowser.open(url)

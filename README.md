@@ -89,7 +89,7 @@ flowchart LR
 
 **在线成片（15 秒，含原生音频与中文字幕）**
 
-https://github.com/user-attachments/assets/3e9fd876-d3b1-4043-bae4-6007b19ec60e
+https://github.com/worldwonderer/drama-skills/releases/download/v0.2.0/gushenrumo-15s-demo.mp4
 
 - **成片规格**：15.000 秒、720×1280、24 fps、H.264 + AAC
 - **项目控制台**：中文目录、文本编辑、图片与视频预览、项目状态总览
@@ -168,7 +168,7 @@ done
 
 ```bash
 python3 skills/short-drama/scripts/dashboard_server.py --workspace /path/to/projects --open
-# 浏览器打开 http://127.0.0.1:8765
+# 脚本会打印并打开包含本次会话凭证的完整本机地址
 ```
 
 在 Codex 中可直接调用 `$short-drama dashboard`；技能会选择项目或当前工作目录、
@@ -176,9 +176,11 @@ python3 skills/short-drama/scripts/dashboard_server.py --workspace /path/to/proj
 
 服务只允许绑定回环地址；文本保存使用 SHA-256 版本检查与原子替换，避免两个页面静默覆盖；
 JSON/JSONL 会在浏览器与服务端同时校验，仅在格式通过后落盘。
+每次启动生成独立会话凭证和 API 路径，完整地址中的片段由浏览器换取 `HttpOnly`
+本机会话；项目 API 只接受该会话。
 `short-drama.json`、`.short-drama/**` 和 `交付/**` 始终只读，符号链接和越出项目根的路径
-会被拒绝。项目内容访问需要 macOS/Linux 的安全目录文件描述符支持；平台不支持时
-会明确拒绝，不降级为可被符号链接竞态绕过的路径操作。项目控制台只读取本机项目文件，
+会被拒绝。控制台需要 macOS/Linux 的安全目录文件描述符支持；平台不支持时服务直接
+拒绝启动，不降级为可被符号链接竞态绕过的路径操作。项目控制台只读取本机项目文件，
 媒体生成凭据由本地环境保管。
 
 创作者可读的摘录示例见 [demo/](demo/)：一集剧本 → 资产设定 → 分镜 → 视频提示词。

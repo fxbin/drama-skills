@@ -10,15 +10,28 @@ from tests.private_release_gate import load_private_terms
 SUITE = Path(__file__).resolve().parents[1]
 SHIPPED_SKILLS = SUITE / "skills"
 DASHBOARD_SERVER = SHIPPED_SKILLS / "short-drama/scripts/dashboard_server.py"
+RELEASE_TEXT_SUFFIXES = {
+    ".ass",
+    ".css",
+    ".html",
+    ".js",
+    ".json",
+    ".jsonl",
+    ".md",
+    ".py",
+    ".srt",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
 
 
 def shipped_text_files() -> list[Path]:
-    allowed_suffixes = {".md", ".json", ".jsonl", ".yaml", ".py"}
     return [
         path
         for path in SHIPPED_SKILLS.rglob("*")
         if path.is_file()
-        and path.suffix.lower() in allowed_suffixes
+        and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
         and "__pycache__" not in path.parts
     ]
 
@@ -32,7 +45,7 @@ def release_facing_text_files() -> list[Path]:
         if root.is_dir()
         for path in root.rglob("*")
         if path.is_file()
-        and path.suffix.lower() in {".md", ".json", ".jsonl", ".yaml", ".py"}
+        and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
         and "__pycache__" not in path.parts
     ]
     return [path for path in top_level if path.is_file()] + nested
