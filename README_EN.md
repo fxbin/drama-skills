@@ -95,6 +95,23 @@ reusable design decisions separate from shot-specific presentation.
 | `short-drama-video-prompts` | Ordered action, performance, camera/audio intent, timing, and exact start/end continuity |
 | `short-drama-review` | Structural validation, evidence-based review, production quality gates, independent verdicts |
 
+## Finished-video and dashboard demo
+
+The *Lone Fall into Demonhood* showcase adapts a mature costume-fantasy project
+into project setting records, two episode scripts, twelve storyboard panels,
+publicity artwork, and one 15-second vertical video. The continuous shot follows
+Gu Lin carrying a crystal coffin toward the border and includes Mandarin dialogue,
+environmental sound, music, and burned-in Chinese subtitles.
+
+**Online video (15 seconds, native audio, burned-in Chinese subtitles)**
+
+https://github.com/worldwonderer/drama-skills/releases/download/v0.2.0/gushenrumo-15s-demo.mp4
+
+- **Video specification:** 15.000 seconds, 720×1280, 24 fps, H.264 + AAC
+- **Project dashboard:** Chinese project folders, text editing, media preview, and project status
+
+![Chinese project dashboard previewing the finished demo](docs/assets/dashboard-zh.png)
+
 ## Install
 
 The deterministic scripts need **Python 3.10 or newer** (check with
@@ -160,6 +177,35 @@ Use $short-drama-video-prompts to translate each authored shot into a video prom
 # 4. Independent review
 Use $short-drama-review to review EP001's script and prompts
 ```
+
+## Local project dashboard
+
+The repository includes a zero-production-dependency local dashboard for projects
+identified by `short-drama.json`. It groups the real filesystem into Project Text,
+Publicity Assets, and Reference Inputs; edits Markdown, JSON, JSONL, TXT, SRT, and ASS; and
+previews common image and video formats read-only. Safe Markdown/structured-data
+preview is the default, files are grouped with domain counts, lifecycle machine
+states become creator-facing checkpoint/recovery/delivery cards, and media labels
+distinguish visual assets, motion previs, and generated footage awaiting review:
+
+```bash
+python3 skills/short-drama/scripts/dashboard_server.py --workspace /path/to/projects --open
+# The script prints and opens the complete local URL for this session
+```
+
+In Codex, invoke `$short-drama dashboard` directly. The skill selects the current
+project or workspace, allocates an available loopback port, and opens the browser.
+
+The server only binds to loopback. Text saves use SHA-256 version checks and atomic
+replacement so two tabs cannot silently overwrite each other. JSON and JSONL are
+validated in both browser and server before replacement. Each launch creates a
+separate capability and API path. The URL fragment establishes an
+`HttpOnly`, same-site browser session, and project APIs require that session.
+`short-drama.json`, `.short-drama/**`, and `交付/**` remain read-only; symlinks and paths outside the
+project root are rejected. The dashboard requires the secure directory-FD support
+available on macOS/Linux; on an unsupported platform the server refuses to start
+rather than falling back to race-prone path operations. The dashboard never connects to a
+creator database or sends media-generation credentials to the browser.
 
 See [demo/](demo/) for a creator-facing excerpt chain: one episode's script →
 asset sheets → storyboard → video prompts.

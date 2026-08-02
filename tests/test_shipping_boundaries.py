@@ -1,3 +1,4 @@
+import ast
 import re
 import subprocess
 import unittest
@@ -8,15 +9,29 @@ from tests.private_release_gate import load_private_terms
 
 SUITE = Path(__file__).resolve().parents[1]
 SHIPPED_SKILLS = SUITE / "skills"
+DASHBOARD_SERVER = SHIPPED_SKILLS / "short-drama/scripts/dashboard_server.py"
+RELEASE_TEXT_SUFFIXES = {
+    ".ass",
+    ".css",
+    ".html",
+    ".js",
+    ".json",
+    ".jsonl",
+    ".md",
+    ".py",
+    ".srt",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
 
 
 def shipped_text_files() -> list[Path]:
-    allowed_suffixes = {".md", ".json", ".jsonl", ".yaml", ".py"}
     return [
         path
         for path in SHIPPED_SKILLS.rglob("*")
         if path.is_file()
-        and path.suffix.lower() in allowed_suffixes
+        and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
         and "__pycache__" not in path.parts
     ]
 
@@ -30,7 +45,7 @@ def release_facing_text_files() -> list[Path]:
         if root.is_dir()
         for path in root.rglob("*")
         if path.is_file()
-        and path.suffix.lower() in {".md", ".json", ".jsonl", ".yaml", ".py"}
+        and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
         and "__pycache__" not in path.parts
     ]
     return [path for path in top_level if path.is_file()] + nested
@@ -68,7 +83,9 @@ class ShippingBoundaryTests(unittest.TestCase):
         import json
 
         manifest = json.loads(
-            (SHIPPED_SKILLS / "short-drama/suite-manifest.json").read_text(encoding="utf-8")
+            (SHIPPED_SKILLS / "short-drama/suite-manifest.json").read_text(
+                encoding="utf-8"
+            )
         )
         forbidden = {".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe"}
         findings = [
@@ -87,7 +104,9 @@ class ShippingBoundaryTests(unittest.TestCase):
                 leaks.append(f"{path.relative_to(SUITE)}: {found}")
         self.assertEqual(leaks, [], "URLs shipped in skills tree:\n" + "\n".join(leaks))
 
-    def test_shipping_tree_has_no_private_source_or_provider_task_vocabulary(self) -> None:
+    def test_shipping_tree_has_no_private_source_or_provider_task_vocabulary(
+        self,
+    ) -> None:
         # Assemble source-specific terms so the privacy test itself cannot become
         # a fingerprint hit if the maintainer tree is scanned separately.
         forbidden = {
@@ -147,7 +166,9 @@ class ShippingBoundaryTests(unittest.TestCase):
                     findings.append(f"{path.relative_to(SUITE)}: {name}")
         self.assertEqual(findings, [], "machine paths shipped:\n" + "\n".join(findings))
 
-    def test_deterministic_scripts_do_not_import_network_or_private_runtime_clients(self) -> None:
+    def test_deterministic_scripts_do_not_import_network_or_private_runtime_clients(
+        self,
+    ) -> None:
         forbidden_imports = re.compile(
             r"^\s*(?:from|import)\s+(?:socket|urllib|httpx?|requests|aiohttp|pymongo)\b",
             re.MULTILINE,
@@ -160,12 +181,51 @@ class ShippingBoundaryTests(unittest.TestCase):
         for path in SHIPPED_SKILLS.rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
+            # The dashboard is an explicit loopback HTTP service, not a
+            # deterministic production script. Its separate boundary test below
+            # permits server/parser modules but still forbids outbound clients.
+            if path == DASHBOARD_SERVER:
+                continue
             text = path.read_text(encoding="utf-8")
             if forbidden_imports.search(text):
                 findings.append(f"{path.relative_to(SUITE)}: outbound/private import")
             if runtime_lookup.search(text):
                 findings.append(f"{path.relative_to(SUITE)}: runtime source lookup")
-        self.assertEqual(findings, [], "runtime boundary violations:\n" + "\n".join(findings))
+        self.assertEqual(
+            findings, [], "runtime boundary violations:\n" + "\n".join(findings)
+        )
+
+    def test_dashboard_server_imports_no_outbound_or_private_runtime_client(
+        self,
+    ) -> None:
+        text = DASHBOARD_SERVER.read_text(encoding="utf-8")
+        imported: set[str] = set()
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+        forbidden = {
+            "socket",
+            "urllib.request",
+            "http.client",
+            "httpx",
+            "requests",
+            "aiohttp",
+            "pymongo",
+        }
+        findings = sorted(
+            name
+            for name in imported
+            if any(name == item or name.startswith(f"{item}.") for item in forbidden)
+        )
+        self.assertEqual(
+            findings,
+            [],
+            "dashboard must remain a local server without outbound clients",
+        )
+        self.assertIn("from http.server import", text)
+        self.assertIn("from urllib.parse import", text)
 
     def test_every_shipped_script_declares_the_documented_python_floor(self) -> None:
         """A creator-invoked script must state its own floor, and both READMEs

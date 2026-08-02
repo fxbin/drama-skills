@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -220,6 +221,42 @@ class RecoveryTests(unittest.TestCase):
                 project_tool.recover_transaction(root, txid)["already_recovered"]
             )
 
+    def test_a_layout_conflict_blocks_rollforward_instead_of_deadlocking(self) -> None:
+        # A committed transaction crashes before STATE_APPLIED, and the project
+        # is pinned to the other layout family before recovery runs. Applying
+        # the manifest's layout then raises TransactionConflictError. Left bare
+        # that escaped past recover_project's generic handler without ever
+        # writing STATE_APPLIED, so the transaction stayed needs_rollforward
+        # and every later recover failed identically — with blocked_transactions
+        # empty, offering the creator no resolution path at all.
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            txid = self.publish_with_crash(root, "after_commit")
+
+            transaction = root / ".short-drama/transactions" / txid
+            manifest_path = transaction / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["project_layout_mode"] = "canonical"
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            state_path = root / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["project_layout_mode"] = "legacy"
+            state_path.write_text(
+                json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = project_tool.recover_transaction(root, txid)
+
+            self.assertEqual(result["status"], "blocked")
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn(txid, state["blocked_transactions"])
+            # Blocked is terminal and reported, not a loop: recovery converges.
+            self.assertFalse(project_tool.recover_project(root)["blocked"] == [])
+
     def test_external_edit_is_preserved_exactly_and_blocks_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
@@ -412,19 +449,24 @@ class PackageTests(unittest.TestCase):
         artifact_id: str,
         owner: str,
         outputs: dict[str, str],
-    ) -> None:
+        input_hashes: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         project_tool.publish_candidate(
             root,
             owner=owner,
             artifact_id=artifact_id,
             outputs=outputs,
+            input_hashes=input_hashes,
         )
         targets = {
             relative: project_tool.sha256_file(root / relative)
             for relative in outputs
         }
         slug = artifact_id.replace(":", "-")
-        decision_relative = f"creator-decisions/{slug}.json"
+        canonical = any(relative.startswith("剧集/") for relative in outputs)
+        decision_root = "创作者决策" if canonical else "creator-decisions"
+        review_root = "审查" if canonical else "reviews"
+        decision_relative = f"{decision_root}/{slug}.json"
         decision = root / decision_relative
         decision.parent.mkdir(parents=True, exist_ok=True)
         decision.write_text(
@@ -453,8 +495,8 @@ class PackageTests(unittest.TestCase):
                 "record_id": f"CD-{slug}",
             },
         )
-        verdict_relative = f"reviews/{slug}.json"
-        findings_relative = f"reviews/{slug}-findings.jsonl"
+        verdict_relative = f"{review_root}/{slug}.json"
+        findings_relative = f"{review_root}/{slug}-findings.jsonl"
         findings = root / findings_relative
         findings.parent.mkdir(parents=True, exist_ok=True)
         findings.write_text("", encoding="utf-8")
@@ -512,6 +554,7 @@ class PackageTests(unittest.TestCase):
                 "hash": project_tool.sha256_file(verdict),
             },
         )
+        return targets
 
     def make_approved_project(self, directory: str) -> Path:
         root = Path(directory) / "package project"
@@ -570,6 +613,153 @@ class PackageTests(unittest.TestCase):
                             lifecycle_changes={"EP001:script": {"build_state": "materialized"}},
                         )
             self.assertEqual(manifest.read_bytes(), before)
+
+    def test_chinese_layout_packages_and_verifies_under_canonical_delivery(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "中文交付工程"
+            project_tool.initialize_project(
+                root,
+                title="中文交付",
+                language="zh-CN",
+                aspect_ratio="9:16",
+                suite_root=SUITE / "skills/short-drama",
+            )
+            script = self.approve_artifact(
+                root,
+                artifact_id="EP001:script-cn",
+                owner="short-drama-write",
+                outputs={"剧集/EP001/screenplay.md": "# 第一集\n\n城门开启。\n"},
+            )
+            prompts = self.approve_artifact(
+                root,
+                artifact_id="EP001:image-prompts-cn",
+                owner="short-drama-image-prompts",
+                outputs={
+                    "剧集/EP001/assets/image-prompt-specs.jsonl": (
+                        '{"id":"IMG-001","prompt":"城门晨雾"}\n'
+                    )
+                },
+                input_hashes=script,
+            )
+
+            result = project_tool.build_delivery_package(
+                root,
+                episode="EP001",
+                selected_paths=[*script, *prompts],
+            )
+
+            self.assertEqual(result["status"], "delivered")
+            self.assertTrue((root / "交付/EP001/manifest.json").is_file())
+            self.assertFalse((root / "delivery/EP001").exists())
+            self.assertEqual(
+                project_tool.verify_delivery_package(root, episode="EP001")[
+                    "status"
+                ],
+                "intact",
+            )
+            self.assertEqual(
+                project_tool.project_status(root)["layout"]["mode"], "canonical"
+            )
+
+    def test_verify_rejects_duplicate_episode_across_delivery_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_approved_project(directory)
+            project_tool.build_delivery_package(
+                root,
+                episode="EP001",
+                selected_paths=[
+                    "episodes/EP001/screenplay.md",
+                    "episodes/EP001/assets/image-prompt-specs.jsonl",
+                ],
+            )
+            canonical = root / "交付/EP001"
+            canonical.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(root / "delivery/EP001", canonical)
+
+            with self.assertRaisesRegex(
+                project_tool.PackageBlockedError, "同时存在"
+            ):
+                project_tool.verify_delivery_package(root, episode="EP001")
+
+    def test_verify_rejects_symlinked_delivery_roots_and_episode_packages(self) -> None:
+        for swap_root in (False, True):
+            with self.subTest(swap_root=swap_root), tempfile.TemporaryDirectory() as directory:
+                root = self.make_approved_project(directory)
+                project_tool.build_delivery_package(
+                    root,
+                    episode="EP001",
+                    selected_paths=[
+                        "episodes/EP001/screenplay.md",
+                        "episodes/EP001/assets/image-prompt-specs.jsonl",
+                    ],
+                )
+                source = root / "delivery" if swap_root else root / "delivery/EP001"
+                outside = Path(directory) / (
+                    "outside-delivery" if swap_root else "outside-episode"
+                )
+                source.rename(outside)
+                source.symlink_to(outside, target_is_directory=True)
+
+                with self.assertRaises(project_tool.PackageBlockedError):
+                    project_tool.verify_delivery_package(root, episode="EP001")
+
+    def test_verify_rejects_a_symlinked_checksum_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_approved_project(directory)
+            project_tool.build_delivery_package(
+                root,
+                episode="EP001",
+                selected_paths=[
+                    "episodes/EP001/screenplay.md",
+                    "episodes/EP001/assets/image-prompt-specs.jsonl",
+                ],
+            )
+            checksums = root / "delivery/EP001/checksums.sha256"
+            outside = Path(directory) / "outside-checksums.sha256"
+            checksums.rename(outside)
+            checksums.symlink_to(outside)
+
+            with self.assertRaises(project_tool.PackageBlockedError):
+                project_tool.verify_delivery_package(root, episode="EP001")
+
+    def test_verify_rejects_unsafe_authenticated_checksum_paths_without_hashing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_approved_project(directory)
+            project_tool.build_delivery_package(
+                root,
+                episode="EP001",
+                selected_paths=[
+                    "episodes/EP001/screenplay.md",
+                    "episodes/EP001/assets/image-prompt-specs.jsonl",
+                ],
+            )
+            outside = Path(directory) / "outside.txt"
+            outside.write_text("private\n", encoding="utf-8")
+            checksums = root / "delivery/EP001/checksums.sha256"
+            checksums.write_text(
+                f"{project_tool.sha256_file(outside)}  ../../../outside.txt\n",
+                encoding="utf-8",
+            )
+            state_path = root / ".short-drama/state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["artifacts"]["delivery:EP001"]["accepted_targets"][
+                "delivery/EP001/checksums.sha256"
+            ] = project_tool.sha256_file(checksums)
+            project_tool.atomic_json(state_path, state)
+
+            with (
+                unittest.mock.patch.object(
+                    project_tool,
+                    "_live_hash_at",
+                    side_effect=AssertionError("unsafe target must not be hashed"),
+                ),
+                self.assertRaisesRegex(
+                    project_tool.PackageBlockedError, "unsafe path"
+                ),
+            ):
+                project_tool.verify_delivery_package(root, episode="EP001")
 
     def test_verify_detects_tampering_the_checksum_file_alone_cannot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -739,7 +929,7 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_approved_project(directory)
             with self.assertRaisesRegex(
-                project_tool.PackageBlockedError, "episode selection must use"
+                project_tool.PackageBlockedError, "分集选择必须使用"
             ):
                 project_tool.build_delivery_package(
                     root,

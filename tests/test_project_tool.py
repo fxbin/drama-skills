@@ -190,6 +190,10 @@ class ProjectToolTests(unittest.TestCase):
                 aspect_ratio="9:16",
                 suite_root=SUITE / "skills/short-drama",
             )
+            screenplay = root / "episodes/EP001/screenplay.md"
+            screenplay.parent.mkdir(parents=True)
+            screenplay.write_text("# 第一集\n", encoding="utf-8")
+            digest = project_tool.sha256_file(screenplay)
             state_path = root / ".short-drama/state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
             state["artifacts"] = {
@@ -198,7 +202,9 @@ class ProjectToolTests(unittest.TestCase):
                     "build_state": "materialized",
                     "creator_acceptance": "accepted",
                     "creative_text": "不得出现在状态摘要里的台词",
-                    "accepted_targets": {"episodes/EP001/screenplay.md": "abc"},
+                    "accepted_targets": {
+                        "episodes/EP001/screenplay.md": digest
+                    },
                 }
             }
             project_tool.atomic_json(state_path, state)
@@ -211,7 +217,7 @@ class ProjectToolTests(unittest.TestCase):
             )
             serialized = json.dumps(status, ensure_ascii=False)
             self.assertNotIn("台词", serialized)
-            self.assertNotIn("abc", serialized)
+            self.assertNotIn(digest, serialized)
 
 
 if __name__ == "__main__":

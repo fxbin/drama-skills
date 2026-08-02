@@ -103,7 +103,7 @@ class DeliveryContainerRecordTests(unittest.TestCase):
         for key in ("accepted_duration_ref", "location_binding_ref", "asset_bindings_ref"):
             ref = member[key]
             with self.subTest(ref=key):
-                self.assertEqual(ref["artifact"], "episodes/<EP>/storyboard/shots.jsonl")
+                self.assertEqual(ref["artifact"], "剧集/<EP>/storyboard/shots.jsonl")
                 pointer = ref["field"]
                 self.assertTrue(pointer.startswith("/"))
                 self.assertIn(pointer.lstrip("/"), shot)
@@ -132,8 +132,8 @@ class DeliveryContainerRecordTests(unittest.TestCase):
                     hashed_artifacts(child, found)
             return found
 
-        container_file = "episodes/<EP>/storyboard/delivery-containers.jsonl"
-        motion_file = "episodes/<EP>/storyboard/motion-specs.jsonl"
+        container_file = "剧集/<EP>/storyboard/delivery-containers.jsonl"
+        motion_file = "剧集/<EP>/storyboard/motion-specs.jsonl"
         self.assertIn(motion_file, hashed_artifacts(container, set()))
         self.assertNotIn(container_file, hashed_artifacts(motion, set()))
         self.assertNotIn("container_ref", motion)
