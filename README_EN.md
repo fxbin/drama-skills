@@ -141,15 +141,3 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 The skill picks the project, allocates a loopback port, and opens the browser. The
 dashboard browses and lightly edits project text, previews images and video
 read-only, and shows project status. It runs locally only, and needs macOS or Linux.
-
-## How it's built
-
-Three principles run through the whole chain: a script delivers **performable,
-producible facts**; assets own **identity and state** while storyboards own only
-**the current shot's presentation**; and continuity is **explicitly recorded**,
-comparing authoritative shot boundaries exactly.
-
-Rules are graded in four tiers — machine-checkable structural requirements,
-evidence-based content requirements, generally-helpful craft defaults, and
-creator-owned taste options. The deterministic scripts guard only the first:
-files, references, state, and delivery integrity. Craft judgement stays flexible.
