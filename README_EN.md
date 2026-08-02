@@ -9,8 +9,7 @@ independent review records — carrying creator decisions, source evidence, and
 continuity through the entire chain. Works with Claude Code, Codex, and other
 runtimes that support Agent Skills.
 
-The output is text: scripts, asset notes, prompts, review records. The suite does
-not call image, video, or audio generation services itself.
+The output is text: scripts, asset notes, prompts, review records.
 
 ## Demo
 
@@ -27,6 +26,25 @@ environmental sound, music, and burned-in Chinese subtitles.
 ![Chinese project dashboard previewing the finished demo](docs/assets/dashboard-zh.png)
 
 That screenshot is the local project dashboard that ships with the repo — see below.
+
+## Where this came from
+
+These skills come out of our own motion-comic studio's production line: over a
+thousand AI short-drama and motion-comic projects since 2025, across several
+generations of in-house and open-source tooling. Front end and back end together
+reached nearly 80,000 lines, and stopped being maintainable at the pace models and
+requirements were moving.
+
+The answer turned out to be dropping the GUI entirely — distilling the historical
+project workspaces and image/video prompts into this skill suite, and letting
+producers maintain projects and write prompts directly through an agent CLI over
+plain files, confirming the prompts before anything goes to generation. It works
+noticeably better. What is left of the in-house tooling is the generation queue.
+
+**Image and video generation are deliberately out of scope:** the suite does not
+call image, video, or audio generation services. That step is far too easy to jump
+straight to — prompts landing in files first, confirmed by a person, and only then
+sent to generation is the part of this workflow that carries the weight.
 
 ## Install
 
