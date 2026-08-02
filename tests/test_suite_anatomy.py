@@ -312,7 +312,9 @@ class SuiteAnatomyTests(unittest.TestCase):
                                 source,
                                 f"{path.name} creates an impossible self-hash ref",
                             )
-                            if artifact.startswith(("bible/", "episodes/")):
+                            if artifact.startswith(
+                                ("设定集/", "剧集/", "bible/", "episodes/")
+                            ):
                                 edges.add((source, artifact))
                         for child in value.values():
                             collect(child)
@@ -397,7 +399,7 @@ class SuiteAnatomyTests(unittest.TestCase):
             .read_text(encoding="utf-8")
         )
         authority = project["creator_authority"]
-        self.assertEqual(authority["decisions_artifact"], "creator-decisions/")
+        self.assertEqual(authority["decisions_artifact"], "创作者决策/")
         self.assertEqual(authority["visual_direction"]["status"], "unset")
         self.assertEqual(authority["production_profile"]["status"], "unset")
         self.assertTrue(
@@ -484,7 +486,7 @@ class SuiteAnatomyTests(unittest.TestCase):
             .splitlines()[1]
         )
         light_ref = keyframe["light_projection"]["source_ref"]
-        self.assertEqual(light_ref["artifact"], "bible/location-views.jsonl")
+        self.assertEqual(light_ref["artifact"], "设定集/location-views.jsonl")
         self.assertEqual(light_ref["field"], "/state_differences/light")
         self.assertIn("light", view["state_differences"])
 
@@ -502,7 +504,7 @@ class SuiteAnatomyTests(unittest.TestCase):
             .read_text(encoding="utf-8")
             .splitlines()[0]
         )
-        self.assertEqual(policy_ref["artifact"], "bible/props.jsonl")
+        self.assertEqual(policy_ref["artifact"], "设定集/props.jsonl")
         self.assertEqual(policy_ref["field"], "/text_policy")
         self.assertIn("text_policy", prop)
 

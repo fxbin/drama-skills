@@ -450,7 +450,7 @@ class KnowHowResourceTests(unittest.TestCase):
             .read_text(encoding="utf-8")
             .strip()
         )
-        self.assertTrue(mapping["source_ref"]["artifact"].startswith("inputs/"))
+        self.assertTrue(mapping["source_ref"]["artifact"].startswith("输入/"))
         self.assertTrue(
             {"byte_start", "byte_end", "content_sha256"}
             <= mapping["source_span"].keys()
@@ -679,7 +679,7 @@ class GovernanceSemanticsTests(unittest.TestCase):
             self.assertTrue(
                 {"owner", "artifact", "hash", "record_id", "field"}.issubset(text_ref)
             )
-            self.assertEqual(text_ref["artifact"], "bible/props.jsonl")
+            self.assertEqual(text_ref["artifact"], "设定集/props.jsonl")
             self.assertEqual(text_ref["field"], "/text_policy")
 
     def test_proposed_asset_decisions_never_publish_accepted_bindings(self) -> None:
@@ -735,13 +735,13 @@ class GovernanceSemanticsTests(unittest.TestCase):
         for key in ("alternate_ref", "master_ref"):
             self.assertEqual(
                 supersession[key]["artifact"],
-                "episodes/EP001/storyboard/motion-specs.jsonl",
+                "剧集/EP001/storyboard/motion-specs.jsonl",
             )
         verdict = json.loads(
             (SKILLS / "short-drama-review/assets/verdict-template.json")
             .read_text(encoding="utf-8")
         )
-        self.assertEqual(verdict["findings_ref"]["artifact"], "reviews/findings.jsonl")
+        self.assertEqual(verdict["findings_ref"]["artifact"], "审查/findings.jsonl")
 
 if __name__ == "__main__":
     unittest.main()

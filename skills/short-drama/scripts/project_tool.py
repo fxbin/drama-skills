@@ -63,12 +63,53 @@ MAX_TEXT_EXCEPTION_LENGTH = 200
 STATE_FILE = Path(".short-drama/state.json")
 OPERATIONS_DIR = Path(".short-drama")
 ABSENT_HASH: None = None
+ROOT_ROLE_ALIASES: dict[str, str] = {
+    "输入": "inputs",
+    "inputs": "inputs",
+    "项目开发": "development",
+    "development": "development",
+    "设定集": "bible",
+    "bible": "bible",
+    "剧集": "episodes",
+    "episodes": "episodes",
+    "交付": "delivery",
+    "delivery": "delivery",
+    "创作者决策": "creator-decisions",
+    "creator-decisions": "creator-decisions",
+    "审查": "reviews",
+    "reviews": "reviews",
+    "宣发": "publicity",
+    "publicity": "publicity",
+}
+CANONICAL_ROOTS = {
+    "inputs": "输入",
+    "development": "项目开发",
+    "bible": "设定集",
+    "episodes": "剧集",
+    "delivery": "交付",
+    "creator-decisions": "创作者决策",
+    "reviews": "审查",
+    "publicity": "宣发",
+}
+LEGACY_ROOTS = {
+    "inputs": "inputs",
+    "development": "development",
+    "bible": "bible",
+    "episodes": "episodes",
+    "delivery": "delivery",
+    "creator-decisions": "creator-decisions",
+    "reviews": "reviews",
+    "publicity": "publicity",
+}
 PROJECT_DIRS = (
-    "inputs",
-    "development",
-    "bible",
-    "episodes",
-    "delivery",
+    "输入",
+    "项目开发",
+    "设定集",
+    "剧集",
+    "交付",
+    "创作者决策",
+    "审查",
+    "宣发",
     ".short-drama/transactions",
     ".short-drama/accepted-snapshots",
     ".short-drama/conflicts",
@@ -88,13 +129,29 @@ EPISODE_ID_RE = re.compile(r"EP(?:[0-9]{3}|[1-9][0-9]{3,})")
 # case-sensitive guard is not a guard at all.
 PROTECTED_PUBLISH_ROOTS = {
     "inputs": "creator inputs are immutable publication sources",
+    "输入": "creator inputs are immutable publication sources",
     "delivery": "the delivery tree is written by the packaging gate, not by publication",
+    "交付": "the delivery tree is written by the packaging gate, not by publication",
     ".short-drama": "operational state cannot be a publication target",
 }
 # Roots a stage may publish into. Anything else needs an explicit opt-in, so an
 # ad-hoc creator file stays possible but never silent: a typo like `epsiodes/`
 # otherwise builds a parallel tree that `status` never reports.
-PUBLISHABLE_ROOTS = ("development", "bible", "episodes", "creator-decisions", "reviews")
+PUBLISHABLE_ROOT_ROLES = frozenset(
+    {"development", "bible", "episodes", "creator-decisions", "reviews"}
+)
+PUBLISHABLE_ROOTS = (
+    "项目开发",
+    "设定集",
+    "剧集",
+    "创作者决策",
+    "审查",
+    "development",
+    "bible",
+    "episodes",
+    "creator-decisions",
+    "reviews",
+)
 # Declared artifact -> owning skill, transcribed from each stage SKILL.md's
 # owned-output list and the single-owner registry in
 # references/contract-and-ownership.md. Keys are casefolded; see
@@ -442,6 +499,39 @@ def _relative_path(value: str | Path, *, allow_operations: bool = False) -> str:
     return relative
 
 
+def _root_role(name: str) -> str | None:
+    """Return one stable machine role for either Chinese or legacy root names."""
+
+    return ROOT_ROLE_ALIASES.get(name.casefold())
+
+
+def _layout_root_for_source(root: Path, role: str, source_root: str | None = None) -> str:
+    """Choose a matching output root without mixing layouts implicitly."""
+
+    if source_root is not None and _root_role(source_root) == role:
+        if source_root == CANONICAL_ROOTS[role]:
+            return CANONICAL_ROOTS[role]
+        if source_root.casefold() == LEGACY_ROOTS[role]:
+            return LEGACY_ROOTS[role]
+    canonical = CANONICAL_ROOTS[role]
+    legacy = LEGACY_ROOTS[role]
+    canonical_exists = (root / canonical).exists()
+    legacy_exists = (root / legacy).exists()
+    if canonical_exists and legacy_exists:
+        canonical_has_content = any((root / canonical).iterdir())
+        legacy_has_content = any((root / legacy).iterdir())
+        if canonical_has_content and legacy_has_content:
+            raise ValueError(
+                f"同一目录职责同时存在 {canonical}/ 与 {legacy}/，请先合并后再继续"
+            )
+        return canonical if canonical_has_content or not legacy_has_content else legacy
+    if canonical_exists:
+        return canonical
+    if legacy_exists:
+        return legacy
+    return canonical
+
+
 def _validate_publication_layout(
     relative: str, *, owner: str | None = None, allow_unregistered: bool = False
 ) -> None:
@@ -457,6 +547,7 @@ def _validate_publication_layout(
 
     pure = PurePosixPath(relative)
     first = pure.parts[0].casefold()
+    role = _root_role(pure.parts[0])
     reason = PROTECTED_PUBLISH_ROOTS.get(first)
     if reason is not None:
         raise ValueError(reason)
@@ -465,14 +556,17 @@ def _validate_publication_layout(
     # creator running `status` from inside it reads the decoy.
     if pure.name.casefold() == PROJECT_FILE:
         raise ValueError("creator authority file cannot be a publication target")
-    if first == "episodes":
+    if role == "episodes":
         if len(pure.parts) < 3:
-            raise ValueError(f"episode artifacts live in episodes/<EP>/: {relative}")
+            raise ValueError(
+                "episode artifacts live in 剧集/<EP>/"
+                f"（兼容 episodes/<EP>/）：{relative}"
+            )
         if EPISODE_ID_RE.fullmatch(pure.parts[1]) is None:
             raise ValueError(
                 f"episode directory must use an EP001-style identifier: {pure.parts[1]}"
             )
-    if not allow_unregistered and first not in PUBLISHABLE_ROOTS:
+    if not allow_unregistered and role not in PUBLISHABLE_ROOT_ROLES:
         raise ValueError(
             f"{pure.parts[0]} is not a project stage directory; "
             f"expected one of {', '.join(PUBLISHABLE_ROOTS)}"
@@ -488,11 +582,16 @@ def _expected_path_owner(relative: str) -> str | None:
     # would let `Episodes/EP001/screenplay.md` past the ownership check and,
     # on a case-insensitive filesystem, overwrite the very artifact the check
     # protects.
-    pure = PurePosixPath(relative.casefold())
-    if pure.parts[0] == "episodes" and len(pure.parts) >= 3:
-        remainder = PurePosixPath(*pure.parts[2:]).as_posix()
+    pure = PurePosixPath(relative)
+    role = _root_role(pure.parts[0])
+    folded_parts = tuple(part.casefold() for part in pure.parts)
+    if role == "episodes" and len(pure.parts) >= 3:
+        remainder = PurePosixPath(*folded_parts[2:]).as_posix()
         return DECLARED_EPISODE_ARTIFACT_OWNERS.get(remainder)
-    return DECLARED_PROJECT_ARTIFACT_OWNERS.get(pure.as_posix())
+    if role is None:
+        return None
+    normalized = PurePosixPath(role, *folded_parts[1:]).as_posix()
+    return DECLARED_PROJECT_ARTIFACT_OWNERS.get(normalized)
 
 
 def _project_path(root: Path, relative: str) -> Path:
@@ -1955,7 +2054,7 @@ def publish_candidate(
 
     ``input_records`` narrows an input binding from the whole file to the
     records this candidate actually consumed, so an unrelated append to a
-    shared bible or project file no longer invalidates it.
+    shared setting record or project file no longer invalidates it.
     """
 
     root = find_project(path)
@@ -2790,7 +2889,6 @@ def _episode_coverage(
     # `Episodes/EP001/…` is the same file as `episodes/EP001/…`, and a
     # case-sensitive prefix would skip it — leaving nothing to reconcile and
     # passing the completeness gate on an episode it never enumerated.
-    prefix = f"episodes/{episode}/".casefold()
     coverage: dict[str, dict[str, Any]] = {}
     artifacts = state.get("artifacts")
     if not isinstance(artifacts, dict):
@@ -2807,7 +2905,14 @@ def _episode_coverage(
             record.get(axis) in values for axis, values in DELIVERY_READY.items()
         )
         for relative in accepted:
-            if not isinstance(relative, str) or not relative.casefold().startswith(prefix):
+            if not isinstance(relative, str):
+                continue
+            pure = PurePosixPath(relative)
+            if (
+                len(pure.parts) < 3
+                or _root_role(pure.parts[0]) != "episodes"
+                or pure.parts[1].casefold() != episode.casefold()
+            ):
                 continue
             coverage[relative] = {"artifact_id": artifact_id, "ready": ready}
     return dict(sorted(coverage.items()))
@@ -2829,17 +2934,37 @@ def build_delivery_package(
     files: list[dict[str, Any]] = []
     outputs: dict[str, bytes] = {}
     source_artifacts: set[str] = set()
-    for raw in sorted({_relative_path(selected) for selected in selected_paths}):
+    normalized_selected = sorted({_relative_path(selected) for selected in selected_paths})
+    selected_episode_roots = {
+        PurePosixPath(relative).parts[0]
+        for relative in normalized_selected
+        if _root_role(PurePosixPath(relative).parts[0]) == "episodes"
+    }
+    if len(selected_episode_roots) > 1:
+        raise PackageBlockedError("不能在同一交付包中混用中文与旧版分集目录")
+    source_episode_root = next(iter(selected_episode_roots), None)
+    delivery_root = _layout_root_for_source(
+        root,
+        "delivery",
+        CANONICAL_ROOTS["delivery"]
+        if source_episode_root == CANONICAL_ROOTS["episodes"]
+        else LEGACY_ROOTS["delivery"]
+        if source_episode_root is not None
+        else None,
+    )
+    for raw in normalized_selected:
         pure = PurePosixPath(raw)
         if pure.parts[0].casefold() in PROTECTED_PUBLISH_ROOTS:
             raise PackageBlockedError(f"private or operational zone excluded: {raw}")
         # A selection naming episodes/ep1/ would be prefix-skipped by
         # _episode_coverage, so the completeness reconciliation below would see
         # nothing to reconcile and pass on an episode it never enumerated.
-        if pure.parts[0].casefold() == "episodes" and (
+        if _root_role(pure.parts[0]) == "episodes" and (
             len(pure.parts) < 3 or EPISODE_ID_RE.fullmatch(pure.parts[1]) is None
         ):
-            raise PackageBlockedError(f"episode selection must use episodes/<EP>/: {raw}")
+            raise PackageBlockedError(
+                f"分集选择必须使用 剧集/<EP>/（兼容 episodes/<EP>/）：{raw}"
+            )
         lowered_parts = {part.casefold() for part in pure.parts}
         if "research" in lowered_parts or "research-notes.md" in lowered_parts:
             raise PackageBlockedError(f"optional research notes are excluded: {raw}")
@@ -2853,7 +2978,7 @@ def build_delivery_package(
         digest = sha256_bytes(content)
         artifact_id = _approved_artifact_for_path(root, state, raw, digest)
         _validate_delivery_text(content, suffix, raw, allowed_urls_by_path.get(raw, set()))
-        destination = f"delivery/{episode}/artifacts/{raw}"
+        destination = f"{delivery_root}/{episode}/artifacts/{raw}"
         outputs[destination] = content
         source_artifacts.add(artifact_id)
         files.append(
@@ -2861,7 +2986,9 @@ def build_delivery_package(
                 "artifact_id": artifact_id,
                 "source": raw,
                 "delivery_path": str(
-                    PurePosixPath(destination).relative_to(PurePosixPath("delivery") / episode)
+                    PurePosixPath(destination).relative_to(
+                        PurePosixPath(delivery_root) / episode
+                    )
                 ),
                 "sha256": digest,
             }
@@ -2925,7 +3052,7 @@ def build_delivery_package(
     manifest_bytes = (
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     ).encode("utf-8")
-    manifest_target = f"delivery/{episode}/manifest.json"
+    manifest_target = f"{delivery_root}/{episode}/manifest.json"
     outputs[manifest_target] = manifest_bytes
     checksum_entries = [
         (entry["sha256"], entry["delivery_path"]) for entry in files
@@ -2933,7 +3060,7 @@ def build_delivery_package(
     checksums = "".join(
         f"{digest}  {relative}\n" for digest, relative in sorted(checksum_entries, key=lambda item: item[1])
     ).encode("utf-8")
-    checksum_target = f"delivery/{episode}/checksums.sha256"
+    checksum_target = f"{delivery_root}/{episode}/checksums.sha256"
     outputs[checksum_target] = checksums
 
     delivery_artifact = f"delivery:{episode}"
@@ -2977,7 +3104,16 @@ def verify_delivery_package(path: Path, *, episode: str) -> dict[str, Any]:
     root = find_project(path)
     if EPISODE_ID_RE.fullmatch(episode) is None:
         raise ValueError("episode must use an EP001-style identifier")
-    delivery = root / "delivery" / episode
+    delivery_root = _layout_root_for_source(root, "delivery")
+    if not (root / delivery_root / episode).is_dir():
+        alternate = (
+            LEGACY_ROOTS["delivery"]
+            if delivery_root == CANONICAL_ROOTS["delivery"]
+            else CANONICAL_ROOTS["delivery"]
+        )
+        if (root / alternate / episode).is_dir():
+            delivery_root = alternate
+    delivery = root / delivery_root / episode
     checksums = delivery / "checksums.sha256"
     if not checksums.is_file():
         raise PackageBlockedError(f"no delivered package for {episode}")
@@ -2989,7 +3125,7 @@ def verify_delivery_package(path: Path, *, episode: str) -> dict[str, Any]:
     # project state when `package` published the tree — a second location in
     # the same tree, not an independent one: editing state alongside the list
     # defeats it. Detecting that needs a hash kept outside the project.
-    checksums_relative = f"delivery/{episode}/checksums.sha256"
+    checksums_relative = f"{delivery_root}/{episode}/checksums.sha256"
     state = _read_state(root)
     artifacts = state.get("artifacts")
     recorded: str | None = None

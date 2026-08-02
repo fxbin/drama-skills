@@ -739,7 +739,7 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_approved_project(directory)
             with self.assertRaisesRegex(
-                project_tool.PackageBlockedError, "episode selection must use"
+                project_tool.PackageBlockedError, "分集选择必须使用"
             ):
                 project_tool.build_delivery_package(
                     root,
