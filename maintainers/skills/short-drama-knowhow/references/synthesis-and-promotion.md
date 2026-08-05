@@ -26,8 +26,8 @@
 低频不能证明无效，高分项目中的做法也不能自动成为规范。
 
 先辨认来源角色再解释结果：`prompt` 可能只是输入，`userPrompt` / `reSubmit` 可能是修改请求，
-`task success` 只证明一次执行完成。它们都不能证明创作或媒体结果质量，也不能替代明确的
-`outcome_evidence`。若没有获授权的媒体检查或可信的创作者/受众结果证据，结论只能声称文本层面的
+`task success` 只证明一次执行完成。它们都不能证明创作或媒体结果质量，也不能替代有界的
+`observation_evidence`。若没有获授权的媒体检查或可信的创作者/受众结果证据，结论只能声称文本层面的
 可执行性、连续性或意图保留，不能声称画面好看、表演有效或成片成功。
 
 ## 反例、冲突与边界
@@ -81,7 +81,7 @@ Promotion 必须同时满足：
 - 候选经过语义抽象、去标识与 de-copy，合成例子无法指回来源；
 - reference、rubric 和 synthetic fixture 描述同一可观察行为；
 - fresh-agent blind forward eval 显示实际增益，且没有明显模板化或题材污染；
-- 版本链、创作者覆盖、来源角色、`media_observed` 与 `outcome_evidence` 均已声明，且未把
+- 版本链、创作者覆盖、来源角色、`media_observed` 与适用的 `observation_evidence` 均已声明，且未把
   prompt、task success、userPrompt 或 reSubmit 当作质量证明；
 - independent reviewer 与候选作者角色分离，并明确批准最小改动；
 - 公共运行不需要连接、凭据、私有卡或媒体生成。

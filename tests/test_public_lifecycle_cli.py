@@ -826,6 +826,165 @@ class PublicLifecycleCliTests(unittest.TestCase):
                 outputs={"episodes/EP001/scratch.json": '{"a":1}\n'},
             )
 
+    def test_content_effect_artifacts_keep_their_declared_stage_owners(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            cases = (
+                (
+                    "development/lookdev-prompts.md",
+                    "short-drama-image-prompts",
+                    "short-drama-storyboard",
+                ),
+                (
+                    "episodes/EP001/storyboard/scene-visual-plans/SC001.jsonl",
+                    "short-drama-storyboard",
+                    "short-drama-video-prompts",
+                ),
+                (
+                    "episodes/EP001/storyboard/coverage-auditions/SC001.jsonl",
+                    "short-drama-storyboard",
+                    "short-drama-write",
+                ),
+            )
+            for path, expected_owner, wrong_owner in cases:
+                with self.subTest(path=path):
+                    with self.assertRaisesRegex(
+                        ValueError, rf"{expected_owner} owns {path}"
+                    ):
+                        project_tool.publish_candidate(
+                            root,
+                            artifact_id=f"owner-check:{Path(path).name}",
+                            owner=wrong_owner,
+                            outputs={path: "{}\n"},
+                        )
+
+    def test_scene_scoped_directing_file_rejects_a_different_scene_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            for family in ("coverage-auditions", "scene-visual-plans"):
+                path = f"episodes/EP001/storyboard/{family}/SC001.jsonl"
+                record = {
+                    "scene_ref": {
+                        "record_id": "BLK-EP001-SC002-H01",
+                        "field": "/scene_id",
+                    }
+                }
+                with self.subTest(family=family), self.assertRaisesRegex(
+                    ValueError, "filename SC001 does not match scene_ref SC002"
+                ):
+                    project_tool.publish_candidate(
+                        root,
+                        artifact_id=f"storyboard:EP001:{family}:SC001",
+                        owner="short-drama-storyboard",
+                        outputs={path: json.dumps(record) + "\n"},
+                    )
+
+    def test_scene_scoped_directing_file_rejects_a_noncanonical_scene_stem(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            record = {"scene_ref": {"record_id": "BLK-EP001-SC002-H01"}}
+            for family in ("coverage-auditions", "scene-visual-plans"):
+                for stem in ("sc001", "notes", "SC001-extra"):
+                    path = (
+                        f"episodes/EP001/storyboard/{family}/"
+                        f"{stem}.jsonl"
+                    )
+                    with self.subTest(family=family, stem=stem), self.assertRaisesRegex(
+                        ValueError,
+                        "scene-scoped directing filename must use an SC001-style identifier",
+                    ):
+                        project_tool.publish_candidate(
+                            root,
+                            artifact_id=f"storyboard:EP001:{family}:{stem}",
+                            owner="short-drama-storyboard",
+                            outputs={path: json.dumps(record) + "\n"},
+                        )
+
+    def test_scene_scoped_directing_file_accepts_its_own_scene_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            path = "episodes/EP001/storyboard/coverage-auditions/SC001.jsonl"
+            record = {
+                "scene_ref": {
+                    "record_id": "BLK-EP001-SC001-H01",
+                    "field": "/scene_id",
+                }
+            }
+            project_tool.publish_candidate(
+                root,
+                artifact_id="storyboard:EP001:audition:SC001",
+                owner="short-drama-storyboard",
+                outputs={path: json.dumps(record) + "\n"},
+            )
+            self.assertTrue((root / path).is_file())
+
+    def test_scene_scoped_directing_file_keeps_blank_jsonl_compatible(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            path = "episodes/EP001/storyboard/scene-visual-plans/SC001.jsonl"
+            project_tool.publish_candidate(
+                root,
+                artifact_id="storyboard:EP001:scene-plan:SC001",
+                owner="short-drama-storyboard",
+                outputs={path: "\n"},
+            )
+            self.assertEqual((root / path).read_text(encoding="utf-8"), "\n")
+
+    def test_scene_scoped_directing_file_ignores_record_without_scene_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            path = "episodes/EP001/storyboard/scene-visual-plans/SC001.jsonl"
+            project_tool.publish_candidate(
+                root,
+                artifact_id="storyboard:EP001:scene-plan:SC001",
+                owner="short-drama-storyboard",
+                outputs={path: "{}\n"},
+            )
+            self.assertEqual((root / path).read_text(encoding="utf-8"), "{}\n")
+
+    def test_accepted_coverage_audition_requires_explicit_package_omission(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            audition = "episodes/EP001/storyboard/coverage-auditions/SC001.jsonl"
+            shots = "episodes/EP001/storyboard/shots.jsonl"
+            self.approve_artifact(
+                root,
+                artifact_id="storyboard:EP001:audition:SC001",
+                owner="short-drama-storyboard",
+                outputs={audition: '{"audition_id":"AUD-EP001-SC001"}\n'},
+            )
+            self.approve_artifact(
+                root,
+                artifact_id="storyboard:EP001:shots",
+                owner="short-drama-storyboard",
+                outputs={shots: '{"shot_id":"SHOT-001"}\n'},
+            )
+
+            with self.assertRaisesRegex(
+                project_tool.PackageBlockedError,
+                "neither selected nor declared omitted",
+            ):
+                project_tool.build_delivery_package(
+                    root,
+                    episode="EP001",
+                    selected_paths=[shots],
+                )
+
+            project_tool.build_delivery_package(
+                root,
+                episode="EP001",
+                selected_paths=[shots],
+                omitted_paths=[audition],
+            )
+            manifest_path = next(root.glob("*/EP001/manifest.json"))
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                [entry["source"] for entry in manifest["omitted"]],
+                [audition],
+            )
+
     def test_episode_identifier_has_exactly_one_spelling(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)

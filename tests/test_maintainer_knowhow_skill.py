@@ -208,17 +208,19 @@ class MaintainerKnowhowSkillTests(unittest.TestCase):
             "fails_or_changes_when",
             "rejected_generalization",
             "next_sample_intent",
-            "version_chain",
+            "version_refs",
             "creator_overrides",
             "source_role",
             "media_observed",
-            "outcome_evidence",
         }
         self.assertTrue(required_fields <= set(re.findall(r"[a-z_]+", cards)))
         self.assertIn("source_project_ref: synthetic-only", cards)
         self.assertIn("不得写成", cards)
         self.assertIn("不用计数替代判断", cards)
         self.assertIn("media_observed: false", cards)
+        self.assertNotIn("outcome_evidence:", cards)
+        self.assertNotIn("attribution:", cards)
+        self.assertNotIn("  method: creator_reported", cards)
 
     def test_promotion_never_treats_pipeline_activity_as_quality_evidence(self) -> None:
         synthesis = (REFERENCES / "synthesis-and-promotion.md").read_text(
