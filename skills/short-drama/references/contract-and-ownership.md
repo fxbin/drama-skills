@@ -18,7 +18,7 @@ development? -> screenplay.md -> screenplay-index.jsonl
                                                                /              \
                                                     image prompt specs        coverage
                                                            |                    |
-                                                   image-prompts.md    audition? -> scene plan? -> shots
+                                                   image-prompts.md           shots
                                                                                 |
                                                                             keyframes
                                                                                 |
@@ -26,6 +26,7 @@ development? -> screenplay.md -> screenplay-index.jsonl
                                                                \              /
                                                                  review -> delivery
 
+key scenes only: coverage -> audition? -> scene plan? -> shots
 visual direction -> lookdev prompt specs (optional)
 accepted 设定集 ----------------------^ when a frame depicts those assets
 accepted screenplay blocks ----------^ when a high-pressure frame carries story state

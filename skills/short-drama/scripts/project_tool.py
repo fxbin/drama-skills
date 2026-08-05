@@ -183,9 +183,13 @@ DECLARED_EPISODE_ARTIFACT_OWNERS: dict[str, str] = {
     "storyboard/delivery-containers.jsonl": "short-drama-video-prompts",
     "storyboard/video-prompts.md": "short-drama-video-prompts",
 }
-# These two optional layers have one independently accepted file per scene.
-# Their dedicated directories are safe owner namespaces: unlike the episode or
-# storyboard root, they contain no creator-defined or cross-skill artifacts.
+# These two optional layers have one independently accepted file per scene, so
+# their `<SC>.jsonl` members are a safe owner namespace: unlike the episode or
+# storyboard root, that declared filename carries no creator-defined or
+# cross-skill artifact. Ownership is claimed for those members only, not for the
+# directory as a whole — a `.json`, `.md`, or more deeply nested file beside them
+# stays owner-unconstrained like any other undeclared path, because the contract
+# names `<SC>.jsonl` and nothing else.
 DECLARED_EPISODE_ARTIFACT_FAMILY_OWNERS: dict[str, str] = {
     "storyboard/coverage-auditions": "short-drama-storyboard",
     "storyboard/scene-visual-plans": "short-drama-storyboard",

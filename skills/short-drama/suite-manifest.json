@@ -138,7 +138,7 @@
     "short-drama/assets/production-observation.example.jsonl": "1b7c02d2756c7b5a4b8d1a8181996c763726d27b09d1ff14c74845998ad843d7",
     "short-drama/assets/project-template/short-drama.json": "114fb90fce3dd09400a79b9ecb05e71392198bec7ee70088f141d4fe6b316519",
     "short-drama/assets/reference-observation.example.jsonl": "7af87dce60abddf4ca17ecd75e8f18404a77445ec45431e14eb4f4d11fa6959a",
-    "short-drama/references/contract-and-ownership.md": "411f6c472d3b52a1fa93c20ef5c4f6fabf855e57909baa32adaef9e345f7526f",
+    "short-drama/references/contract-and-ownership.md": "317d3dcaeafc3a4df52cd35150b01be61a88d5b1911b973867f4fd6d64f0c242",
     "short-drama/references/creator-workflow.md": "e6a233bec3585334c191a756f2cdf61fbcfa960a816183200fcad2a9876b0974",
     "short-drama/references/form-cards/Q版表达.md": "798e4a669ed22dcc374265e72d39af2281ad6839d57cf4a86d172c76e11d22e2",
     "short-drama/references/form-cards/二维动态漫.md": "3f5dde84e7672c90c2a2c44ad6c5df136048946e566a0adf5111ec3a8ec6ab19",
@@ -154,7 +154,7 @@
     "short-drama/references/routing-examples.md": "47bf4e9f614c0f8417f8be279e45ba41402d3b01e748db49ffaf574b5a583c74",
     "short-drama/references/runtime-preflight.md": "619f4139179a078a588348922030b938ca3e454756ee9a3a1994bf4dc5822fcf",
     "short-drama/scripts/dashboard_server.py": "44c49d7eda2330088684f0e18e58422fc5f61a435792063a7a7a888f295730ab",
-    "short-drama/scripts/project_tool.py": "b62fe49cdccabeb948d7ff264db738d79f6fc5d2c625d89118a6a0c6764808c0",
+    "short-drama/scripts/project_tool.py": "8d65e365fc81b6cc287aea0b81f51c03a4bf19729bf787e650f4526ba04302ee",
     "short-drama/scripts/suite_verify.py": "2c1d871e10b218da3d433fbc201950a63b4be9bb456672fab15d5b289d7eb69b"
   },
   "public_skills": [

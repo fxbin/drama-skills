@@ -858,6 +858,34 @@ class PublicLifecycleCliTests(unittest.TestCase):
                             outputs={path: "{}\n"},
                         )
 
+    def test_family_ownership_stops_at_the_two_declared_scene_jsonl_families(
+        self,
+    ) -> None:
+        # The family map claims `<SC>.jsonl` members of two declared directories
+        # and nothing else. Without this negative case, widening the lookup to a
+        # default owner would annex every 3-deep episode `.jsonl` and start
+        # refusing writes the contract never assigned, with the suite still green.
+        unconstrained = (
+            # Undeclared 3-deep families: the arm the family lookup runs in.
+            "episodes/EP001/storyboard/notes/working.jsonl",
+            "episodes/EP001/assets/variants/draft.jsonl",
+            # Declared family directory, but not a declared member of it.
+            "episodes/EP001/storyboard/coverage-auditions/notes.json",
+            "episodes/EP001/storyboard/scene-visual-plans/nested/SC001.jsonl",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            for path in unconstrained:
+                with self.subTest(path=path):
+                    self.assertIsNone(project_tool._expected_path_owner(path))
+                    # No declared owner means any stage may publish it.
+                    project_tool.publish_candidate(
+                        root,
+                        artifact_id=f"unconstrained:{path}",
+                        owner="short-drama-write",
+                        outputs={path: '{"a":1}\n'},
+                    )
+
     def test_scene_scoped_directing_file_rejects_a_different_scene_ref(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
