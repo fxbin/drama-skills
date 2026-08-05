@@ -548,7 +548,17 @@ class KnowHowResourceTests(unittest.TestCase):
         self.assertEqual(
             audio["voice_direction_ref"]["field"], "/voice_direction"
         )
-        coverage_scope = motion["coverage_scope"]
+        self.assertNotIn(
+            "coverage_scope",
+            motion,
+            "ordinary master motion should not carry pickup/alternate bookkeeping",
+        )
+        scope = json.loads(
+            (
+                SKILLS
+                / "short-drama-video-prompts/assets/coverage-scope.fragment.json"
+            ).read_text(encoding="utf-8")
+        )["coverage_scope"]
         self.assertTrue(
             {
                 "mode",
@@ -557,26 +567,17 @@ class KnowHowResourceTests(unittest.TestCase):
                 "source_obligations",
                 "replacement_intent",
             }
-            <= coverage_scope.keys()
+            <= scope.keys()
         )
-        self.assertTrue(coverage_scope["source_obligations"])
-        obligations = coverage_scope["source_obligations"]
-        self.assertEqual(
-            {obligation["kind"] for obligation in obligations},
-            {"action", "reaction", "dialogue", "reveal", "directive", "end_boundary"},
-        )
-        for obligation in obligations:
-            source_ref = obligation["source_ref"]
-            self.assertTrue(
-                {"owner", "artifact", "hash"} <= source_ref.keys()
-            )
-            self.assertTrue(
-                "record_id" in source_ref or "field" in source_ref,
-                "JSON field refs may omit record_id; record refs must name the record",
-            )
+        self.assertTrue(scope["source_obligations"])
+        obligation = scope["source_obligations"][0]
         self.assertTrue(
             {"kind", "source_ref", "disposition", "motion_field"}
-            <= obligations[0].keys()
+            <= obligation.keys()
+        )
+        self.assertTrue(
+            {"owner", "artifact", "hash", "record_id"}
+            <= obligation["source_ref"].keys()
         )
         self.assertNotIn("supersession_review_ref", json.dumps(motion))
         verdict = json.loads(
