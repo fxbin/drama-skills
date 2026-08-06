@@ -24,6 +24,8 @@ SPEC.loader.exec_module(project_tool)
 BIBLE = "bible/characters.jsonl"
 SHOTS = "episodes/EP001/storyboard/shots.jsonl"
 MOTIONS = "episodes/EP001/storyboard/motion-specs.jsonl"
+AUDITIONS = "episodes/EP001/storyboard/coverage-auditions/SC001.jsonl"
+SCENE_PLANS = "episodes/EP001/storyboard/scene-visual-plans/SC001.jsonl"
 
 FIRST = {"character_id": "CHAR-A", "display_name": "甲", "look": "工装"}
 SECOND = {"character_id": "CHAR-B", "display_name": "乙", "look": "西装"}
@@ -495,6 +497,210 @@ class RecordLevelStalenessTests(unittest.TestCase):
             bound = state["artifacts"]["storyboard:EP001"]["candidate_input_records"]
             self.assertEqual(list(bound), [BIBLE])
             self.assertEqual(list(bound[BIBLE]), ["CHAR-A"])
+
+    def test_selected_scene_plan_propagates_upstream_staleness_to_motion(self) -> None:
+        """A selected optional plan remains an ordinary acyclic dependency."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            location_path = "bible/locations.jsonl"
+            location_hash = self.publish_and_accept(
+                root,
+                artifact_id="assets:locations",
+                owner="short-drama-assets",
+                outputs={
+                    location_path: jsonl(
+                        {"location_id": "LOC-LOBBY", "shape": "狭长"}
+                    )
+                },
+            )[location_path]
+
+            audition = {
+                "audition_id": "AUD-EP001-SC001",
+                "approaches": [{"approach_id": "APPROACH-A"}],
+            }
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama-storyboard",
+                artifact_id="storyboard:EP001:audition:SC001",
+                outputs={AUDITIONS: jsonl(audition)},
+            )
+            audition_hash = project_tool.sha256_file(root / AUDITIONS)
+            selection_path = "creator-decisions/EP001-coverage-audition-SC001.json"
+            selection = {
+                "decision_id": "CD-EP001-COVERAGE-AUDITION-SC001",
+                "decision_kind": "artifact_acceptance",
+                "artifact_id": "storyboard:EP001:audition:SC001",
+                "status": "accepted",
+                "target_hashes": {AUDITIONS: audition_hash},
+                "selected_audition_record_id": "AUD-EP001-SC001",
+                "selected_approach_id": "APPROACH-A",
+            }
+            selection_hash = self.stage(
+                root, selection_path, json.dumps(selection, ensure_ascii=False) + "\n"
+            )
+            project_tool.record_creator_acceptance(
+                root,
+                artifact_id="storyboard:EP001:audition:SC001",
+                decision="accepted",
+                target_hashes={AUDITIONS: audition_hash},
+                evidence_ref={
+                    "owner": "creator",
+                    "artifact": selection_path,
+                    "hash": selection_hash,
+                    "record_id": selection["decision_id"],
+                },
+            )
+
+            plan = {
+                "plan_id": "SVP-EP001-SC001",
+                "location_ref": {
+                    "owner": "short-drama-assets",
+                    "artifact": location_path,
+                    "hash": location_hash,
+                    "record_id": "LOC-LOBBY",
+                },
+                "source_audition_ref": {
+                    "owner": "short-drama-storyboard",
+                    "artifact": AUDITIONS,
+                    "hash": audition_hash,
+                    "record_id": "AUD-EP001-SC001",
+                },
+                "creator_selection_ref": {
+                    "owner": "creator",
+                    "artifact": selection_path,
+                    "hash": selection_hash,
+                    "record_id": selection["decision_id"],
+                    "field": "/selected_approach_id",
+                },
+            }
+            plan_hash = self.publish_and_accept(
+                root,
+                artifact_id="storyboard:EP001:scene-plan:SC001",
+                owner="short-drama-storyboard",
+                outputs={SCENE_PLANS: jsonl(plan)},
+                input_hashes={
+                    location_path: location_hash,
+                    AUDITIONS: audition_hash,
+                    selection_path: selection_hash,
+                },
+                input_records={
+                    location_path: ["LOC-LOBBY"],
+                    AUDITIONS: ["AUD-EP001-SC001"],
+                    selection_path: ["/selected_approach_id"],
+                },
+            )[SCENE_PLANS]
+            shots_hash = self.publish_and_accept(
+                root,
+                artifact_id="storyboard:EP001:shots",
+                owner="short-drama-storyboard",
+                outputs={
+                    SHOTS: jsonl(
+                        {
+                            "shot_id": "SHOT-001",
+                            "scene_visual_plan_ref": {
+                                "owner": "short-drama-storyboard",
+                                "artifact": SCENE_PLANS,
+                                "hash": plan_hash,
+                                "record_id": "SVP-EP001-SC001",
+                            },
+                        }
+                    )
+                },
+                input_hashes={SCENE_PLANS: plan_hash},
+                input_records={SCENE_PLANS: ["SVP-EP001-SC001"]},
+            )[SHOTS]
+            self.publish_and_accept(
+                root,
+                artifact_id="video:EP001",
+                owner="short-drama-video-prompts",
+                outputs={
+                    MOTIONS: jsonl(
+                        {
+                            "motion_id": "MOTION-001",
+                            "shot_ref": {
+                                "owner": "short-drama-storyboard",
+                                "artifact": SHOTS,
+                                "hash": shots_hash,
+                                "record_id": "SHOT-001",
+                            },
+                        }
+                    )
+                },
+                input_hashes={SHOTS: shots_hash},
+                input_records={SHOTS: ["SHOT-001"]},
+            )
+
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama-assets",
+                artifact_id="assets:locations",
+                outputs={
+                    location_path: jsonl(
+                        {"location_id": "LOC-LOBBY", "shape": "方正"}
+                    )
+                },
+            )
+            state = json.loads(
+                (root / ".short-drama/state.json").read_text(encoding="utf-8")
+            )
+            for artifact_id in (
+                "storyboard:EP001:scene-plan:SC001",
+                "storyboard:EP001:shots",
+                "video:EP001",
+            ):
+                self.assertEqual(state["artifacts"][artifact_id]["build_state"], "stale")
+
+    def test_two_scene_scoped_directing_layers_keep_independent_acceptance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            for scene_id in ("SC001", "SC002"):
+                audition_path = (
+                    f"episodes/EP001/storyboard/coverage-auditions/{scene_id}.jsonl"
+                )
+                plan_path = (
+                    f"episodes/EP001/storyboard/scene-visual-plans/{scene_id}.jsonl"
+                )
+                self.publish_and_accept(
+                    root,
+                    artifact_id=f"storyboard:EP001:audition:{scene_id}",
+                    owner="short-drama-storyboard",
+                    outputs={
+                        audition_path: jsonl(
+                            {
+                                "audition_id": f"AUD-EP001-{scene_id}",
+                                "approaches": [{"approach_id": "APPROACH-A"}],
+                            }
+                        )
+                    },
+                )
+                self.publish_and_accept(
+                    root,
+                    artifact_id=f"storyboard:EP001:scene-plan:{scene_id}",
+                    owner="short-drama-storyboard",
+                    outputs={
+                        plan_path: jsonl(
+                            {"plan_id": f"SVP-EP001-{scene_id}"}
+                        )
+                    },
+                )
+
+            state = json.loads(
+                (root / ".short-drama/state.json").read_text(encoding="utf-8")
+            )
+            for scene_id in ("SC001", "SC002"):
+                for kind in ("audition", "scene-plan"):
+                    artifact = state["artifacts"][
+                        f"storyboard:EP001:{kind}:{scene_id}"
+                    ]
+                    self.assertEqual(artifact["build_state"], "materialized")
+                    self.assertEqual(artifact["creator_acceptance"], "accepted")
+            self.assertTrue(
+                (root / "episodes/EP001/storyboard/coverage-auditions/SC001.jsonl").is_file()
+            )
+            self.assertTrue(
+                (root / "episodes/EP001/storyboard/coverage-auditions/SC002.jsonl").is_file()
+            )
 
 
 if __name__ == "__main__":

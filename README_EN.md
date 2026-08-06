@@ -92,8 +92,11 @@ hotel turns out to be the group chairman
 
 # 3. Extract assets, write prompts and storyboards
 Use $short-drama-assets to extract characters/scenes/props from EP001
+When the visual language needs alignment, use $short-drama for Look Development,
+then $short-drama-image-prompts for character/location/high-pressure style-frame prompts
 Use $short-drama-image-prompts to write reference prompts for accepted assets
-Use $short-drama-storyboard to storyboard EP001
+Use $short-drama-storyboard to audition distinct directing approaches for key scenes,
+accept a scene visual plan, then author the formal storyboard
 Use $short-drama-video-prompts to translate each authored shot into a video prompt
 
 # 4. Independent review
@@ -128,23 +131,31 @@ flowchart LR
 
 | Skill | Responsibility |
 |---|---|
-| `short-drama` | Init, routing, state, recovery, acceptance/review lifecycle, delivery |
+| `short-drama` | Init, routing, visual direction/Look Development, state, acceptance/review lifecycle, delivery |
 | `short-drama-develop` | Traceable novel/long-form adaptation, story engine, episode map, director brief, genre & hook playbook |
 | `short-drama-write` | Episode contract, causal beats, performable screenplay, and the project's accepted production dialect |
 | `short-drama-assets` | Character/Look, Location/View, Prop/State, continuity decisions |
-| `short-drama-image-prompts` | Reusable character/location/prop reference prompts and scoped edit instructions |
-| `short-drama-storyboard` | Source coverage, motivated shots, staging/continuity boundaries, and frozen keyframe prompts |
-| `short-drama-video-prompts` | Ordered action, performance, camera/audio intent, timing, and exact start/end continuity |
-| `short-drama-review` | Structural validation, evidence-based review, production quality gates, independent verdicts |
+| `short-drama-image-prompts` | Lookdev style frames, reusable character/location/prop reference prompts, and scoped edits |
+| `short-drama-storyboard` | Optional scene visual plans and Coverage Auditions, source coverage, shots, boundaries, and frozen keyframes |
+| `short-drama-video-prompts` | Ordered action, multi-actor performance and attention handoffs, camera/audio intent, timing, and exact boundaries |
+| `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and independent verdicts |
 
 `$short-drama` is the entry router: it initializes, resumes, recovers, and delivers
 projects, dispatching the actual work to the matching skill. An existing screenplay
 can enter normalization or asset extraction directly; an idea or long-form source
 enters through story development.
 
-The two image-prompt paths have distinct ownership: `image-prompts` writes
-**reusable reference** prompts for characters, locations, and props, while
-`storyboard` writes **keyframe** prompts representing each shot's start state.
+The three single-frame prompt paths have distinct ownership: project-level
+`lookdev_frame` prompts test an accepted visual direction; asset prompts preserve
+reusable character/location/prop facts; and `storyboard` keyframes project a shot's
+start state (plus an end-boundary frame only when the external workflow requires it).
+All three deliver text only and call no media model.
+
+Key scenes may add a sparse directing layer before formal shots: compare genuinely
+different information timing, audience position, and performance ownership, then
+accept a scene visual plan that aligns composition, space, camera, and sound around
+one dramatic turn. Ordinary scenes skip it; there is no fixed grid, option count, or
+shot-count formula.
 
 ## Local creator workspace
 

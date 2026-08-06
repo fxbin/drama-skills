@@ -81,8 +81,9 @@ done
 
 # 3. 拆资产，写提示词与分镜
 用 $short-drama-assets 从第 1 集拆人物/场景/道具
+需要统一视觉语言时，用 $short-drama 做 Look Development，再由 $short-drama-image-prompts 写人物/地点/高压力风格帧提示词
 用 $short-drama-image-prompts 为已接受的资产写参考图提示词
-用 $short-drama-storyboard 给第 1 集做分镜
+用 $short-drama-storyboard 给关键场次比较导演方案、接受场次视觉计划，再做正式分镜
 用 $short-drama-video-prompts 把分镜逐镜翻译成视频提示词
 
 # 4. 独立审查
@@ -116,20 +117,25 @@ flowchart LR
 
 | 技能 | 职责 |
 |---|---|
-| `short-drama` | 初始化、路由、状态、异常恢复、接受/审查生命周期与交付 |
+| `short-drama` | 初始化、路由、视觉方向/Look Development、状态、接受/审查生命周期与交付 |
 | `short-drama-develop` | 小说/长材料的可追溯改编、故事引擎、分集地图、导演阐述、题材与钩子手册 |
 | `short-drama-write` | 单集目标、因果节拍、可拍剧本和项目选择的制作稿格式 |
 | `short-drama-assets` | 人物/造型、地点/视图、道具/状态与连续性决策 |
-| `short-drama-image-prompts` | 角色、场景、道具参考板提示词与定点修改说明 |
-| `short-drama-storyboard` | 原文落实、镜头目的、场面调度、连续性边界和冻结关键帧 |
-| `short-drama-video-prompts` | 单镜头内的动作、表演、摄影、声音、起止状态与补拍说明 |
-| `short-drama-review` | 结构校验、带证据的内容审查、制作质量检查与独立审查结论 |
+| `short-drama-image-prompts` | Lookdev 风格帧、角色/场景/道具参考板提示词与定点修改说明 |
+| `short-drama-storyboard` | 可选场次视觉计划与 Coverage Audition、原文落实、镜头、边界和冻结关键帧 |
+| `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态与补拍说明 |
+| `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与独立结论 |
 
 `$short-drama` 是入口路由，负责初始化、继续、恢复和交付，把具体工作转给对应技能。
 现成剧本可以直接进入规范化或资产拆解，点子与长篇材料则从故事开发进入。
 
-两条图像提示词路径职责不同：`image-prompts` 写人物、地点、道具的**可复用参考图**
-提示词，`storyboard` 写只代表本镜开始状态的**关键帧**提示词。
+三条单帧提示词路径职责不同：项目级 `lookdev_frame` 检验已接受视觉方向；资产提示词固定人物、
+地点、道具的可复用事实；`storyboard` 的关键帧只投影本镜 start（执行方式需要时可增加只投影
+`end_boundary` 的 end 帧）。三者都只交付文本，不调用图片模型。
+
+关键场次可以在正式 shots 前增加一层稀疏导演决策：先比较真正不同的信息时机、观看位置与
+表演空间，再接受场次视觉计划，让构图、空间、摄影和声音共同完成一个转向。普通场景跳过，
+不规定宫格、方案数或镜头数。
 
 ## 本地短剧创作台
 

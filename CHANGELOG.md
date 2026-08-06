@@ -49,9 +49,45 @@
   未分配的余量不会渲染成静止画面，执行端会用没有上游来源的动作把它填满。**记为变更**：
   既有运动规格若把重叠关系写在 `phases` 散文里而没有置 `timing_plan.declares_overlap`，
   现在会被判为未声明重叠而阻断，需要补上该字段。
+- **多人表演字段由单数迁移为可选逐角色数组**：既有 `performance_arc` 若确有可见表演变化，
+  应改为 `performance_arcs[]` 并绑定承担变化的 `actor_ref`；只有注意真正交接时才补
+  `attention_handoffs[]`。普通单人、空镜、道具或纯空间运动省略这两个可选字段；启用时使用
+  独立 fragment，不让 agent 自行发明结构。
+- **Coverage Audition 的接受记录同时承载方案选择**：audition 本体不再内嵌事后
+  `creator_selection_ref`；独立 `artifact_acceptance` 决定绑定其准确 target hash，并记录
+  `selected_audition_record_id` / `selected_approach_id`，正式场次计划再同时引用两者。这样既能
+  证明创作者选了哪一案，也不因把决定写回已接受文件而制造 hash 循环。
+- **多参考绑定必须写稳定 `slot_id` 与显式唯一 `order`**（`IMG-12`、`VID-17`，均为
+  `reviewed_invariant`）。此前参考的用途只由数组位置决定，插入或重排一条参考就会静默改变
+  其余参考的角色，而 `hash` 不变、审查也看不出来。**记为变更**：0.2.0 及更早写出的
+  `剧集/<EP>/assets/image-prompt-specs.jsonl` 与 `剧集/<EP>/storyboard/motion-specs.jsonl`
+  里带两条及以上 `reference_bindings` 的记录都没有这两个字段，升级后再送审会被判为
+  槽位未声明而阻断。迁移方式见下方“升级既有项目”。
+- **新增六条只约束本次新增可选层的 `reviewed_invariant`**：`IMG-11`（lookdev 风格帧的绑定与
+  越权边界）、`SHT-19`（coverage audition 的方案必须真正不同，并由独立接受记录指名所选方案）、
+  `SHT-20`（镜头重排、插入、拆分、合并的身份与 retire 规则）、`VID-16`（多人表演只让真正
+  承担变化的人进入）、`VID-18`（逐镜文本准备度是按 scope 派生的投影，不是持久化的 motion 事实）、
+  `REV-10`（项目校准 finding 的绑定与有效范围）。按约束力它们记为变更；但六条各自只在本次
+  新增的可选层被启用、或下一次镜头修订发生时才生效，**已接受的既有产物不需要迁移**。
 
 ### 新增
 
+- **内容效果增强层**：Look Development 新增人物表现、核心地点、高压力场景三类可选风格帧；
+  storyboard 新增可选的场次视觉戏剧计划与 Coverage Audition；video-prompts 使用逐角色
+  `performance_arcs[]` 与 `attention_handoffs[]`，并投影场次声音策略。所有新增层都由创作者
+  接受后再向下游投影，不拥有剧本、资产或 shot 边界，也不规定宫格、方案数或镜头数。
+- **项目级生产反馈校准**：新增区分 `input_reference` / `generated_result` 的生产观察模板和
+  review 方法；结果观察绑定准确 prompt/spec、稳定参考槽位与制作配置，只在当前项目版本有效。
+  修订一次只改变诊断所需变量并记录 `preserve_set`，不从任务状态推断质量。
+- **维护者提示词学习轴**：`short-drama-knowhow` 增加题材承诺 × 制作/视觉语言 × 场景功能 ×
+  提示词职责 × 版本角色的定性阅读方法；继续禁止词频、匹配器、任务成功率或供应商字段生成创作规则。
+- **次级文本契约的配套模板**：`slot_id` / `order`、修订 lineage 与 readiness 三项规则本身按
+  约束力记在上方**变更**；这里只记它们的可复制载体——参考绑定模板补上两个字段，拆并镜
+  lineage 与准备度分别有独立 fragment 和派生写法，创作者不必自行发明结构。
+- **可选层减负**：Look Development 使用独立规格模板，不污染普通资产图片提示词；普通 shot 省略
+  空的场次计划/修订谱系，普通 motion 省略重复目的、场次计划、母版范围与 readiness 字段；Coverage
+  Audition 默认只留项目创作过程，打包时显式 `--omit`。表演/注意交接、补拍范围与拆并镜 lineage
+  都迁入按需 JSON fragment，既不污染普通记录，也不让 agent 临时发明字段。
 - **本地项目 Dashboard**：新增零生产依赖的 Python 本地服务和三栏项目工作台，按项目开发、
   剧本、资产设定、分镜视频与审查交付浏览 `short-drama.json` 工程；支持 UTF-8 文本编辑、
   SHA-256 乐观并发、
@@ -75,6 +111,9 @@
   `relative` 计时不做算术断言，列在 `relative_plans` 中报告而不是判过。
 
 ### 修复
+
+- **统一首尾帧契约**：核心参考不再声称套件只有 start artifact；现与 storyboard 一致为默认
+  start、执行方式需要时可增加 end，且 end 只投影 `end_boundary`，不是第二个终点权威。
 
 - **只有能证明布局的目录才能固定布局**：非标准目录与 `输入/` 不参与布局检测，却能通过一次
   `--allow-unregistered-path` 发布把整个项目钉死在另一套布局上。一个全中文目录的新工程
@@ -124,12 +163,21 @@
 按 `episodes/<EP>/` 前缀匹配，与负责人无关，所以旧路径本来就不在 `EP001` 的清点范围内，
 不需要额外处理；磁盘上的旧文件不会被自动删除，确认新版本无误后自行清理。
 
+`IMG-12` / `VID-17` 要求的 `slot_id` 与 `order` 是本次新增字段，0.2.0 及更早的项目一定没有。
+只有**同一条记录里带两条及以上 `reference_bindings`** 的产物需要迁移，单条参考不受影响。
+迁移只补字段、不改任何参考的含义：按现有数组顺序给每条参考写 `order`（`1`、`2`、`3`…），
+再给每条写一个此后不再变动的 `slot_id`（如 `REF-IDENTITY`、`REF-COMPOSITION`），然后把该
+产物重新发布并重新接受，让下游刷新 `hash`。补完之前，既有产物仍可读、可打包，只是再送
+`$short-drama-review` 时会收到槽位未声明的 `reviewed_invariant` finding。
+
 ### 已知缺口
 
 - 声明为 `structural_invariant` 的规则共 24 条，其中能在脚本里追溯到规则编号的是
   `SHT-16`、`SHT-17`、`VID-15` 与本次新增的 `VID-04`，共 4 条。其余多数需要语义判断
-  （例如 `VID-08` 的"本镜确切演员/动作/接触"），把它们改判为 `reviewed_invariant`
-  是契约层的取舍，应由维护者按逐条证据决定，不在本次一并改。
+  （例如 `VID-08` 的“本镜准确主体/动作/接触/结果”），把它们改判为 `reviewed_invariant`
+  是契约层的取舍，应由维护者按逐条证据决定，不在本次一并改。新加的 `IMG-12` 与
+  `VID-17` 暂列为 `reviewed_invariant`：本轮不为这一项新增匹配脚本，审查者按准确槽位与顺序
+  给证据；将来只有真实项目校验器接管后才提升为结构阻断。
 - `设定集/*.jsonl` 仍没有记录级 schema：发布检查只检查后缀、UTF-8 与可解析性，
   `{"a":1}` 与空文件都能发布进去。五个校验脚本也都没有接进 `publish` 闸门，
   只在智能体按提示词执行时才运行。
