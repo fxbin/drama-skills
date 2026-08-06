@@ -1,129 +1,153 @@
-# Design
+# Short Drama Creator Workspace Design
 
-## Source of truth
+## Status
 
 - **Status:** Active
-- **Last refreshed:** 2026-08-02
-- **Primary product surfaces:** `$short-drama dashboard` local project workspace
-- **Evidence reviewed:** `skills/short-drama/assets/dashboard/*`, canonical project
-  roots and declared artifact owners in `project_tool.py`, lifecycle output, and the
-  local-first file-management model used by oh-story-claudecode.
+- **Last refreshed:** 2026-08-06
+- **Primary surface:** `$short-drama dashboard`
+- **Audience:** writers, directors, and independent short-drama creators
 
-## Brand
+## Product principle
 
-- **Personality:** cinematic, calm, editorial, trustworthy.
-- **Trust signals:** exact file path, explicit save state, honest lifecycle gates,
-  clear generated/fallback/rejected media labels.
-- **Avoid:** generic admin-dashboard chrome, neon gradients, decorative clutter,
-  hidden writes, or presenting generated previews as approved deliverables.
+Creators work on one page:
 
-## Product goals
+```text
+项目标题与状态
+内容目录 | 当前正文
+待办提示与导出提示
+```
 
-- Make a filesystem short-drama project understandable within ten seconds.
-- Let creators safely find, read, preview, and edit project text.
-- Make media review and lifecycle blockers visible without exposing private state.
-- Keep the server local-only and dependency-free.
-- **Non-goals:** database access, media generation from the browser, delivery-gate
-  overrides, or full IDE behavior.
-- **Success signals:** the active project and checkpoint are immediately clear;
-  filenames do not become an unreadable wall; a creator can distinguish editable,
-  protected, preview, fallback, and rejected content without reading implementation docs.
+The product has one page and one always-visible reading area. It does not provide tabs,
+pop-up document viewers, an advanced mode,
+engineering mode, raw-file view, lifecycle panel, or technical report entry.
+Runtime records and integrity evidence remain system-owned and have no product
+navigation.
 
-## Personas and jobs
+## Goals
 
-- **Primary personas:** short-drama creator, director/editor, production reviewer.
-- **Jobs:** inspect the current project, locate an episode artifact, compare visual
-  assets, record a text decision, and understand why delivery is blocked.
-- **Contexts:** desktop-first local review, occasional tablet/mobile inspection.
+- Answer within ten seconds: which project, which episode, current work, next action.
+- Organize work by project, episode, scene, character, and shot instead of files.
+- Let creators read and edit story content without understanding its storage format.
+- Keep version choice explicit: saving text never means adopting a creative version.
+- Explain problems in terms of audience or production impact.
+- Export production materials by purpose.
 
-## Information architecture
+## Single-page information architecture
 
-- **Primary navigation:** project selector → all / development / writing / assets /
-  storyboard and video / review and delivery.
-- **Workspace:** grouped file browser → focused text or media viewer → lifecycle rail.
-- **Content hierarchy:** project title and checkpoint first, file content second,
-  operational metadata third.
-- **Classification rule:** files follow their canonical project root and episode
-  artifact area; media stays with the artifact it represents. Non-standard folders
-  remain discoverable in All without becoming a product stage.
+```text
+短剧创作台
+├── 当前项目与一句状态说明
+├── 内容目录
+│   ├── 全剧
+│   └── EP001
+│       ├── 故事与剧本
+│       ├── 人物场景
+│       ├── 分镜画面
+│       └── 生成文案
+├── 当前正文（始终可见，打开项目后自动载入）
+└── 待办提示 / 导出提示
+```
 
-## Design principles
+The interface never uses a filesystem tree as navigation. Markdown, structured
+records, images, and video are rendered as creator-facing documents, cards, or
+media previews in the permanent reading area. Selecting another item replaces that
+area in place; it never opens a modal or another page.
 
-1. **Story before machinery:** translate lifecycle keys into creator-facing Chinese;
-   retain exact technical values only as secondary evidence.
-2. **One focus at a time:** keep navigation, document, and status visually separate.
-3. **Honest state:** dirty, read-only, fallback, pending, and blocked states must never
-   rely on color alone.
-4. **Local-first restraint:** extend existing HTML/CSS/JS; add no framework or runtime dependency.
+### Creator-facing states
+
+Use only these creator-facing states:
+
+- 待你确认
+- 需要修改
+- 需要更新
+- 已采用
+
+The page shows only a compact plain-language reminder. Until creator-safe action APIs
+exist, adoption feedback and export requests are handed back to the conversation; the
+Dashboard must not imitate an action it cannot complete.
+
+## Interaction rules
+
+### Save
+
+- Save persists the current edit.
+- The interface shows saved, saving, unsaved, and conflict states in plain language.
+- Save does not adopt the content as the chosen creative version.
+
+### Adopt or return
+
+- The Dashboard does not pretend that saving adopts a version.
+- Pending work is read in place; the creator gives the decision in the conversation.
+- A future action API may shorten this loop, but it must not add a second mode or page.
+
+### Problems
+
+Problem cards contain:
+
+1. the scene or shot;
+2. the audience or production impact;
+3. the intended result;
+4. a direct action.
+
+Do not display internal severity names, reviewer identities, storage paths, or protocol
+states.
 
 ## Visual language
 
-- **Color:** near-black ink panels, warm amber focus, cool blue informational state,
-  red only for blockers/errors, green only for verified success.
-- **Typography:** system sans for interface; system mono for paths and structured text.
-- **Spacing/layout rhythm:** 4/8/12/16/24/32 px.
-- **Shape/radius/elevation:** 8–12 px radius, thin borders, minimal shadow.
-- **Motion:** 120–180 ms interface feedback; honor reduced motion.
-- **Imagery/iconography:** media itself is the hero; use small text glyphs only when
-  they remain understandable without the glyph.
+- A calm director's worktable, not an administration dashboard.
+- Graphite background with warm paper-like content surfaces.
+- Amber marks the current action; red is reserved for required fixes; green is reserved
+  for creator-confirmed or export-ready content.
+- System sans-serif for controls and a readable local serif stack for screenplay content.
+- Use the content rail and paper-like reading area as the defining visual motif.
+- Avoid metric-card walls, decorative gradients, and code-editor styling.
 
-## Components
+## Accessibility and responsive behavior
 
-- **Reuse:** project selector, stage tabs, file list, editor, preview, media viewer,
-  lifecycle summary.
-- **Change:** add project identity, stage/file counts, grouped file rows, selected and
-  dirty states, safe Markdown/JSON preview, media facts, refresh and review affordances.
-- **Variants:** editable/read-only/oversize; image/video; normal/pending/blocked/error.
-- **Ownership:** tokens and layout live in `assets/dashboard/styles.css`; browser behavior
-  lives in `assets/dashboard/app.js`; security remains server-owned.
+- Native buttons, labels, headings, and live status regions.
+- Visible keyboard focus and Cmd/Ctrl+S support.
+- No state depends on color alone.
+- Desktop uses a compact content rail plus one permanent content canvas.
+- Narrow layouts stack navigation and content with 44px touch targets.
+- Honor `prefers-reduced-motion`.
 
-## Accessibility
+## Creator-visible files
 
-- **Target:** WCAG 2.1 AA where practical for this local tool.
-- **Keyboard/focus:** visible focus rings; Cmd/Ctrl+S saves; tabs and file buttons are native controls.
-- **Readability:** no status is color-only; paths have tooltips; text stays selectable.
-- **Screen reader:** labeled navigation, live status, semantic headings and buttons.
-- **Reduced motion:** disable nonessential transitions when requested.
+The target public handoff is:
 
-## Responsive behavior
+```text
+项目/
+├── 原始资料/
+├── 创作内容/
+│   ├── 项目设定/
+│   └── 剧集/
+│       └── EP001/
+│           ├── 剧本.md
+│           ├── 视觉设定.md
+│           ├── 分镜.md
+│           ├── 图片提示词.md
+│           └── 视频提示词.md
+└── 导出/
+```
 
-- **Desktop:** three columns.
-- **Tablet:** navigation plus workspace; lifecycle becomes an inline summary.
-- **Mobile:** stacked navigation and workspace with 44 px touch targets.
-- **Touch/hover:** hover is supplemental; selected state is persistent.
-
-## Interaction states
-
-- **Loading:** explicit loading copy on project/file changes.
-- **Empty:** explain when a workspace, stage view, or search has no matching files.
-- **Error:** show the actionable server message in the live status area.
-- **Success:** saved state includes timestamp and clears the dirty marker.
-- **Disabled:** explain protected or oversize files rather than silently disabling controls.
-- **Slow network:** local requests remain cancellable by selecting another file; stale responses
-  must not replace the newly selected content.
-
-## Content voice
-
-- Direct creator-facing Chinese; short labels and concrete next states.
-- Preserve exact filenames and machine values where they are evidence.
-- Call previews “预演/预览”, not “成片”; call unapproved work “候选”, not “交付”.
-- Interface copy names the object, current state, or available action. Protocol,
-  security-boundary, authority, and design-rationale explanations stay in documentation.
-- Use direct affirmative statements. Avoid contrast templates equivalent to
-  “不是……而是……” and other rebuttal-style copy.
+Existing projects remain readable while storage migration is introduced safely. The
+Dashboard must already present the simplified creator model even when an older project
+still uses the existing internal layout.
 
 ## Implementation constraints
 
-- Python standard library server; vanilla HTML/CSS/JS; no new dependencies.
-- Loopback-only Host/Origin and path/symlink protections remain non-negotiable.
-- Browser rendering must not inject project HTML.
-- Support current Safari/Chrome and Python 3.10+ on secure dir-fd platforms.
-- Every server change requires unit/HTTP tests; every visual change requires a fresh
-  desktop screenshot plus narrow-layout inspection.
+- Python standard-library server and vanilla HTML/CSS/JS; no new dependency.
+- Loopback-only session, Host/Origin validation, path containment, symlink refusal,
+  atomic save, and concurrent-edit protection remain mandatory.
+- Never inject project HTML into the DOM.
+- The browser submits creator actions and content identifiers; it does not submit hashes,
+  manifests, or arbitrary output paths.
+- Every server action needs unit and HTTP coverage.
+- Every visual change needs desktop and narrow-layout inspection.
 
-## Open questions
+## Delivery sequence
 
-- [ ] Whether a future public export workflow should be launched from the Dashboard;
-  owner: product; impact: write authority and delivery security.
-- [ ] Whether creator decisions should receive a dedicated structured schema;
-  owner: lifecycle contract; impact: review UX.
+1. Replace the file console with the single creator workspace.
+2. Add creator-safe adopt, return, problem, and export actions.
+3. Introduce logical content identifiers independent of storage paths.
+4. Migrate new projects to the simplified public directory and keep old projects readable.

@@ -146,7 +146,7 @@ The two image-prompt paths have distinct ownership: `image-prompts` writes
 **reusable reference** prompts for characters, locations, and props, while
 `storyboard` writes **keyframe** prompts representing each shot's start state.
 
-## Local project dashboard
+## Local creator workspace
 
 One line inside your agent (Codex writes `$short-drama dashboard`):
 
@@ -154,5 +154,8 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 /short-drama dashboard
 ```
 
-The dashboard runs locally on macOS/Linux. It organizes text editing, media previews,
-and project status by production stage; ad-hoc files remain under **All**.
+The workspace runs locally on macOS/Linux. It uses one page: a plain content list on
+the left and an always-visible document on the right. Opening a project loads its
+screenplay immediately; there are no page tabs or pop-up document viewers. Tasks and
+export stay as compact notes below the document, while paths and workflow internals
+remain system-owned.
