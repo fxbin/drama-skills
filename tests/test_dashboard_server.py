@@ -1115,6 +1115,162 @@ process.stdout.write(JSON.stringify(projected));
                 second.server_close()
 
 
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_preserves_creator_content_the_projection_used_to_delete(self) -> None:
+        # A look's validity range reads like a path but is a creator id. Deleting
+        # it left the row as "—", so the creator saw no validity range at all.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const projected = logic.creatorProjection({{
+  validity: {{ from: "EP003/SC004/BLK-EP003-SC004-A01", until: "EP003/SC006/BLK-EP003-SC006-A03" }},
+  source: "\u5267\u96c6/EP001/storyboard/shots.jsonl",
+}});
+process.stdout.write(JSON.stringify([
+  projected.validity?.from ?? null,
+  Object.prototype.hasOwnProperty.call(projected, "source"),
+  logic.friendlyKey("look_id") !== logic.friendlyKey("base_look_id"),
+]));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(
+            json.loads(completed.stdout),
+            ["EP003/SC004/BLK-EP003-SC004-A01", False, True],
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_editable_suffixes_match_the_server(self) -> None:
+        # The client must not shadow the server with a narrower allowlist: that
+        # silently removed subtitle editing, a shipped feature.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        editable = sorted(dashboard_server.TEXT_EXTENSIONS)
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const suffixes = {json.dumps(editable)};
+process.stdout.write(JSON.stringify(
+  suffixes.map((suffix) => logic.creatorEditable({{ writable: true, path: `a/b${{suffix}}` }})),
+));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(json.loads(completed.stdout), [True] * len(editable))
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_keeps_unexpected_creator_files_reachable(self) -> None:
+        # The workspace is the only UI, so a file it refuses to list is a file the
+        # creator cannot open at all. Machine and lifecycle roots stay hidden.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const paths = [
+  "\u5907\u5fd8.md",
+  "\u53c2\u8003\u8d44\u6599/topic.md",
+  "short-drama.json",
+  "\u5ba1\u67e5/EP001-findings.jsonl",
+  "\u4ea4\u4ed8/EP001/manifest.json",
+];
+process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(path))));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(
+            json.loads(completed.stdout),
+            ["other", "other", None, None, None],
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_preview_survives_one_malformed_record(self) -> None:
+        # An interrupted agent run leaves a truncated line. The records around it
+        # must still render, or the file becomes unreadable and unrepairable.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const rows = logic.readJsonLines('{{"a":1}}\\n{{broken\\n{{"c":3}}');
+process.stdout.write(JSON.stringify(rows.map((row) => (row.error ? "error" : "record"))));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(json.loads(completed.stdout), ["record", "error", "record"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_renders_prompt_blocks_and_numbered_steps(self) -> None:
+        # Generated prompts are meant to be selected and copied as one block, and
+        # numbered shot order must not read as unrelated sentences.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+class N {{
+  constructor(tag) {{ this.tagName = (tag || "").toUpperCase(); this.children = []; this.textContent = ""; this.className = ""; this.dataset = {{}}; }}
+  append(...kids) {{ for (const kid of kids) this.children.push(kid); }}
+  get text() {{ return this.textContent || this.children.map((kid) => (kid.text !== undefined ? kid.text : String(kid.data ?? ""))).join(""); }}
+}}
+const logic = require({json.dumps(str(app))});
+globalThis.document = {{
+  createElement: (tag) => new N(tag),
+  createTextNode: (data) => ({{ data, text: String(data) }}),
+  createDocumentFragment: () => new N("#fragment"),
+  getElementById: () => null,
+}};
+const rendered = logic.renderMarkdown("```\\nopen the door, 9:16\\n# camera: dolly in\\n```\\n\\n1. near\\n2. mid\\n\\n- note");
+const block = rendered.children.find((node) => node.tagName === "PRE");
+process.stdout.write(JSON.stringify([
+  rendered.children.map((node) => node.tagName),
+  Boolean(block && block.text.includes("# camera: dolly in")),
+]));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        tags, fence_kept = json.loads(completed.stdout)
+        self.assertEqual(tags, ["PRE", "OL", "UL"])
+        self.assertTrue(fence_kept)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_rail_opens_with_the_screenplay(self) -> None:
+        # Raw directory order buried the screenplay below every generated prompt.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const files = [
+  {{ path: "\u5267\u96c6/EP001/storyboard/keyframe-prompts.md" }},
+  {{ path: "\u5267\u96c6/EP001/assets/image-prompts.md" }},
+  {{ path: "\u5267\u96c6/EP001/screenplay.md" }},
+  {{ path: "\u5267\u96c6/EP001/storyboard/shots.jsonl" }},
+];
+process.stdout.write(JSON.stringify(logic.orderedForReading(files).map((file) => file.path.split("/").pop())));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(json.loads(completed.stdout)[0], "screenplay.md")
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_translates_server_protocol_messages(self) -> None:
+        # The server's English protocol strings were reaching the creator UI raw.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+process.stdout.write(JSON.stringify([
+  logic.friendlyFailure("file changed since it was opened"),
+  logic.friendlyFailure("an unmapped message"),
+  logic.creatorTitle({{ zh: "\u6d4b\u8bd5" }}),
+  logic.creatorTitle("\u9006\u5149\u544a\u767d"),
+]));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        translated, passthrough, guarded, kept = json.loads(completed.stdout)
+        self.assertNotIn("file changed", translated)
+        self.assertEqual(passthrough, "an unmapped message")
+        self.assertEqual(guarded, "未命名短剧")
+        self.assertEqual(kept, "逆光告白")
+
+
 class DashboardHTTPTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()

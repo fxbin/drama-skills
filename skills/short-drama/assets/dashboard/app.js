@@ -36,6 +36,10 @@ const HIDDEN_FILES = new Set([
   "screenplay-index.jsonl",
 ]);
 
+// Reading order inside one group: what the creator wrote, then what was built
+// from it. Raw directory order otherwise buries the screenplay below the prompts.
+const SECTION_ORDER = ["story", "project", "sources", "cast", "visual", "storyboard", "prompts", "other"];
+
 const CONTENT_META = {
   sources: { label: "原始资料", description: "故事原稿与参考内容", icon: "稿" },
   project: { label: "项目设定", description: "故事方向与导演表达", icon: "案" },
@@ -44,6 +48,7 @@ const CONTENT_META = {
   prompts: { label: "生成文案", description: "用于生成图片、关键帧与视频的文案", icon: "词" },
   visual: { label: "画面设计", description: "图片方案与视觉参考", icon: "画" },
   storyboard: { label: "分镜画面", description: "镜头、关键帧与运动", icon: "镜" },
+  other: { label: "其他内容", description: "放在标准目录之外的创作文件", icon: "他" },
 };
 
 const INTERNAL_KEY_PARTS = [
@@ -62,7 +67,7 @@ const INTERNAL_INLINE_VALUE_PATTERNS = [
 
 const INTERNAL_WHOLE_VALUE_PATTERNS = [
   /^(?:[^\\/]+[\\/])+(?:[^\\/]+\.(?:md|txt|jsonl?|ya?ml|mp4|mov|webm|png|jpe?g|webp))$/i,
-  /^(?:[^\s\\/]+[\\/]){2,}[^\s\\/]+$/,
+  /^(?:[^\s\\/]+\\){2,}[^\s\\/]+$/,
 ];
 
 const INTERNAL_VALUE_TOKENS = new Set([
@@ -109,6 +114,41 @@ const FILE_LABELS = {
   "video-prompts.md": "视频生成文案",
 };
 
+// The server speaks a fixed English protocol vocabulary. The workspace is
+// creator-facing, so each known message gets a Chinese sentence that also says
+// what to do next; anything unmapped passes through rather than being hidden.
+const FAILURE_COPY = {
+  "file changed since it was opened": "这份内容在别处已经更新，请重新打开后再修改。",
+  "text file cannot be opened safely": "这份内容暂时无法打开，请刷新后重试。",
+  "text file cannot be replaced safely": "这份内容暂时无法保存，请刷新后重试。",
+  "media file cannot be opened safely": "这段画面暂时无法打开，请刷新后重试。",
+  "file type is not editable text": "这种内容不能在工作台里直接修改。",
+  "content exceeds file limit": "内容太长，无法保存。",
+  "file exceeds preview limit": "内容太长，无法在这里展示。",
+  "media exceeds preview limit": "这段画面太大，无法在这里预览。",
+  "path is not a file": "找不到这份内容，可能已被移动。",
+  "media path is not a file": "找不到这段画面，可能已被移动。",
+  "project not found": "找不到这个项目。",
+  "project path changed during the save": "项目位置在保存过程中发生变化，请重新打开。",
+  "unsupported preview media": "这种画面格式无法在这里预览。",
+  "request body is too large": "内容太长，无法提交。",
+  "internal dashboard error": "工作台遇到问题，请刷新后重试。",
+};
+
+function friendlyFailure(message) {
+  return FAILURE_COPY[String(message || "").trim()] || String(message || "");
+}
+
+// CSS.escape is unavailable in older WebKit; the group keys are our own
+// ("project", "episode:EP001") so a conservative escape is enough.
+function cssEscape(value) {
+  return String(value).replace(/["\\]/g, "\\$&");
+}
+
+function creatorTitle(title) {
+  return typeof title === "string" && title.trim() ? title.trim() : "未命名短剧";
+}
+
 function pathSegments(path) {
   return String(path || "").split("/").filter(Boolean);
 }
@@ -121,14 +161,12 @@ function creatorSection(path) {
   if (!parts.length || HIDDEN_ROOTS.has(first) || HIDDEN_ROOTS.has(lowerFirst)) return null;
   if (HIDDEN_FILES.has(filename)) return null;
   if (parts.length === 1) {
-    return filename === "readme.md" ? "project" : null;
+    return filename === "readme.md" ? "project" : "other";
   }
   const root = ROOT_ROLES[first] || ROOT_ROLES[lowerFirst];
   if (root === "sources" || root === "project") return root;
-  if (root === "bible") {
-    return /character|look|角色|造型/.test(filename) ? "cast" : "cast";
-  }
-  if (root !== "episodes") return null;
+  if (root === "bible") return "cast";
+  if (root !== "episodes") return "other";
   const area = (parts[2] || "").toLowerCase();
   if (/prompts?\.(?:md|jsonl?)$/i.test(filename) || filename.includes("prompt")) return "prompts";
   if (["assets", "资产"].includes(area)) return "visual";
@@ -252,7 +290,9 @@ function contentGroupKey(file) {
 }
 
 function creatorEditable(file) {
-  return Boolean(file?.writable && /\.(md|txt)$/i.test(file.path));
+  // Mirrors the server's TEXT_EXTENSIONS. Structured files stay editable because
+  // the server rejects invalid JSON on save, and subtitles are a shipped feature.
+  return Boolean(file?.writable && /\.(md|txt|srt|ass|json|jsonl)$/i.test(file.path));
 }
 
 function element(tag, className, text) {
@@ -340,14 +380,29 @@ function navigationItem(file) {
   return item;
 }
 
+function orderedForReading(files) {
+  return [...files].sort((left, right) => {
+    const rank = SECTION_ORDER.indexOf(creatorSection(left.path)) - SECTION_ORDER.indexOf(creatorSection(right.path));
+    if (rank !== 0) return rank;
+    return fileLabel(left.path).localeCompare(fileLabel(right.path), "zh-Hans-CN");
+  });
+}
+
 function navigationGroup(title, files, groupKey, forceExpanded = false) {
   const group = element("section", "content-nav-group");
   const expanded = forceExpanded || state.expandedGroups.has(groupKey);
   const heading = button("", "content-nav-group-toggle", () => {
-    if (expanded) state.expandedGroups.delete(groupKey);
+    // While searching, every group is force-expanded. Toggle the stored state to
+    // match what the creator sees, so clearing the search cannot collapse the
+    // group they just opened — or the one holding the open document.
+    if (state.expandedGroups.has(groupKey)) state.expandedGroups.delete(groupKey);
     else state.expandedGroups.add(groupKey);
     renderContentList();
+    // renderContentList replaces this button, so focus would fall to <body>.
+    const restored = $("contentList")?.querySelector(`[data-group-key="${cssEscape(groupKey)}"]`);
+    if (restored) restored.focus();
   });
+  heading.dataset.groupKey = groupKey;
   heading.setAttribute("aria-expanded", String(expanded));
   heading.append(
     element("span", "content-nav-group-chevron", "›"),
@@ -356,7 +411,7 @@ function navigationGroup(title, files, groupKey, forceExpanded = false) {
   );
   const list = element("div", "content-link-list");
   list.hidden = !expanded;
-  for (const file of files) list.append(navigationItem(file));
+  for (const file of orderedForReading(files)) list.append(navigationItem(file));
   group.append(heading, list);
   return group;
 }
@@ -375,8 +430,12 @@ function renderContentList() {
   host.replaceChildren(...groups);
 }
 
+function scrollBehavior() {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
 function focusDocument() {
-  $("documentPane").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("documentPane").scrollIntoView({ behavior: scrollBehavior(), block: "start" });
 }
 
 function renderTaskSummary() {
@@ -439,28 +498,57 @@ function appendInlineText(node, text) {
 
 function renderMarkdown(content) {
   const fragment = document.createDocumentFragment();
+  // `list` holds the open <ul>/<ol>; `listKind` tracks which, so a bullet block
+  // followed by a numbered block does not get merged into one list.
   let list = null;
+  let listKind = null;
+  // A generated prompt is meant to be selected and copied as one block, so a
+  // fenced run is captured verbatim instead of being re-parsed as Markdown.
+  let fence = null;
+  const closeList = () => { list = null; listKind = null; };
   for (const line of content.split("\n")) {
+    if (fence !== null) {
+      if (/^\s*```/.test(line)) {
+        const pre = element("pre", "code-block");
+        pre.append(element("code", "", fence.join("\n")));
+        fragment.append(pre);
+        fence = null;
+      } else {
+        fence.push(line);
+      }
+      continue;
+    }
+    if (/^\s*```/.test(line)) { closeList(); fence = []; continue; }
     const heading = /^(#{1,4})\s+(.+)$/.exec(line);
     if (heading) {
-      list = null;
+      closeList();
       const node = element(`h${heading[1].length}`);
       appendInlineText(node, heading[2]);
       fragment.append(node);
       continue;
     }
-    const item = /^[-*]\s+(.+)$/.exec(line);
-    if (item) {
-      if (!list) { list = element("ul"); fragment.append(list); }
-      const node = element("li"); appendInlineText(node, item[1]); list.append(node);
+    const bullet = /^[-*]\s+(.+)$/.exec(line);
+    const ordered = /^\d+[.)]\s+(.+)$/.exec(line);
+    if (bullet || ordered) {
+      const kind = bullet ? "ul" : "ol";
+      if (!list || listKind !== kind) { list = element(kind); listKind = kind; fragment.append(list); }
+      const node = element("li");
+      appendInlineText(node, (bullet || ordered)[1]);
+      list.append(node);
       continue;
     }
-    list = null;
+    closeList();
     if (!line.trim()) continue;
     const quote = /^>\s?(.*)$/.exec(line);
     const node = element(quote ? "blockquote" : "p");
     appendInlineText(node, quote ? quote[1] : line);
     fragment.append(node);
+  }
+  // An unterminated fence still renders as a block rather than vanishing.
+  if (fence !== null && fence.length) {
+    const pre = element("pre", "code-block");
+    pre.append(element("code", "", fence.join("\n")));
+    fragment.append(pre);
   }
   return fragment;
 }
@@ -469,6 +557,16 @@ function parseJsonLines(content) {
   return content.split("\n").map((line, index) => ({ line: index + 1, text: line.trim() })).filter((row) => row.text).map((row) => {
     try { return JSON.parse(row.text); }
     catch (error) { throw new Error(`第 ${row.line} 项内容无法读取：${error.message}`); }
+  });
+}
+
+// Preview must survive a half-written file: one truncated record from an
+// interrupted agent run should not hide every valid record around it, because
+// the creator has no other way to see the file.
+function readJsonLines(content) {
+  return content.split("\n").map((line, index) => ({ line: index + 1, text: line.trim() })).filter((row) => row.text).map((row) => {
+    try { return { line: row.line, record: JSON.parse(row.text) }; }
+    catch (error) { return { line: row.line, error: error.message, text: row.text }; }
   });
 }
 
@@ -490,7 +588,11 @@ function friendlyKey(key) {
   };
   const normalized = String(key).toLowerCase().replace(/-/g, "_");
   if (labels[normalized]) return labels[normalized];
-  return /[\u4e00-\u9fff]/.test(String(key)) ? String(key).replace(/[_-]/g, " ") : "补充信息";
+  if (/[\u4e00-\u9fff]/.test(String(key))) return String(key).replace(/[_-]/g, " ");
+  // An unknown key keeps its own name. Collapsing every unrecognized field to
+  // one generic label makes all rows on a record read identically, so the
+  // creator can no longer tell which value is the id and which is the source.
+  return String(key).replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").trim() || "补充信息";
 }
 
 function appendStructuredValue(node, value) {
@@ -553,10 +655,16 @@ function renderPreview() {
   try {
     if (/\.md$/i.test(path)) preview.append(renderMarkdown(content));
     else if (/\.json$/i.test(path)) preview.append(structuredCard(JSON.parse(content), null));
-    else if (/\.jsonl$/i.test(path)) preview.append(...parseJsonLines(content).map((record, index) => structuredCard(record, index)));
+    else if (/\.jsonl$/i.test(path)) {
+      preview.append(...readJsonLines(content).map((row, index) => (
+        row.error
+          ? element("div", "preview-warning", `第 ${row.line} 项内容还不完整，暂时无法展示。`)
+          : structuredCard(row.record, index)
+      )));
+    }
     else preview.append(element("div", "plain-copy", content));
   } catch (error) {
-    preview.append(element("div", "preview-warning", `内容暂时无法整理：${error.message}`));
+    preview.append(element("div", "preview-warning", "这份内容还不完整，暂时无法展示。"));
   }
 }
 
@@ -658,7 +766,7 @@ async function openFile(file, scrollToContent = false) {
     $("editMode").textContent = "修改正文";
     $("preview").classList.add("empty-document");
     $("preview").replaceChildren(element("p", "preview-warning", "内容无法打开"));
-    setMessage(error.message, "danger");
+    setMessage(friendlyFailure(error.message), "danger");
   }
 }
 
@@ -705,7 +813,7 @@ async function selectProject(id, preferredPath = "") {
     $("preview").classList.add("empty-document");
     $("preview").replaceChildren(document.createTextNode("正在载入第一份创作内容…"));
     const selectedOption = $("projects").selectedOptions[0];
-    if (selectedOption) selectedOption.textContent = projectStatus.title || "未命名短剧";
+    if (selectedOption) selectedOption.textContent = creatorTitle(projectStatus.title);
     if (tree.warnings?.length) showNotice("部分内容暂时无法读取，已展示其余创作资料。", "warning");
     renderWorkspace();
     const initial = state.visibleFiles.find((file) => file.path === preferredPath) ||
@@ -727,7 +835,7 @@ async function selectProject(id, preferredPath = "") {
       $("projects").value = previousProject || "";
       setMessage(previousProject ? "项目未切换" : "项目无法打开", "danger");
     }
-    showNotice(error.message, "danger");
+    showNotice(friendlyFailure(error.message), "danger");
   } finally {
     if (sequence === state.projectLoadSequence) {
       state.projectSwitching = false;
@@ -759,10 +867,18 @@ async function save() {
     setDirty(!savedContentIsCurrent(snapshot.content, $("editor").value));
     setMessage(`已保存 · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`, "success");
     try {
-      state.status = await api(`/api/status?project=${encodeURIComponent(snapshot.project)}`);
+      const refreshed = await api(`/api/status?project=${encodeURIComponent(snapshot.project)}`);
+      if (state.project !== snapshot.project) return;
+      state.status = refreshed;
       renderWorkspace();
     } catch (_error) { setMessage(statusRefreshFailureMessage(), "warning"); }
-  } catch (error) { if (snapshot.sequence === state.saveSequence) setMessage(error.message, "danger"); }
+  } catch (error) {
+    if (
+      snapshot.sequence === state.saveSequence &&
+      state.project === snapshot.project &&
+      state.selected?.path === snapshot.path
+    ) setMessage(friendlyFailure(error.message), "danger");
+  }
   finally { if (snapshot.sequence === state.saveSequence) { state.saving = false; setDirty(state.dirty); } }
 }
 
@@ -778,7 +894,7 @@ async function boot() {
     $("projects").replaceChildren(...options);
     if (data.projects.length) await selectProject(data.projects[0].id);
     else showNotice("还没有发现可打开的短剧项目。", "warning");
-  } catch (error) { showNotice(error.message, "danger"); }
+  } catch (error) { showNotice(friendlyFailure(error.message), "danger"); }
 }
 
 function start() {
@@ -789,7 +905,7 @@ function start() {
   $("editMode").onclick = () => setView(state.view === "edit" ? "preview" : "edit");
   document.querySelector(".brand").onclick = (event) => {
     event.preventDefault();
-    scrollTo({ top: 0, behavior: "smooth" });
+    scrollTo({ top: 0, behavior: scrollBehavior() });
     $("mainContent").focus({ preventScroll: true });
   };
   addEventListener("beforeunload", (event) => { if (state.dirty) { event.preventDefault(); event.returnValue = ""; } });
@@ -807,6 +923,13 @@ if (typeof module !== "undefined" && module.exports) {
     creatorProjection,
     creatorSection,
     creatorStatus,
+    creatorEditable,
+    creatorTitle,
+    friendlyFailure,
+    friendlyKey,
+    orderedForReading,
+    readJsonLines,
+    renderMarkdown,
     savedContentIsCurrent,
     statusRefreshFailureMessage,
   };

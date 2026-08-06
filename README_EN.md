@@ -23,7 +23,7 @@ panels; the 15-second promo below is a temporary showcase, not a default suite a
 
 https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
 
-<img src="docs/assets/dashboard-zh.png" alt="Lone Fall into Demonhood project dashboard" width="680">
+<img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace: content rail on the left, screenplay on the right" width="680">
 
 ## Where this came from
 

@@ -20,7 +20,7 @@
 
 https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
 
-<img src="docs/assets/dashboard-zh.png" alt="《孤身入魔》项目控制台" width="680">
+<img src="docs/assets/dashboard-zh.png" alt="短剧创作台：左侧内容目录，右侧剧本正文" width="680">
 
 ## 由来
 
