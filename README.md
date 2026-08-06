@@ -20,7 +20,7 @@
 
 https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
 
-<img src="docs/assets/dashboard-zh.png" alt="《孤身入魔》项目控制台" width="680">
+<img src="docs/assets/dashboard-zh.png" alt="短剧创作台：左侧内容目录，右侧剧本正文" width="680">
 
 ## 由来
 
@@ -137,7 +137,7 @@ flowchart LR
 表演空间，再接受场次视觉计划，让构图、空间、摄影和声音共同完成一个转向。普通场景跳过，
 不规定宫格、方案数或镜头数。
 
-## 本地项目控制台
+## 本地短剧创作台
 
 在智能体里一句话启动（Codex 写作 `$short-drama dashboard`）：
 
@@ -145,8 +145,9 @@ flowchart LR
 /short-drama dashboard
 ```
 
-控制台仅支持 macOS/Linux 本机运行，可按制作阶段编辑文本、预览媒体和查看状态；
-临时文件只显示在“全部”视图。
+创作台仅支持 macOS/Linux 本机运行。界面只有一个页面：左侧是按项目和剧集整理的
+内容目录，右侧始终直接显示当前正文；打开项目后会自动载入剧本，不再切页或弹出浮层。
+待办与导出只在正文下方给出简短提示，工程文件、路径和生命周期由系统内部维护。
 
 ## 致谢
 

@@ -23,7 +23,7 @@ panels; the 15-second promo below is a temporary showcase, not a default suite a
 
 https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
 
-<img src="docs/assets/dashboard-zh.png" alt="Lone Fall into Demonhood project dashboard" width="680">
+<img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace: content rail on the left, screenplay on the right" width="680">
 
 ## Where this came from
 
@@ -157,7 +157,7 @@ accept a scene visual plan that aligns composition, space, camera, and sound aro
 one dramatic turn. Ordinary scenes skip it; there is no fixed grid, option count, or
 shot-count formula.
 
-## Local project dashboard
+## Local creator workspace
 
 One line inside your agent (Codex writes `$short-drama dashboard`):
 
@@ -165,5 +165,8 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 /short-drama dashboard
 ```
 
-The dashboard runs locally on macOS/Linux. It organizes text editing, media previews,
-and project status by production stage; ad-hoc files remain under **All**.
+The workspace runs locally on macOS/Linux. It uses one page: a plain content list on
+the left and an always-visible document on the right. Opening a project loads its
+screenplay immediately; there are no page tabs or pop-up document viewers. Tasks and
+export stay as compact notes below the document, while paths and workflow internals
+remain system-owned.

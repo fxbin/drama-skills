@@ -56,8 +56,8 @@ class ProjectStoreTests(unittest.TestCase):
     def test_discovers_manifests_without_following_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
-            make_project(workspace / "alpha")
-            make_project(workspace / "nested/beta")
+            make_project(workspace / "alpha", "甲项目")
+            make_project(workspace / "nested/beta", "乙项目")
             try:
                 (workspace / "linked").symlink_to(
                     workspace / "nested", target_is_directory=True
@@ -69,6 +69,9 @@ class ProjectStoreTests(unittest.TestCase):
 
             self.assertEqual(
                 [item["path"] for item in projects], ["alpha", "nested/beta"]
+            )
+            self.assertEqual(
+                [item["title"] for item in projects], ["甲项目", "乙项目"]
             )
             self.assertEqual(warnings, [])
             self.assertEqual(len({item["id"] for item in projects}), 2)
@@ -84,6 +87,17 @@ class ProjectStoreTests(unittest.TestCase):
                 results = list(executor.map(lambda _: store.discover()[0], range(96)))
 
             self.assertTrue(all(result == expected for result in results))
+
+    def test_discovery_uses_creator_safe_title_for_a_malformed_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "internal-folder-name"
+            make_project(project)
+            (project / "short-drama.json").write_text("[]", encoding="utf-8")
+
+            projects, warnings = self.store(Path(directory)).discover()
+
+            self.assertEqual(projects[0]["title"], "未命名短剧")
+            self.assertEqual(warnings, [])
 
     def test_concurrent_root_project_requests_have_independent_cursors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -755,7 +769,7 @@ class DashboardEntrypointTests(unittest.TestCase):
         project_tool = dashboard_server.load_project_tool(SKILL)
         self.assertTrue(callable(project_tool.project_status))
 
-    def test_frontend_exposes_safe_creator_facing_review_states(self) -> None:
+    def test_frontend_is_a_single_page_creator_desk(self) -> None:
         html = (dashboard_server.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
         javascript = (dashboard_server.STATIC_ROOT / "app.js").read_text(
             encoding="utf-8"
@@ -765,31 +779,56 @@ class DashboardEntrypointTests(unittest.TestCase):
         )
 
         for element_id in (
-            "allCount",
-            "developmentCount",
-            "writingCount",
-            "assetsCount",
-            "storyboardCount",
-            "reviewCount",
-            "fileMeta",
-            "projectTitle",
-            "axisCount",
+            "projects",
+            "mainContent",
+            "workspaceStatus",
+            "contentList",
+            "documentPane",
+            "assistRow",
+            "taskSummary",
+            "exportSummary",
+            "search",
+            "editor",
+            "preview",
+            "media",
+            "save",
         ):
             self.assertIn(f'id="{element_id}"', html)
+        for creator_copy in ("短剧创作台", "内容目录", "本剧内容", "待办", "导出"):
+            self.assertIn(creator_copy, html + javascript)
         self.assertIn('aria-live="polite"', html)
         self.assertIn("renderMarkdown", javascript)
         self.assertIn("validateStructuredText", javascript)
         self.assertIn("媒体预览已载入", javascript)
-        self.assertIn('development: "项目开发"', javascript)
-        self.assertIn('bible: "设定集"', javascript)
-        self.assertIn('episodes: "剧集"', javascript)
-        self.assertIn('"creator-decisions": "创作者决策"', javascript)
-        self.assertIn("sectionOf", javascript)
-        self.assertIn("displayPath", javascript)
-        self.assertNotIn("宣发素材", html)
-        self.assertNotIn('data-domain="promo"', html)
-        self.assertNotIn("SHORT DRAMA SUITE", html)
-        self.assertNotIn("PROJECT HEALTH", html)
+        for creator_function in (
+            "creatorSection",
+            "creatorProjection",
+            "creatorStatus",
+            "collectEpisodes",
+            "renderProjectSummary",
+            "renderContentList",
+            "renderTaskSummary",
+            "renderExportSummary",
+            "openFile",
+        ):
+            self.assertIn(creator_function, javascript)
+        self.assertNotIn('id="workspaceTitle"', html)
+        self.assertNotIn("workspace-heading", html + stylesheet)
+        self.assertIn("main { width: 100%;", stylesheet)
+        self.assertIn("height: calc(100vh - 116px)", stylesheet)
+        for forbidden_copy in (
+            "项目控制台",
+            "当前工程",
+            "全部文件",
+            "项目健康度",
+            "生命周期",
+            "高级模式",
+            "工程模式",
+            "工程详情",
+            "创作者决策",
+            "审查交付",
+        ):
+            self.assertNotIn(forbidden_copy, html)
         for forbidden_copy in (
             "不是",
             "而是",
@@ -797,36 +836,101 @@ class DashboardEntrypointTests(unittest.TestCase):
             "不等于",
             "底层设计",
             "安全边界",
+            "从左侧选择内容",
+            "内容准备好后",
+            "会直接显示",
+            "会出现在这里",
         ):
             self.assertNotIn(forbidden_copy, html + javascript)
+        self.assertNotIn('id="workspaceGuide"', html)
+        self.assertNotIn("creatorGuidance", javascript)
         self.assertNotIn("innerHTML", javascript)
+        self.assertNotIn('data-page=', html)
+        self.assertNotIn('role="dialog"', html)
+        self.assertNotIn("contentPanel", html + javascript)
+        self.assertNotIn("switchPage", javascript)
+        self.assertNotIn("panel-backdrop", html + stylesheet)
+        self.assertIn('id="assistRow" class="assist-row" aria-label="创作辅助" hidden', html)
+        self.assertNotIn("导出整理能力正在接入", javascript)
+        self.assertNotIn('"开始确认"', javascript)
+        self.assertIn("await openFile(initial)", javascript)
+        self.assertIn('project.title || "未命名短剧"', javascript)
+        self.assertNotIn("pathSegments(project.path).at(-1)", javascript)
+        self.assertNotIn('element("option", "", "短剧项目")', javascript)
+        self.assertIn("expandedGroups", javascript)
+        self.assertIn("contentGroupKey", javascript)
+        self.assertIn('setAttribute("aria-expanded"', javascript)
+        self.assertIn("content-nav-group-toggle", stylesheet)
+        project_switch = javascript.split("async function selectProject", 1)[1].split(
+            "async function save", 1
+        )[0]
+        self.assertGreater(
+            project_switch.index("state.project = id;"),
+            project_switch.index("await Promise.all"),
+        )
+        self.assertIn('$("projects").value = previousProject', project_switch)
+        self.assertIn('$("contentList").inert = true', project_switch)
+        self.assertIn('$("documentPane").setAttribute("aria-busy", "true")', project_switch)
+        self.assertIn('$("contentList").inert = controls.contentListInert', project_switch)
+        save = javascript.split("async function save", 1)[1].split(
+            "async function boot", 1
+        )[0]
+        self.assertIn("state.projectSwitching", save)
+        keyboard_shortcut = javascript.split('addEventListener("keydown"', 1)[1]
+        self.assertIn("save();", keyboard_shortcut)
+        file_open = javascript.split("async function openFile", 1)[1].split(
+            "async function selectProject", 1
+        )[0]
+        self.assertIn('$("preview").replaceChildren();', file_open)
+        self.assertIn("内容无法打开", file_open)
+        self.assertIn("min-height: 44px", stylesheet)
+        self.assertIn("white-space: nowrap", stylesheet)
         self.assertIn("prefers-reduced-motion", stylesheet)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_status_labels_require_explicit_evidence(self) -> None:
+    def test_frontend_creator_statuses_require_explicit_evidence(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
 const logic = require({json.dumps(str(app))});
 const result = {{
-  filenameOnly: logic.mediaBadge("剧集/EP001/storyboard/final.mp4", "video"),
-  accepted: logic.mediaBadge("剧集/EP001/storyboard/final.mp4", "video", {{
+  draft: logic.creatorStatus(null),
+  pending: logic.creatorStatus({{creator_acceptance: "pending"}}),
+  pendingBlocked: logic.creatorStatus({{
+    creator_acceptance: "pending",
+    independent_review: "provisional",
+    delivery_gate: "blocked"
+  }}),
+  rejected: logic.creatorStatus({{creator_acceptance: "rejected"}}),
+  revise: logic.creatorStatus({{independent_review: "revise"}}),
+  stale: logic.creatorStatus({{build_state: "stale"}}),
+  accepted: logic.creatorStatus({{creator_acceptance: "accepted"}}),
+  ready: logic.creatorStatus({{
     creator_acceptance: "accepted",
     independent_review: "approve",
     delivery_gate: "ready"
   }}),
-  emptyDelivery: logic.deliverySummary({{}}, {{needed: false}}),
-  pendingDelivery: logic.deliverySummary({{delivery_gate: {{not_evaluated: 1}}}}, {{needed: false}}),
-  readyDelivery: logic.deliverySummary({{delivery_gate: {{ready: 1}}}}, {{needed: false}}),
-  mixedDelivery: logic.deliverySummary(
-    {{delivery_gate: {{ready: 1}}}},
-    {{needed: false}},
-    {{mode: "mixed"}}
-  ),
+  mixedDelivery: logic.creatorStatus({{
+    build_state: {{materialized: 3}},
+    validation_state: {{pass: 3}},
+    creator_acceptance: {{accepted: 3}},
+    independent_review: {{approve: 3}},
+    delivery_gate: {{ready: 1, blocked: 2}}
+  }}),
+  failed: logic.creatorStatus({{
+    build_state: {{failed: 1}},
+    validation_state: {{not_run: 1}},
+    creator_acceptance: {{not_requested: 1}},
+    independent_review: {{not_requested: 1}},
+    delivery_gate: {{blocked: 1}}
+  }}),
+  recovery: logic.creatorStatus({{
+    build_state: "materialized",
+    validation_state: "pass",
+    creator_acceptance: "accepted",
+    independent_review: "approve",
+    delivery_gate: "ready"
+  }}, {{needed: true}}),
   typedDuringSave: logic.savedContentIsCurrent("sent", "sent plus more"),
-  unknownTone: logic.toneFor({{not_evaluated: 1}}),
-  failedTone: logic.toneFor({{fail: 1}}),
-  legacyCheckpoint: logic.checkpointLabel("demo-ready"),
-  unknownCheckpoint: logic.checkpointLabel("custom-stage"),
   refreshFailure: logic.statusRefreshFailureMessage()
 }};
 process.stdout.write(JSON.stringify(result));
@@ -839,50 +943,44 @@ process.stdout.write(JSON.stringify(result));
         )
         result = json.loads(completed.stdout)
 
-        self.assertEqual(result["filenameOnly"], ["视频素材 · 待审", "warning"])
-        self.assertEqual(result["accepted"], ["正式成片", "success"])
-        self.assertEqual(result["emptyDelivery"]["value"], "尚无可交付产物")
-        self.assertEqual(result["pendingDelivery"]["tone"], "warning")
-        self.assertEqual(result["readyDelivery"]["tone"], "success")
-        self.assertEqual(result["mixedDelivery"]["tone"], "danger")
-        self.assertEqual(result["mixedDelivery"]["value"], "中英文目录重复")
+        self.assertEqual(result["draft"], ["创作中", "neutral"])
+        self.assertEqual(result["pending"], ["待你确认", "warning"])
+        self.assertEqual(result["pendingBlocked"], ["待你确认", "warning"])
+        self.assertEqual(result["rejected"], ["需要修改", "danger"])
+        self.assertEqual(result["revise"], ["需要修改", "danger"])
+        self.assertEqual(result["stale"], ["需要更新", "warning"])
+        self.assertEqual(result["accepted"], ["已采用", "success"])
+        self.assertEqual(result["ready"], ["可以导出", "success"])
+        self.assertEqual(result["mixedDelivery"], ["已采用", "neutral"])
+        self.assertEqual(result["failed"], ["需要修改", "danger"])
+        self.assertEqual(result["recovery"], ["需要更新", "warning"])
         self.assertFalse(result["typedDuringSave"])
-        self.assertEqual(result["unknownTone"], "warning")
-        self.assertEqual(result["failedTone"], "danger")
-        self.assertEqual(result["legacyCheckpoint"], "分镜制作")
-        self.assertEqual(result["unknownCheckpoint"], "custom-stage")
         self.assertIn("状态刷新失败", result["refreshFailure"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_sections_follow_project_artifact_ownership(self) -> None:
+    def test_frontend_hides_machine_files_and_groups_creator_content(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
 const logic = require({json.dumps(str(app))});
 const paths = [
   "short-drama.json",
   "README.md",
-  "demo.mp4",
   "输入/original-source.txt",
   "inputs/original-source.txt",
-  "references/demo.mp4",
-  "参考/demo.png",
   "项目开发/story-engine.md",
   "development/story-engine.md",
-  "Development/story-engine.md",
   "剧集/EP001/screenplay.md",
   "episodes/EP001/screenplay.md",
-  "Episodes/EP001/screenplay.md",
-  "剧集/EP001/notes.md",
   "设定集/characters.jsonl",
   "剧集/EP001/assets/image-prompts.md",
   "剧集/EP001/storyboard/shots.jsonl",
-  "剧集/EP001/media/demo.mp4",
+  "剧集/EP001/storyboard/coverage.json",
+  "剧集/EP001/storyboard/delivery-containers.jsonl",
   "创作者决策/EP001-script.json",
   "审查/EP001-findings.jsonl",
-  "交付/EP001/manifest.json",
-  "宣发/campaign.md"
+  "交付/EP001/manifest.json"
 ];
-process.stdout.write(JSON.stringify(paths.map((path) => logic.sectionOf(path))));
+process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(path))));
 """
         completed = subprocess.run(
             ["node", "-e", script],
@@ -894,30 +992,79 @@ process.stdout.write(JSON.stringify(paths.map((path) => logic.sectionOf(path))))
         self.assertEqual(
             json.loads(completed.stdout),
             [
-                "development",
-                "development",
-                "other",
-                "development",
-                "development",
-                "other",
-                "other",
-                "development",
-                "development",
-                "other",
-                "writing",
-                "writing",
-                "other",
-                "other",
-                "assets",
-                "assets",
+                None,
+                "project",
+                "sources",
+                "sources",
+                "project",
+                "project",
+                "story",
+                "story",
+                "cast",
+                "prompts",
                 "storyboard",
-                "other",
-                "review",
-                "review",
-                "review",
-                "other",
+                None,
+                None,
+                None,
+                None,
+                None,
             ],
         )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_structured_projection_removes_machine_fields(self) -> None:
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const projected = logic.creatorProjection({{
+  name: "林夏",
+  description: "克制、敏锐",
+  source_ref: {{artifact: "剧集/EP001/screenplay.md", hash: "a".repeat(64)}},
+  owner: "short-drama-assets",
+  schema_version: "1.0",
+  appearance: {{costume: "浅灰风衣", shape: "窄肩长款", shadow_direction: "右后方", evidence_hash: "b".repeat(64)}},
+  empathy: "嘴硬心软",
+  notes: [
+    "保留旧木盒",
+    "参考 剧集/EP001/screenplay.md 第三场",
+    {{path: "设定集/props.jsonl", value: "木盒", revision: "c".repeat(40)}}
+  ],
+  lifecycle: {{status: "candidate"}},
+  local_file: "/Users/creator/project/notes",
+}});
+process.stdout.write(JSON.stringify(projected));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        visible = completed.stdout
+        projected = json.loads(visible)
+
+        self.assertEqual(projected["name"], "林夏")
+        self.assertEqual(projected["description"], "克制、敏锐")
+        self.assertEqual(
+            projected["appearance"],
+            {"costume": "浅灰风衣", "shape": "窄肩长款", "shadow_direction": "右后方"},
+        )
+        self.assertEqual(projected["empathy"], "嘴硬心软")
+        self.assertIn("第三场", projected["notes"][1])
+        for forbidden in (
+            "source_ref",
+            "artifact",
+            "hash",
+            "owner",
+            "schema_version",
+            "short-drama-assets",
+            "剧集/EP001/screenplay.md",
+            "设定集/props.jsonl",
+            "candidate",
+            "/Users/creator/project/notes",
+            "c" * 40,
+        ):
+            self.assertNotIn(forbidden, visible)
 
     def test_open_flag_is_opt_in(self) -> None:
         class FakeServer:
@@ -966,6 +1113,162 @@ process.stdout.write(JSON.stringify(paths.map((path) => logic.sectionOf(path))))
             finally:
                 first.server_close()
                 second.server_close()
+
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_preserves_creator_content_the_projection_used_to_delete(self) -> None:
+        # A look's validity range reads like a path but is a creator id. Deleting
+        # it left the row as "—", so the creator saw no validity range at all.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const projected = logic.creatorProjection({{
+  validity: {{ from: "EP003/SC004/BLK-EP003-SC004-A01", until: "EP003/SC006/BLK-EP003-SC006-A03" }},
+  source: "\u5267\u96c6/EP001/storyboard/shots.jsonl",
+}});
+process.stdout.write(JSON.stringify([
+  projected.validity?.from ?? null,
+  Object.prototype.hasOwnProperty.call(projected, "source"),
+  logic.friendlyKey("look_id") !== logic.friendlyKey("base_look_id"),
+]));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(
+            json.loads(completed.stdout),
+            ["EP003/SC004/BLK-EP003-SC004-A01", False, True],
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_editable_suffixes_match_the_server(self) -> None:
+        # The client must not shadow the server with a narrower allowlist: that
+        # silently removed subtitle editing, a shipped feature.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        editable = sorted(dashboard_server.TEXT_EXTENSIONS)
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const suffixes = {json.dumps(editable)};
+process.stdout.write(JSON.stringify(
+  suffixes.map((suffix) => logic.creatorEditable({{ writable: true, path: `a/b${{suffix}}` }})),
+));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(json.loads(completed.stdout), [True] * len(editable))
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_keeps_unexpected_creator_files_reachable(self) -> None:
+        # The workspace is the only UI, so a file it refuses to list is a file the
+        # creator cannot open at all. Machine and lifecycle roots stay hidden.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const paths = [
+  "\u5907\u5fd8.md",
+  "\u53c2\u8003\u8d44\u6599/topic.md",
+  "short-drama.json",
+  "\u5ba1\u67e5/EP001-findings.jsonl",
+  "\u4ea4\u4ed8/EP001/manifest.json",
+];
+process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(path))));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(
+            json.loads(completed.stdout),
+            ["other", "other", None, None, None],
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_preview_survives_one_malformed_record(self) -> None:
+        # An interrupted agent run leaves a truncated line. The records around it
+        # must still render, or the file becomes unreadable and unrepairable.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const rows = logic.readJsonLines('{{"a":1}}\\n{{broken\\n{{"c":3}}');
+process.stdout.write(JSON.stringify(rows.map((row) => (row.error ? "error" : "record"))));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(json.loads(completed.stdout), ["record", "error", "record"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_renders_prompt_blocks_and_numbered_steps(self) -> None:
+        # Generated prompts are meant to be selected and copied as one block, and
+        # numbered shot order must not read as unrelated sentences.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+class N {{
+  constructor(tag) {{ this.tagName = (tag || "").toUpperCase(); this.children = []; this.textContent = ""; this.className = ""; this.dataset = {{}}; }}
+  append(...kids) {{ for (const kid of kids) this.children.push(kid); }}
+  get text() {{ return this.textContent || this.children.map((kid) => (kid.text !== undefined ? kid.text : String(kid.data ?? ""))).join(""); }}
+}}
+const logic = require({json.dumps(str(app))});
+globalThis.document = {{
+  createElement: (tag) => new N(tag),
+  createTextNode: (data) => ({{ data, text: String(data) }}),
+  createDocumentFragment: () => new N("#fragment"),
+  getElementById: () => null,
+}};
+const rendered = logic.renderMarkdown("```\\nopen the door, 9:16\\n# camera: dolly in\\n```\\n\\n1. near\\n2. mid\\n\\n- note");
+const block = rendered.children.find((node) => node.tagName === "PRE");
+process.stdout.write(JSON.stringify([
+  rendered.children.map((node) => node.tagName),
+  Boolean(block && block.text.includes("# camera: dolly in")),
+]));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        tags, fence_kept = json.loads(completed.stdout)
+        self.assertEqual(tags, ["PRE", "OL", "UL"])
+        self.assertTrue(fence_kept)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_rail_opens_with_the_screenplay(self) -> None:
+        # Raw directory order buried the screenplay below every generated prompt.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+const files = [
+  {{ path: "\u5267\u96c6/EP001/storyboard/keyframe-prompts.md" }},
+  {{ path: "\u5267\u96c6/EP001/assets/image-prompts.md" }},
+  {{ path: "\u5267\u96c6/EP001/screenplay.md" }},
+  {{ path: "\u5267\u96c6/EP001/storyboard/shots.jsonl" }},
+];
+process.stdout.write(JSON.stringify(logic.orderedForReading(files).map((file) => file.path.split("/").pop())));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        self.assertEqual(json.loads(completed.stdout)[0], "screenplay.md")
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
+    def test_frontend_translates_server_protocol_messages(self) -> None:
+        # The server's English protocol strings were reaching the creator UI raw.
+        app = dashboard_server.STATIC_ROOT / "app.js"
+        script = f"""
+const logic = require({json.dumps(str(app))});
+process.stdout.write(JSON.stringify([
+  logic.friendlyFailure("file changed since it was opened"),
+  logic.friendlyFailure("an unmapped message"),
+  logic.creatorTitle({{ zh: "\u6d4b\u8bd5" }}),
+  logic.creatorTitle("\u9006\u5149\u544a\u767d"),
+]));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script], check=True, capture_output=True, text=True
+        )
+        translated, passthrough, guarded, kept = json.loads(completed.stdout)
+        self.assertNotIn("file changed", translated)
+        self.assertEqual(passthrough, "an unmapped message")
+        self.assertEqual(guarded, "未命名短剧")
+        self.assertEqual(kept, "逆光告白")
 
 
 class DashboardHTTPTests(unittest.TestCase):
@@ -1067,7 +1370,7 @@ class DashboardHTTPTests(unittest.TestCase):
     def test_serves_frontend_and_calls_real_project_status(self) -> None:
         status, headers, body = self.request("GET", "/")
         self.assertEqual(status, 200)
-        self.assertIn("项目控制台", body.decode("utf-8"))
+        self.assertIn("短剧创作台", body.decode("utf-8"))
         self.assertIn("Content-Security-Policy", headers)
         status, _, body = self.request("GET", "/app.js")
         self.assertEqual(status, 200)
@@ -1077,7 +1380,9 @@ class DashboardHTTPTests(unittest.TestCase):
             frontend,
         )
         self.assertIn("cleanupMedia", frontend)
-        self.assertIn('file.path.toLowerCase() === "readme.md"', frontend)
+        self.assertIn("collectEpisodes", frontend)
+        self.assertIn("renderProjectSummary", frontend)
+        self.assertIn("renderContentList", frontend)
         self.assertGreater(len(frontend.splitlines()), 100)
 
         project_id = self.project_id()
