@@ -31,8 +31,8 @@
 1. `master_motion_id`：它补的是哪一版；`supplements_motion_ids`：它实际补上了哪几段。
 2. `source_obligations`：把原文要求**逐项列出**——动作、反应、对白、揭示、项目要求、
    结束边界，每项带准确的 `source_ref`。
-3. 每项要求的 `disposition`：由本版本承担 / 留在母版 / 交给另一个补拍版本 /
-   必须退回分镜修改。**不允许留空**。
+3. 每项要求的 `disposition`，以及它当前落在哪个 `motion_field`：由本版本承担 /
+   留在母版 / 交给另一个补拍版本 / 必须退回分镜修改。**不允许留空**。
 4. `replacement_intent`：只能**提出**替代请求。
 
 接着上面的例子，那个特写版的 `source_obligations` 大致是这样：

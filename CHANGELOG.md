@@ -85,8 +85,11 @@
   [`audience-reveal.md`](skills/short-drama/references/audience-reveal.md)、
   [`pickup-and-alternate.md`](skills/short-drama/references/pickup-and-alternate.md)，
   各自独立、各自带一个具体例子（构图绑定、声音放而脸扣住、缩小范围后丢掉的那条要求去哪了）。
-  **记为变更**：规则、字段与契约一条未改，只有文件路径变了；引用旧路径的外部链接需要更新。
-  首尾帧契约随"参考图能决定什么"迁入 `reference-roles.md`。
+  **记为变更**：规则与契约一条未改，只有文件路径变了；引用旧路径的外部链接需要更新
+  （`demo/` 下两处已同步）。首尾帧契约随"参考图能决定什么"迁入 `reference-roles.md`；
+  `observation_kind` / `evidence_state` 段落与 `audience_visibility`、`motion_field`
+  两个字段名在首版拆分中曾被漏掉，已回填——独立审查发现 `VID-20` 恰好依赖
+  `generated_result`，而同一次提交删掉了它的定义。
 
 - **视觉/运动审查表拆开复合问题**。此前单条 checklist 最长 492 字符，一句话里问四五件事，
   审查者无法逐条回答，实际结果是整条跳过。现在按"一条只问一件事"重写，最长 251 字符。

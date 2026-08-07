@@ -75,6 +75,7 @@
   text surfaces, and spatial anchors keep their required position, count, and state?
 - Does each media reference state its exact purpose, what may be copied, and what
   must not be copied, rather than treating all visible pixels as authority?
+
 For a pickup or alternate, ask these separately:
 
 - Does `coverage_scope` bind each exact source obligation?

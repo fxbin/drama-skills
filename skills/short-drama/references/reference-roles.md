@@ -4,6 +4,7 @@
 
 - [绑定前先回答四个问题](#绑定前先回答四个问题)
 - [绑定不等于看过](#绑定不等于看过)
+- [两种观察不能混成一条](#两种观察不能混成一条)
 - [每种用途允许借用什么](#每种用途允许借用什么)
 - [多图、联系表与首尾帧](#多图联系表与首尾帧)
 - [审查顺序](#审查顺序)
@@ -37,7 +38,22 @@
 | `unverified` | 只有 JSON 或文字描述，媒体不可见或没有授权 | **不得**声称像素、文字、水印或裁切已通过 |
 
 前两种都要绑定准确的 `reference_observation_ref`，记录所看文件的 `hash`、检查区域、
-文字处理结论、检查方式与未决风险。
+文字处理结论、检查方式与未决风险，格式见
+[reference-observation.example.jsonl](../assets/reference-observation.example.jsonl)。
+
+### 两种观察不能混成一条
+
+输入准入记录固定写 `observation_kind: input_reference`——它只支持"这张参考图上有什么"。
+
+若创作者另行提供某个准确提示词/规格版本下的授权**生产**观察，用独立的
+[production-observation.example.jsonl](../assets/production-observation.example.jsonl)，写
+`observation_kind: generated_result`、`evidence_state: active`，并绑定 prompt/spec、
+稳定参考槽位与制作配置。
+
+`evidence_state: active` 只表示这份证据仍可使用，**不表示产物通过或被接受**。
+
+两种观察不能混为一条：一条讲输入里有什么，另一条讲某次结果发生了什么，能支持的结论
+完全不同。任务成功、结果地址或文件存在，都不能代替其中任何一种。
 
 两条容易被绕过的边界：
 
@@ -61,7 +77,7 @@
 
 "只参考构图"是有效而且重要的边界：可以借用前景/背景占比和压迫关系，同时明确不导入图中
 角色、服装、道具、文字与事件。尺度也优先写成可比较的空间关系、遮挡和画面占比；
-具体比例只有被创作者接受后才是约束，不能从案例总结成通用数字。
+具体比例只有被创作者或项目配置接受后才是约束，不能从案例总结成通用数字。
 
 ### 合成示例
 
@@ -75,7 +91,8 @@
     "owner": "short-drama-storyboard",
     "artifact": "剧集/EP001/storyboard/keyframes.jsonl",
     "hash": "<sha256>",
-    "record_id": "KEY-012"
+    "record_id": "KEY-012",
+    "authority": "candidate"
   },
   "role": "composition",
   "may_control": ["主体占画比例", "镜头所在一侧", "留白位置"],
@@ -115,5 +132,5 @@
 3. 观察记录是否存在，没有证据是否老实保持 `unverified`；
 4. 最后才评价措辞与审美。
 
-不要用引用数量、固定裁切方式或提示词长度代替这些判断，也不要从文字规格声称身份或特效
+不要用引用数量、固定裁切方式、关键词清单或提示词长度代替这些判断，也不要从文字规格声称身份或特效
 在真实成片里已经成功。
