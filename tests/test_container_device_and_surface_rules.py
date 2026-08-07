@@ -379,7 +379,12 @@ class ExecutionRouteAndTriggerTokenTests(unittest.TestCase):
         )
         self.assertIn("VID-13", vid20)
         self.assertIn("VID-15", vid20)
-        self.assertRegex(vid20, r"long-form generation.*\bis\b.*container")
+        # Not a regex: `.*` spans a negation, so "is not a multi-shot container"
+        # would satisfy the very pattern meant to forbid it. Emphasis is stripped
+        # so the assertion does not also depend on the italics markers.
+        flat = vid20.replace("*", "")
+        self.assertIn("is a multi-shot container", flat)
+        self.assertIn("is billed under VID-13 and VID-15", flat)
 
     def test_continuation_start_is_evidence_not_an_accepted_artifact(self) -> None:
         """A generated result has no authority, so it cannot become a boundary."""
