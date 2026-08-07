@@ -53,6 +53,9 @@ class NewRuleRegistrationTests(unittest.TestCase):
             "SHT-16": "structural_invariant",
             "SHT-17": "structural_invariant",
             "VID-15": "structural_invariant",
+            "VID-19": "reviewed_invariant",
+            "VID-20": "reviewed_invariant",
+            "REV-11": "reviewed_invariant",
         }
         for rule_id, classification in expected.items():
             with self.subTest(rule=rule_id):
@@ -324,6 +327,191 @@ class EpisodeDurationArithmeticTests(unittest.TestCase):
         )
         self.assertIn("VID-15", profile)
         self.assertIn("不重不漏", profile)
+
+
+class ExecutionRouteAndTriggerTokenTests(unittest.TestCase):
+    """Routes decide where a generation starts; tokens decide whether it routes."""
+
+    PROFILE = SKILLS / "short-drama-video-prompts/references/delivery-profile.md"
+    CONTRACT = SKILLS / "short-drama-video-prompts/references/stage-contract.md"
+    GRAMMAR = (
+        SKILLS / "short-drama-video-prompts/references/production-prompt-grammar.md"
+    )
+
+    @staticmethod
+    def table_rows(text: str, header_cell: str) -> list[list[str]]:
+        """Body rows of the first markdown table whose header names `header_cell`."""
+
+        rows: list[list[str]] = []
+        collecting = False
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("|"):
+                if collecting:
+                    break
+                continue
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if not collecting:
+                collecting = header_cell in cells
+                continue
+            if set("".join(cells)) <= set("-: "):
+                continue
+            rows.append(cells)
+        return rows
+
+    def test_exactly_one_route_starts_from_a_generated_result(self) -> None:
+        """The evidence obligation attaches to that route and no other. Asserting
+        the shape of the table survives rewording; asserting its prose does not."""
+
+        rows = self.table_rows(read(self.PROFILE), "路由")
+        self.assertEqual(len(rows), 4, [r[0] for r in rows])
+        from_result = [r for r in rows if "已生成" in r[1] or "结果" in r[1]]
+        self.assertEqual(len(from_result), 1, [r[1] for r in rows])
+        self.assertIn("续接", from_result[0][0])
+
+    def test_long_form_generation_is_billed_under_the_container_rules(self) -> None:
+        """Otherwise it is a documented way around two structural invariants:
+        VID-13's scene-boundary constraint and VID-15's episode accounting."""
+
+        vid20 = next(
+            line for line in read(self.CONTRACT).splitlines()
+            if line.startswith("| VID-20 |")
+        )
+        self.assertIn("VID-13", vid20)
+        self.assertIn("VID-15", vid20)
+        # Not a regex: `.*` spans a negation, so "is not a multi-shot container"
+        # would satisfy the very pattern meant to forbid it. Emphasis is stripped
+        # so the assertion does not also depend on the italics markers.
+        flat = vid20.replace("*", "")
+        self.assertIn("is a multi-shot container", flat)
+        self.assertIn("is billed under VID-13 and VID-15", flat)
+
+    def test_continuation_start_is_evidence_not_an_accepted_artifact(self) -> None:
+        """A generated result has no authority, so it cannot become a boundary."""
+
+        vid20 = next(
+            line for line in read(self.CONTRACT).splitlines()
+            if line.startswith("| VID-20 |")
+        )
+        self.assertIn("not an accepted artifact", vid20)
+        self.assertIn("`unverified`", vid20)
+
+    def test_trigger_tokens_are_a_sibling_of_the_dialogue_fence(self) -> None:
+        """Both are 'text that must survive rewriting', so they belong under one
+        heading; splitting them apart is what let tokens go unmodelled before."""
+
+        headings = [
+            line.strip() for line in read(self.PROFILE).splitlines()
+            if line.startswith(("## ", "### "))
+        ]
+        fence = next(i for i, h in enumerate(headings) if "逐字对白围栏" in h)
+        token = next(i for i, h in enumerate(headings) if "执行触发词" in h)
+        self.assertTrue(headings[fence].startswith("### "))
+        self.assertTrue(headings[token].startswith("### "))
+        parent = max(
+            i for i, h in enumerate(headings[:fence]) if h.startswith("## ")
+        )
+        self.assertFalse(
+            any(h.startswith("## ") for h in headings[parent + 1 : token]),
+            "the token subsection drifted out from under the dialogue-fence H2",
+        )
+
+    def test_the_suite_invents_no_token_of_its_own(self) -> None:
+        """Tokens are surface facts; inventing one prints words on screen."""
+
+        vid19 = next(
+            line for line in read(self.CONTRACT).splitlines()
+            if line.startswith("| VID-19 |")
+        )
+        self.assertIn("invents none", vid19)
+
+    def test_capability_has_three_bands_not_two(self) -> None:
+        """Supported/unsupported hides the band that is legal but retry-hungry."""
+
+        rows = self.table_rows(read(self.GRAMMAR), "区域")
+        self.assertEqual(len(rows), 3, [r[0] for r in rows])
+        self.assertTrue(any("不稳定" in r[0] for r in rows), [r[0] for r in rows])
+
+    def test_no_conservative_number_is_invented_from_a_range(self) -> None:
+        grammar = read(self.GRAMMAR).replace("\n", "")
+        self.assertIn("不自行推断一个更保守的数字当成事实", grammar)
+
+    def test_execution_side_outcomes_are_not_asserted_as_fact(self) -> None:
+        """The suite calls no generation service, so it cannot know what a given
+        surface does. Rules may say what to preserve, never what will happen."""
+
+        for path in (self.PROFILE, self.CONTRACT, self.GRAMMAR):
+            text = read(path).replace("\n", "")
+            with self.subTest(reference=path.name):
+                self.assertNotIn("静默退回默认路径", text)
+                self.assertNotIn("因为它不报错", text)
+
+
+class CalibrationDispositionTests(unittest.TestCase):
+    """Diagnosis names the defect; disposition decides who should pay to fix it."""
+
+    CALIBRATION = SKILLS / "short-drama-review/references/project-calibration.md"
+    CONTRACT = SKILLS / "short-drama-review/references/stage-contract.md"
+
+    def test_all_five_dispositions_are_offered(self) -> None:
+        calibration = read(self.CALIBRATION)
+        for disposition in ("保留", "后期处理", "局部编辑", "重新提交", "改写"):
+            with self.subTest(disposition=disposition):
+                self.assertIn(f"| {disposition} |", calibration)
+
+    def test_the_finding_record_can_actually_carry_a_disposition(self) -> None:
+        """REV-11 is unenforceable if the canonical record has no slot for it."""
+
+        finding = json.loads(
+            read(SKILLS / "short-drama-review/assets/finding-template.jsonl").strip()
+        )
+        self.assertIn("disposition", finding)
+        self.assertIn("disposition_rationale", finding)
+        offered = {v.strip() for v in finding["disposition"].split("|")}
+        self.assertEqual(
+            offered,
+            {"keep", "post_production", "targeted_edit", "resubmit", "rewrite",
+             "not_applicable"},
+        )
+        keys = list(finding)
+        self.assertLess(
+            keys.index("disposition"),
+            keys.index("required_change"),
+            "disposition must precede revision text (REV-11)",
+        )
+
+    def test_disposition_precedes_revision_text(self) -> None:
+        """Skipping it silently assumes every defect is the prompt's fault."""
+
+        calibration = read(self.CALIBRATION)
+        self.assertLess(
+            calibration.index("## 诊断之后先定处置，再谈修订"),
+            calibration.index("## 单变量有界修订"),
+        )
+        self.assertIn(
+            "before any revision text", read(self.CONTRACT).replace("\n", " ")
+        )
+
+    def test_resubmission_and_adjectives_are_not_repairs(self) -> None:
+        """Both change the bill without changing an executable fact."""
+
+        calibration = read(self.CALIBRATION).replace("\n", "")
+        self.assertIn("不要用增加形容词的方式回应重复缺陷", calibration)
+        self.assertIn("是在为同一个错误反复付费，而每次都不产生新信息", calibration)
+
+        contract = read(self.CONTRACT).replace("\n", " ")
+        self.assertIn("are not repairs", contract)
+
+    def test_post_production_is_a_first_class_outcome(self) -> None:
+        """Defects outside text should not be answered by editing the prompt."""
+
+        calibration = read(self.CALIBRATION).replace("\n", "")
+        self.assertIn("缺陷是否落在文字能控制的范围内", calibration)
+        self.assertIn("改提示词只会引入新变量", calibration)
+
+    def test_pickup_bookkeeping_starts_only_after_a_disposition(self) -> None:
+        calibration = read(self.CALIBRATION).replace("\n", "")
+        self.assertIn("只有选择了局部编辑或改写", calibration)
 
 
 class EndKeyframeContractTests(unittest.TestCase):
