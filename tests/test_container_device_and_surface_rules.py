@@ -53,6 +53,9 @@ class NewRuleRegistrationTests(unittest.TestCase):
             "SHT-16": "structural_invariant",
             "SHT-17": "structural_invariant",
             "VID-15": "structural_invariant",
+            "VID-19": "reviewed_invariant",
+            "VID-20": "reviewed_invariant",
+            "REV-11": "reviewed_invariant",
         }
         for rule_id, classification in expected.items():
             with self.subTest(rule=rule_id):
@@ -324,6 +327,126 @@ class EpisodeDurationArithmeticTests(unittest.TestCase):
         )
         self.assertIn("VID-15", profile)
         self.assertIn("不重不漏", profile)
+
+
+class ExecutionRouteAndTriggerTokenTests(unittest.TestCase):
+    """Routes decide where a generation starts; tokens decide whether it routes."""
+
+    PROFILE = SKILLS / "short-drama-video-prompts/references/delivery-profile.md"
+    CONTRACT = SKILLS / "short-drama-video-prompts/references/stage-contract.md"
+    GRAMMAR = (
+        SKILLS / "short-drama-video-prompts/references/production-prompt-grammar.md"
+    )
+
+    def test_packing_routes_do_not_disturb_shot_boundaries(self) -> None:
+        """One long generation is still many shots; only the packing changed."""
+
+        contract = read(self.CONTRACT).replace("\n", " ")
+        self.assertIn("change delivery granularity only", contract)
+        self.assertIn("per-shot reviewability intact", contract)
+
+    def test_continuation_start_is_evidence_not_an_accepted_artifact(self) -> None:
+        """A generated result has no authority, so it cannot become a boundary."""
+
+        contract = read(self.CONTRACT).replace("\n", " ")
+        self.assertIn("observation evidence and not an accepted artifact", contract)
+        self.assertIn("remains `unverified`", contract)
+
+        # Prose wraps with a hanging indent, so assert on spans that sit inside
+        # one source line rather than reflowing the reference to fit the test.
+        profile = read(self.PROFILE).replace("\n", "")
+        self.assertIn("已接受的镜头起始边界仍是唯一权威", profile)
+        self.assertIn("就把观察到的状态回写成镜头边界", profile)
+        self.assertIn("最多只能是一条 `generated_result` 观察记录", profile)
+
+    def test_trigger_tokens_fail_silently_so_the_text_says_so(self) -> None:
+        """A paraphrased token does not error; it just stops routing."""
+
+        profile = read(self.PROFILE).replace("\n", "")
+        self.assertIn("缺失时不会报错", profile)
+        self.assertIn("静默退回默认路径", profile)
+        self.assertIn("逐字节出现", profile)
+
+    def test_trigger_tokens_stay_outside_the_verbatim_dialogue_fence(self) -> None:
+        """Inside the fence a token would be spoken or displayed instead."""
+
+        profile = read(self.PROFILE).replace("\n", "")
+        self.assertIn("**不进逐字对白围栏**", profile)
+
+    def test_the_suite_invents_no_token_of_its_own(self) -> None:
+        """Tokens are surface facts; inventing one prints words on screen."""
+
+        profile = read(self.PROFILE).replace("\n", "")
+        self.assertIn("本套件不规定任何具体字样", profile)
+        self.assertIn("档案没有声明就不写", profile)
+        self.assertIn(
+            "invents none", read(self.CONTRACT).replace("\n", " ")
+        )
+
+    def test_capability_has_a_middle_state_between_supported_and_not(self) -> None:
+        """The unstable band costs retries, and it never reports an error."""
+
+        grammar = read(self.GRAMMAR).replace("\n", "")
+        self.assertIn("能力说明有三种状态，不是两种", grammar)
+        self.assertIn("不稳定区", grammar)
+        self.assertIn("最容易被漏掉，因为它不报错", grammar)
+
+    def test_the_unstable_band_is_decided_before_submission(self) -> None:
+        """After submission the narrowing option is gone and only cost remains."""
+
+        grammar = read(self.GRAMMAR).replace("\n", "")
+        self.assertIn("**在写的时候就收窄**", grammar)
+        self.assertIn("交出去之后，收窄的机会就没有了", grammar)
+
+    def test_no_conservative_number_is_invented_from_a_range(self) -> None:
+        grammar = read(self.GRAMMAR).replace("\n", "")
+        self.assertIn("不自行推断一个更保守的数字当成事实", grammar)
+
+
+class CalibrationDispositionTests(unittest.TestCase):
+    """Diagnosis names the defect; disposition decides who should pay to fix it."""
+
+    CALIBRATION = SKILLS / "short-drama-review/references/project-calibration.md"
+    CONTRACT = SKILLS / "short-drama-review/references/stage-contract.md"
+
+    def test_all_five_dispositions_are_offered(self) -> None:
+        calibration = read(self.CALIBRATION)
+        for disposition in ("保留", "后期处理", "局部编辑", "重新提交", "改写"):
+            with self.subTest(disposition=disposition):
+                self.assertIn(f"| {disposition} |", calibration)
+
+    def test_disposition_precedes_revision_text(self) -> None:
+        """Skipping it silently assumes every defect is the prompt's fault."""
+
+        calibration = read(self.CALIBRATION)
+        self.assertLess(
+            calibration.index("## 诊断之后先定处置，再谈修订"),
+            calibration.index("## 单变量有界修订"),
+        )
+        self.assertIn(
+            "before any revision text", read(self.CONTRACT).replace("\n", " ")
+        )
+
+    def test_resubmission_and_adjectives_are_not_repairs(self) -> None:
+        """Both change the bill without changing an executable fact."""
+
+        calibration = read(self.CALIBRATION).replace("\n", "")
+        self.assertIn("不要用增加形容词的方式回应重复缺陷", calibration)
+        self.assertIn("是在为同一个错误反复付费，而每次都不产生新信息", calibration)
+
+        contract = read(self.CONTRACT).replace("\n", " ")
+        self.assertIn("are not repairs", contract)
+
+    def test_post_production_is_a_first_class_outcome(self) -> None:
+        """Defects outside text should not be answered by editing the prompt."""
+
+        calibration = read(self.CALIBRATION).replace("\n", "")
+        self.assertIn("缺陷是否落在文字能控制的范围内", calibration)
+        self.assertIn("改提示词只会引入新变量", calibration)
+
+    def test_pickup_bookkeeping_starts_only_after_a_disposition(self) -> None:
+        calibration = read(self.CALIBRATION).replace("\n", "")
+        self.assertIn("只有选择了局部编辑或改写", calibration)
 
 
 class EndKeyframeContractTests(unittest.TestCase):

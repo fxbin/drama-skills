@@ -90,6 +90,7 @@
 | REV-08 | craft_default | When authorized text notes report production defects, trace text/subtitle residue, music-boundary violations, wardrobe drift, axis breaks, or lip-sync mismatch to the exact prompt/spec text and keep unobserved outcomes unknown. |
 | REV-09 | reviewed_invariant | After prompt revision or repackaging, recheck source coverage and every applicable accepted directive; correct asset bindings alone do not prove compliance. |
 | REV-10 | reviewed_invariant | A project-calibration finding distinguishes input-reference from generated-result observation, binds the exact project, prompt/spec hashes, stable reference slots, production configuration, method and limits, and proposes the smallest owner-routed change with a preserve set; it does not generalize across projects or infer quality from task state. |
+| REV-11 | reviewed_invariant | A calibration finding states its disposition—keep, post-production, targeted edit, resubmit, or rewrite—before any revision text, justified by whether the defect is text-controllable and whether it has already recurred. Resubmitting identical text and appending quality adjectives are not repairs; a recurring defect routes to a structural change instead. |
 
 规则分级由高到低：`structural_invariant`（结构缺陷，阻断）、
 `reviewed_invariant`（需证据判断）、`craft_default`（常用做法，可覆盖）、

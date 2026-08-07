@@ -425,9 +425,11 @@ class ContentEffectWorkflowTests(unittest.TestCase):
             self.assertIn(phrase, calibration)
 
     def test_secondary_contracts_preserve_end_frame_and_shot_identity_semantics(self) -> None:
-        media = (
-            SKILLS / "short-drama/references/reference-media-and-pickups.md"
-        ).read_text(encoding="utf-8")
+        # The old reference-media-and-pickups.md juggled three unrelated topics in
+        # one file; the first/last-frame contract now lives with reference roles.
+        media = (SKILLS / "short-drama/references/reference-roles.md").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("默认 start", media)
         self.assertIn("boundary_role: end", media)
         self.assertIn("end_boundary", media)
