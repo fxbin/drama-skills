@@ -13,28 +13,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Gates the product's own promises: the suite passes, and the shipped tree
-  # matches the hashes in suite-manifest.json. The manifest check is separate
-  # because a stale manifest tells every installer the suite is tampered, which
-  # is exactly the failure that reached a pull request before this workflow
-  # existed.
+  # Exercise the declared Python floor and the newest supported CI runtime.
+  # The tests use unittest directly, so CI does not install a second test runner.
   test:
     name: tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: python -m pip install --disable-pip-version-check pytest==9.1.1
-      - name: pytest
-        run: python -m pytest -q
-      - name: suite manifest matches the shipped tree
-        run: python tools/verify_suite.py skills/short-drama
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: unit tests
+        run: python -B -m unittest discover -s tests -v
 
   # Tool versions are pinned on purpose. This repository has no dependency
   # manifest, so an unpinned `pip install ruff` turns main red the next time
@@ -48,6 +45,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: suite manifest matches the shipped tree
+        run: python tools/verify_suite.py skills/short-drama
       - run: python -m pip install --disable-pip-version-check ruff==0.15.11 mypy==2.3.0
       - name: ruff
         run: ruff check skills tests tools

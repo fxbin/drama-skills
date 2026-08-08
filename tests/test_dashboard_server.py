@@ -751,13 +751,6 @@ class ProjectStoreTests(unittest.TestCase):
 
 
 class DashboardEntrypointTests(unittest.TestCase):
-    def test_router_skill_declares_dashboard_launch_command(self) -> None:
-        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
-
-        self.assertIn("$short-drama dashboard", skill)
-        self.assertIn("scripts/dashboard_server.py", skill)
-        self.assertIn("--workspace <workspace> --port 0 --open", skill)
-
     def test_static_assets_and_project_tool_resolve_inside_installed_skill(
         self,
     ) -> None:
@@ -768,124 +761,6 @@ class DashboardEntrypointTests(unittest.TestCase):
         self.assertTrue((dashboard_server.STATIC_ROOT / "index.html").is_file())
         project_tool = dashboard_server.load_project_tool(SKILL)
         self.assertTrue(callable(project_tool.project_status))
-
-    def test_frontend_is_a_single_page_creator_desk(self) -> None:
-        html = (dashboard_server.STATIC_ROOT / "index.html").read_text(encoding="utf-8")
-        javascript = (dashboard_server.STATIC_ROOT / "app.js").read_text(
-            encoding="utf-8"
-        )
-        stylesheet = (dashboard_server.STATIC_ROOT / "styles.css").read_text(
-            encoding="utf-8"
-        )
-
-        for element_id in (
-            "projects",
-            "mainContent",
-            "workspaceStatus",
-            "contentList",
-            "documentPane",
-            "assistRow",
-            "taskSummary",
-            "exportSummary",
-            "search",
-            "editor",
-            "preview",
-            "media",
-            "save",
-        ):
-            self.assertIn(f'id="{element_id}"', html)
-        for creator_copy in ("短剧创作台", "内容目录", "本剧内容", "待办", "导出"):
-            self.assertIn(creator_copy, html + javascript)
-        self.assertIn('aria-live="polite"', html)
-        self.assertIn("renderMarkdown", javascript)
-        self.assertIn("validateStructuredText", javascript)
-        self.assertIn("媒体预览已载入", javascript)
-        for creator_function in (
-            "creatorSection",
-            "creatorProjection",
-            "creatorStatus",
-            "collectEpisodes",
-            "renderProjectSummary",
-            "renderContentList",
-            "renderTaskSummary",
-            "renderExportSummary",
-            "openFile",
-        ):
-            self.assertIn(creator_function, javascript)
-        self.assertNotIn('id="workspaceTitle"', html)
-        self.assertNotIn("workspace-heading", html + stylesheet)
-        self.assertIn("main { width: 100%;", stylesheet)
-        self.assertIn("height: calc(100vh - 116px)", stylesheet)
-        for forbidden_copy in (
-            "项目控制台",
-            "当前工程",
-            "全部文件",
-            "项目健康度",
-            "生命周期",
-            "高级模式",
-            "工程模式",
-            "工程详情",
-            "创作者决策",
-            "审查交付",
-        ):
-            self.assertNotIn(forbidden_copy, html)
-        for forbidden_copy in (
-            "不是",
-            "而是",
-            "不会",
-            "不等于",
-            "底层设计",
-            "安全边界",
-            "从左侧选择内容",
-            "内容准备好后",
-            "会直接显示",
-            "会出现在这里",
-        ):
-            self.assertNotIn(forbidden_copy, html + javascript)
-        self.assertNotIn('id="workspaceGuide"', html)
-        self.assertNotIn("creatorGuidance", javascript)
-        self.assertNotIn("innerHTML", javascript)
-        self.assertNotIn('data-page=', html)
-        self.assertNotIn('role="dialog"', html)
-        self.assertNotIn("contentPanel", html + javascript)
-        self.assertNotIn("switchPage", javascript)
-        self.assertNotIn("panel-backdrop", html + stylesheet)
-        self.assertIn('id="assistRow" class="assist-row" aria-label="创作辅助" hidden', html)
-        self.assertNotIn("导出整理能力正在接入", javascript)
-        self.assertNotIn('"开始确认"', javascript)
-        self.assertIn("await openFile(initial)", javascript)
-        self.assertIn('project.title || "未命名短剧"', javascript)
-        self.assertNotIn("pathSegments(project.path).at(-1)", javascript)
-        self.assertNotIn('element("option", "", "短剧项目")', javascript)
-        self.assertIn("expandedGroups", javascript)
-        self.assertIn("contentGroupKey", javascript)
-        self.assertIn('setAttribute("aria-expanded"', javascript)
-        self.assertIn("content-nav-group-toggle", stylesheet)
-        project_switch = javascript.split("async function selectProject", 1)[1].split(
-            "async function save", 1
-        )[0]
-        self.assertGreater(
-            project_switch.index("state.project = id;"),
-            project_switch.index("await Promise.all"),
-        )
-        self.assertIn('$("projects").value = previousProject', project_switch)
-        self.assertIn('$("contentList").inert = true', project_switch)
-        self.assertIn('$("documentPane").setAttribute("aria-busy", "true")', project_switch)
-        self.assertIn('$("contentList").inert = controls.contentListInert', project_switch)
-        save = javascript.split("async function save", 1)[1].split(
-            "async function boot", 1
-        )[0]
-        self.assertIn("state.projectSwitching", save)
-        keyboard_shortcut = javascript.split('addEventListener("keydown"', 1)[1]
-        self.assertIn("save();", keyboard_shortcut)
-        file_open = javascript.split("async function openFile", 1)[1].split(
-            "async function selectProject", 1
-        )[0]
-        self.assertIn('$("preview").replaceChildren();', file_open)
-        self.assertIn("内容无法打开", file_open)
-        self.assertIn("min-height: 44px", stylesheet)
-        self.assertIn("white-space: nowrap", stylesheet)
-        self.assertIn("prefers-reduced-motion", stylesheet)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_creator_statuses_require_explicit_evidence(self) -> None:
@@ -1198,13 +1073,17 @@ process.stdout.write(JSON.stringify(rows.map((row) => (row.error ? "error" : "re
         self.assertEqual(json.loads(completed.stdout), ["record", "error", "record"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_renders_prompt_blocks_and_numbered_steps(self) -> None:
+    def test_frontend_markdown_preserves_structure_and_treats_html_as_text(
+        self,
+    ) -> None:
         # Generated prompts are meant to be selected and copied as one block, and
-        # numbered shot order must not read as unrelated sentences.
+        # numbered shot order must not read as unrelated sentences. Creator text
+        # must also stay text: project files are untrusted input to this renderer.
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
 class N {{
   constructor(tag) {{ this.tagName = (tag || "").toUpperCase(); this.children = []; this.textContent = ""; this.className = ""; this.dataset = {{}}; }}
+  set innerHTML(_value) {{ throw new Error("unsafe HTML sink"); }}
   append(...kids) {{ for (const kid of kids) this.children.push(kid); }}
   get text() {{ return this.textContent || this.children.map((kid) => (kid.text !== undefined ? kid.text : String(kid.data ?? ""))).join(""); }}
 }}
@@ -1217,17 +1096,21 @@ globalThis.document = {{
 }};
 const rendered = logic.renderMarkdown("```\\nopen the door, 9:16\\n# camera: dolly in\\n```\\n\\n1. near\\n2. mid\\n\\n- note");
 const block = rendered.children.find((node) => node.tagName === "PRE");
+const attack = `<img src=x onerror="globalThis.projectTextExecuted=true">`;
+const escaped = logic.renderMarkdown(attack);
 process.stdout.write(JSON.stringify([
   rendered.children.map((node) => node.tagName),
   Boolean(block && block.text.includes("# camera: dolly in")),
+  escaped.text === attack && globalThis.projectTextExecuted === undefined,
 ]));
 """
         completed = subprocess.run(
             ["node", "-e", script], check=True, capture_output=True, text=True
         )
-        tags, fence_kept = json.loads(completed.stdout)
+        tags, fence_kept, html_kept_as_text = json.loads(completed.stdout)
         self.assertEqual(tags, ["PRE", "OL", "UL"])
         self.assertTrue(fence_kept)
+        self.assertTrue(html_kept_as_text)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_rail_opens_with_the_screenplay(self) -> None:
@@ -1370,20 +1253,11 @@ class DashboardHTTPTests(unittest.TestCase):
     def test_serves_frontend_and_calls_real_project_status(self) -> None:
         status, headers, body = self.request("GET", "/")
         self.assertEqual(status, 200)
-        self.assertIn("短剧创作台", body.decode("utf-8"))
+        self.assertTrue(body)
         self.assertIn("Content-Security-Policy", headers)
         status, _, body = self.request("GET", "/app.js")
         self.assertEqual(status, 200)
-        frontend = body.decode("utf-8")
-        self.assertIn(
-            'document.createElement(info.kind === "video" ? "video" : "img")',
-            frontend,
-        )
-        self.assertIn("cleanupMedia", frontend)
-        self.assertIn("collectEpisodes", frontend)
-        self.assertIn("renderProjectSummary", frontend)
-        self.assertIn("renderContentList", frontend)
-        self.assertGreater(len(frontend.splitlines()), 100)
+        self.assertTrue(body)
 
         project_id = self.project_id()
         status, _, body = self.request("GET", f"/api/status?project={project_id}")

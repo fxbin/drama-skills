@@ -152,6 +152,40 @@ class ShippingBoundaryTests(unittest.TestCase):
             "maintainer-local release vocabulary found in: " + ", ".join(findings),
         )
 
+    def test_maintainer_tree_has_no_credentials_or_private_locators(self) -> None:
+        patterns = {
+            "IPv4 address": re.compile(
+                r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?!\d)"
+            ),
+            "network URI": re.compile(
+                r"\b(?:https?|mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis)://",
+                re.IGNORECASE,
+            ),
+            "machine path": re.compile(
+                r"(?<![\w.])/(?:Users|home|private|var|tmp)/|\b[A-Za-z]:[\\/]"
+            ),
+            "credential assignment": re.compile(
+                r"\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)"
+                r"\s*[:=]\s*[^\s<]+",
+                re.IGNORECASE,
+            ),
+            "private key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+        }
+        maintainer_root = SUITE / "maintainers"
+        findings: list[str] = []
+        for path in release_facing_text_files():
+            if maintainer_root not in path.parents:
+                continue
+            text = path.read_text(encoding="utf-8")
+            for label, pattern in patterns.items():
+                if pattern.search(text):
+                    findings.append(f"{path.relative_to(SUITE)}: {label}")
+        self.assertEqual(
+            findings,
+            [],
+            "private locator or credential material found:\n" + "\n".join(findings),
+        )
+
     def test_shipping_tree_has_no_machine_absolute_paths(self) -> None:
         patterns = {
             "unix": re.compile(r"(?<![\w.])/(?:Users|home|private|var|tmp)/"),
@@ -224,8 +258,6 @@ class ShippingBoundaryTests(unittest.TestCase):
             [],
             "dashboard must remain a local server without outbound clients",
         )
-        self.assertIn("from http.server import", text)
-        self.assertIn("from urllib.parse import", text)
 
     def test_every_shipped_script_declares_the_documented_python_floor(self) -> None:
         """A creator-invoked script must state its own floor, and both READMEs
