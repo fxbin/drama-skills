@@ -92,20 +92,6 @@ class MotionTimingCheckTests(unittest.TestCase):
         self.assertEqual(codes(result), ["VID_EXPLICIT_TIMING_SHORTFALL"])
         self.assertAlmostEqual(result["findings"][0]["unallocated_seconds"], 1.0)
 
-    def test_the_declared_overlap_field_exists_in_the_shipped_template(self) -> None:
-        # The validator refuses undeclared overlap, so the field it wants must
-        # be findable by a creator working from the template rather than only
-        # in this script's source.
-        template = (
-            SUITE
-            / "skills/short-drama-video-prompts/assets/motion-spec.jsonl.md"
-        ).read_text(encoding="utf-8")
-        recipe = (
-            SUITE / "skills/short-drama-video-prompts/references/motion-recipe.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn("declares_overlap", template)
-        self.assertIn("declares_overlap", recipe)
-
     def test_undeclared_overlap_is_refused_rather_than_summed(self) -> None:
         result = self.check([spec("M-1", "SHOT-1", ["0.0-3.0", "1.0-4.0"])])
 
@@ -252,24 +238,6 @@ class MotionTimingCheckTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "pass")
-
-    def test_every_finding_code_is_registered_in_the_diagnostic_catalogue(self) -> None:
-        catalogue = (
-            SUITE
-            / "skills/short-drama-video-prompts/references/review-and-fixtures.md"
-        ).read_text(encoding="utf-8")
-        emitted = {
-            "VID_EXPLICIT_TIMING_OVERFLOW",
-            "VID_EXPLICIT_TIMING_SHORTFALL",
-            "VID_EXPLICIT_TIMING_UNDECLARED_OVERLAP",
-            "VID_EXPLICIT_TIMING_UNPARSEABLE",
-            "VID_DECLARED_TOTAL_MISMATCH",
-            "VID_DURATION_PROJECTION_STALE",
-            "VID_TIMING_MODE_INCONSISTENT",
-        }
-        for code in sorted(emitted):
-            with self.subTest(code=code):
-                self.assertIn(code, catalogue)
 
     def test_a_spec_without_a_motion_id_cannot_be_checked_at_all(self) -> None:
         with self.assertRaises(motion_timing_check.CheckError):

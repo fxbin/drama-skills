@@ -165,6 +165,11 @@
 
 ### 修复
 
+- **Lookdev 风格帧引用现在可从新建项目模板解析**：模板与参考资料一直要求
+  `direction_ref.field` 绑定
+  `/creator_authority/visual_direction/choices/look_development`，但新建项目的
+  `choices` 是空对象，引用在创作者接受视觉方向前没有合法落点。模板现在预留该字段为
+  `null`；接受决定仍负责写入实际选择，未接受状态不会被误判为已有视觉方向。
 - **统一首尾帧契约**：核心参考不再声称套件只有 start artifact；现与 storyboard 一致为默认
   start、执行方式需要时可增加 end，且 end 只投影 `end_boundary`，不是第二个终点权威。
 

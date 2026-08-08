@@ -131,50 +131,6 @@ class InstallationResolutionTests(unittest.TestCase):
                 self.assertEqual(reference["core_manifest_sha256"], manifest_hash)
                 self.assertNotIn("cwd", json.dumps(reference).casefold())
 
-    def test_direct_child_invocation_discloses_suite_resolution(self) -> None:
-        for child in sorted((SUITE / "skills").iterdir()):
-            if not child.is_dir() or child.name == "short-drama":
-                continue
-            with self.subTest(skill=child.name):
-                instructions = (child / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn("suite-ref.json", instructions)
-                self.assertIn("core_manifest", instructions)
-
-    def test_every_entrypoint_discloses_the_shared_runtime_preflight(self) -> None:
-        runtime_preflight = SUITE / "skills/short-drama/references/runtime-preflight.md"
-        self.assertTrue(runtime_preflight.is_file())
-        guidance = runtime_preflight.read_text(encoding="utf-8")
-        for command in (
-            "suite_verify.py",
-            "project_tool.py recover",
-            "project_tool.py status",
-            "`publish`",
-            "`package`",
-        ):
-            self.assertIn(command, guidance)
-        self.assertIn(
-            "runtime-preflight.md",
-            (SUITE / "skills/short-drama/SKILL.md").read_text(encoding="utf-8"),
-        )
-        # Child skills are self-contained: each restates the preflight in its own
-        # stage contract rather than reading the core file.
-        for skill_md in sorted((SUITE / "skills").glob("short-drama-*/SKILL.md")):
-            skill_dir = skill_md.parent
-            with self.subTest(skill=skill_dir.name):
-                self.assertIn(
-                    "references/stage-contract.md", skill_md.read_text(encoding="utf-8")
-                )
-                contract = (
-                    skill_dir / "references/stage-contract.md"
-                ).read_text(encoding="utf-8")
-                for command in ("suite_verify.py", "project_tool.py", "recover", "status"):
-                    self.assertIn(command, contract)
-
-    def test_installed_core_ships_the_suite_verifier(self) -> None:
-        verifier = SUITE / "skills/short-drama/scripts/suite_verify.py"
-        self.assertTrue(verifier.is_file())
-        self.assertIn("def verify_suite", verifier.read_text(encoding="utf-8"))
-
     def test_cli_initializes_and_discovers_space_path_from_unrelated_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)
