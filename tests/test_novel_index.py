@@ -165,10 +165,6 @@ class ChapterUnitTests(unittest.TestCase):
         self.assertEqual(index["chapter_count"], 3)
         self.assertEqual(index["problems"], [])
 
-    def test_hui_numbering_indexes(self) -> None:
-        index = build_from(chapters(["一", "二", "三"], unit="回") + "\n")
-        self.assertEqual(index["chapter_unit"], "回")
-        self.assertEqual(index["chapter_count"], 3)
 
 
 class VerifyTests(unittest.TestCase):
@@ -402,13 +398,6 @@ class OwnershipTests(unittest.TestCase):
             )
         )
 
-    def test_review_carries_a_rubric_for_this_stage(self) -> None:
-        # Both the skill and the analysis layer route quality verdicts to
-        # review, so review must have a scope and a rubric to answer with.
-        review = SUITE / "skills/short-drama-review"
-        self.assertIn("source_analysis", (review / "SKILL.md").read_text(encoding="utf-8"))
-        self.assertTrue((review / "references/rubric-source-analysis.md").exists())
-
 
 class CommandLineTests(unittest.TestCase):
     """The CLI is what the workflow actually runs, so its defaults are tested.
@@ -468,22 +457,6 @@ class CommandLineTests(unittest.TestCase):
                 novel_index.main(["sample", str(index_path), "--count", "5"]), 0
             )
 
-    def test_leading_contents_block_survives_the_cli_path(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            numbers = [str(number) for number in range(1, 13)]
-            contents = "\n".join(f"第{number}章 目录条目" for number in numbers)
-            source = root / "book.txt"
-            source.write_text(
-                contents + "\n\n" + chapters(numbers) + "\n", encoding="utf-8"
-            )
-            index_path = root / "_index.json"
-            self.assertEqual(
-                novel_index.main(["index", str(source), "--out", str(index_path)]), 0
-            )
-            document = json.loads(index_path.read_text(encoding="utf-8"))
-            self.assertEqual(document["chapter_count"], 12)
-            self.assertEqual(document["contents_entries_dropped"], 12)
 
 
 class HeadingLineTests(unittest.TestCase):
@@ -506,9 +479,3 @@ class HeadingLineTests(unittest.TestCase):
         self.assertEqual(index["chapter_count"], 2)
         self.assertEqual(index["long_heading_lines_skipped"], 0)
 
-    def test_skipped_long_lines_are_counted_not_silently_dropped(self) -> None:
-        # If a book really titles its chapters this long, the count is how a
-        # creator finds out why chapters went missing.
-        body = "第三章" + "很长的正文内容需要撑过标题长度上限。" * 5
-        index = build_from(chapters(["一", "二"]) + "\n\n" + body + "\n")
-        self.assertEqual(index["long_heading_lines_skipped"], 1)

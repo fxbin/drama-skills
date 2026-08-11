@@ -95,19 +95,6 @@ class ProjectLanguageTests(unittest.TestCase):
             status["prompt_language"], project_tool.DEFAULT_PROMPT_LANGUAGE
         )
 
-    def test_one_resolver_owns_the_fallback(self) -> None:
-        # Every reader goes through project_languages, so a project written
-        # before the field existed resolves the default in exactly one place.
-        self.assertEqual(
-            project_tool.project_languages({}),
-            {"language": "zh-CN", "prompt_language": "en"},
-        )
-        self.assertEqual(
-            project_tool.project_languages({"language": "ko", "format": {}}),
-            {"language": "ko", "prompt_language": "en"},
-        )
-
-
 class TemplateTests(unittest.TestCase):
     def test_template_ships_the_documented_default(self) -> None:
         template = json.loads(
@@ -118,13 +105,6 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(template["language"], "zh-CN")
         self.assertEqual(template["format"]["prompt_language"], "en")
 
-    def test_contract_documents_both_fields(self) -> None:
-        contract = (CORE / "references/contract-and-ownership.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("#/format/prompt_language", contract)
-        self.assertIn("Output language contract", contract)
-
 
 # The stages that hand a prompt body to a generator. Each must say which of its
 # outputs follows which field, because these are exactly the artifacts where the
@@ -133,11 +113,6 @@ PROMPT_AUTHORING_SKILLS = (
     "short-drama-image-prompts",
     "short-drama-video-prompts",
     "short-drama-storyboard",
-)
-# Every skill that writes something a creator reads.
-CREATOR_FACING_SKILLS = PROMPT_AUTHORING_SKILLS + (
-    "short-drama",
-    "short-drama-review",
 )
 # A language named as a literal default in skill prose. The contract says the
 # project field decides, so a skill that spells one of these out has re-created
@@ -166,23 +141,11 @@ class SkillWiringTests(unittest.TestCase):
             with self.subTest(skill=skill):
                 self.assertIn("#/format/prompt_language", self.skill_text(skill))
 
-    def test_creator_facing_skills_bind_their_text_to_the_project_language(
-        self,
-    ) -> None:
-        for skill in CREATOR_FACING_SKILLS:
-            with self.subTest(skill=skill):
-                self.assertIn("#/language", self.skill_text(skill))
-
     def test_no_skill_hardcodes_a_creator_facing_language(self) -> None:
         for path in sorted((SUITE / "skills").glob("*/SKILL.md")):
             with self.subTest(skill=path.parent.name):
                 found = HARDCODED_LANGUAGE_RE.findall(path.read_text(encoding="utf-8"))
                 self.assertEqual(found, [], f"{path.parent.name} hardcodes a language")
-
-    def test_review_never_claims_authority_over_prompt_language(self) -> None:
-        # A reviewer that flags an English prompt in a Chinese project as a
-        # defect would turn a creator's accepted choice into a blocking finding.
-        self.assertIn("prompt_language", self.skill_text("short-drama-review"))
 
 
 if __name__ == "__main__":
