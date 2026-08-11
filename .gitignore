@@ -5,6 +5,11 @@ __pycache__/
 .omc/
 .omx/
 tests/local-terms.txt
+# Impeccable design tooling, reinstalled on demand with `npx impeccable install`.
+# It reviews the dashboard; it is not part of the published skill suite.
+.github/agents/
+.github/hooks/
+.github/skills/
 maintainers/evals/
 .coverage
 # Local showcase workspaces may be derived from private creator projects and

@@ -16,15 +16,6 @@ runtimes that support Agent Skills.
 
 The output is text: scripts, asset notes, prompts, review records.
 
-## Demo
-
-*Lone Fall into Demonhood* includes project settings, two scripts, and twelve storyboard
-panels; the 15-second promo below is a temporary showcase, not a default suite artifact.
-
-https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
-
-<img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace: content rail on the left, screenplay on the right" width="680">
-
 ## Where this came from
 
 These skills come out of our own motion-comic studio's production line: over a
@@ -163,6 +154,13 @@ accept a scene visual plan that aligns composition, space, camera, and sound aro
 one dramatic turn. Ordinary scenes skip it; there is no fixed grid, option count, or
 shot-count formula.
 
+## Demo
+
+*Lone Fall into Demonhood* includes project settings, two scripts, and twelve storyboard
+panels; the 15-second promo below is a temporary showcase, not a default suite artifact.
+
+https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
+
 ## Local creator workspace
 
 One line inside your agent (Codex writes `$short-drama dashboard`):
@@ -176,3 +174,5 @@ the left and an always-visible document on the right. Opening a project loads it
 screenplay immediately; there are no page tabs or pop-up document viewers. Tasks and
 export stay as compact notes below the document, while paths and workflow internals
 remain system-owned.
+
+<img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace: content rail on the left, screenplay on the right" width="680">
