@@ -52,6 +52,11 @@ CHINESE_DIGITS = {
     "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
 }
 CHINESE_UNITS = {"十": 10, "百": 100, "千": 1000}
+# A chapter heading is a short standalone line. A body paragraph that happens to
+# open with 第三章 — a character recalling what happened back then — otherwise
+# becomes a chapter boundary, and the index silently gains a chapter whose span
+# starts mid-scene. Generous enough for the long titles serialized fiction uses.
+MAX_HEADING_LINE_WIDTH = 50
 
 
 def chinese_to_int(text: str) -> int | None:
@@ -95,11 +100,15 @@ def _visible_width(text: str) -> int:
     return sum(1 for character in text if not unicodedata.combining(character))
 
 
-def find_heading_lines(lines: list[str]) -> list[dict[str, Any]]:
+def find_heading_lines(lines: list[str]) -> tuple[list[dict[str, Any]], int]:
     headings: list[dict[str, Any]] = []
+    long_lines = 0
     for offset, line in enumerate(lines):
         match = CHAPTER_RE.match(line)
         if match is None:
+            continue
+        if _visible_width(line.strip()) > MAX_HEADING_LINE_WIDTH:
+            long_lines += 1
             continue
         headings.append(
             {
@@ -110,7 +119,7 @@ def find_heading_lines(lines: list[str]) -> list[dict[str, Any]]:
                 "title": match.group(3).strip(),
             }
         )
-    return headings
+    return headings, long_lines
 
 
 def select_chapter_unit(
@@ -313,7 +322,7 @@ def build_index(source: Path) -> dict[str, Any]:
     raw = source.read_bytes()
     text = raw.decode("utf-8")
     lines = text.split("\n")
-    headings = find_heading_lines(lines)
+    headings, long_heading_lines = find_heading_lines(lines)
     unit, ignored_units = select_chapter_unit(headings)
     headings = [heading for heading in headings if heading["unit"] == unit]
     headings, dropped = drop_leading_table_of_contents(headings)
@@ -333,6 +342,10 @@ def build_index(source: Path) -> dict[str, Any]:
         # Kept in the record rather than only warned about: a creator whose book
         # numbers chapters as 第N节 needs to see that 章 headings were skipped.
         "ignored_heading_units": ignored_units,
+        # Body paragraphs that merely open with a chapter number. Reported rather
+        # than silently dropped: if a book genuinely titles its chapters this
+        # long, the count is how a creator finds out why chapters went missing.
+        "long_heading_lines_skipped": long_heading_lines,
         "contents_entries_dropped": dropped,
         "volume_numbering_restarts": len(segments) > 1,
         "volume_count": len(segments),

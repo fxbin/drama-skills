@@ -484,3 +484,31 @@ class CommandLineTests(unittest.TestCase):
             document = json.loads(index_path.read_text(encoding="utf-8"))
             self.assertEqual(document["chapter_count"], 12)
             self.assertEqual(document["contents_entries_dropped"], 12)
+
+
+class HeadingLineTests(unittest.TestCase):
+    """A chapter heading is a short standalone line, not any line that opens
+    with a chapter number."""
+
+    def test_prose_opening_with_a_chapter_number_is_not_a_boundary(self) -> None:
+        # Regression: a paragraph like 「第三章说过的那件事……」 matched the
+        # heading pattern, so the index gained a chapter whose span starts
+        # mid-scene, and every citation after it pointed one boundary off.
+        body = "第三章说过的那件事，此刻才显出分量。" + "他把旧信重新摊开，逐字读了一遍。" * 3
+        index = build_from(chapters(["一", "二"]) + "\n\n" + body + "\n")
+        self.assertEqual(index["chapter_count"], 2)
+        self.assertEqual(index["long_heading_lines_skipped"], 1)
+        self.assertEqual(index["problems"], [])
+
+    def test_a_genuinely_long_chapter_title_still_indexes(self) -> None:
+        long_title = "第一章 我在都市当无敌战神的那些年（上）"
+        index = build_from(f"{long_title}\n{prose()}\n\n第二章 标题\n{prose()}\n")
+        self.assertEqual(index["chapter_count"], 2)
+        self.assertEqual(index["long_heading_lines_skipped"], 0)
+
+    def test_skipped_long_lines_are_counted_not_silently_dropped(self) -> None:
+        # If a book really titles its chapters this long, the count is how a
+        # creator finds out why chapters went missing.
+        body = "第三章" + "很长的正文内容需要撑过标题长度上限。" * 5
+        index = build_from(chapters(["一", "二"]) + "\n\n" + body + "\n")
+        self.assertEqual(index["long_heading_lines_skipped"], 1)
