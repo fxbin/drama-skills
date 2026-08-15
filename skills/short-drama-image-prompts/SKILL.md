@@ -17,13 +17,13 @@ license: MIT
 
 从本技能目录读取 `suite-ref.json`，按其中相对 `core_manifest` 定位唯一同级主技能与
 套件清单；确认声明的 core、contract、recipe 和清单 hash 一致后再读写项目。
-随后执行 [阶段契约](references/stage-contract.md) 的运行时预检：先恢复事务、读取状态，再进入本阶段。
+随后按 [阶段契约](references/stage-contract.md) 验证安装、读取 `status` 与本任务的直接输入，再进入本阶段。
 该文件同时给出本阶段的所有权边界、需要从制作形态取得哪些输入，以及本阶段规则表；本技能不读取其他技能的文件。
 
 ## 进入条件与边界
 
 - 可从现成项目直接进入，不要求先做故事开发；先定位 `short-drama.json` 和版本一致的主技能。
-- 所有权、下游文件何时变为 `stale` 或项目状态不清时，读
+- 所有权或直接输入影响不清楚时，读
   [阶段契约](references/stage-contract.md) 的所有权边界；需要定位规则 ID
   或解释审查问题时，读同一文件的本阶段规则表。
 - 输入必须是已接受的 `CHAR/LOOK`、`LOC/VIEW` 或 `PROP/PSTATE` 精确 ID 与快照引用。未决指代、冲突变体或未知状态退回 `$short-drama-assets`，不代猜。
@@ -31,9 +31,8 @@ license: MIT
   `accepted` 的视觉方向与制作形态：它决定本阶段可执行的形状语言、线条/表面处理、材质对光的
   响应与层拆；若状态为 `unset`，就向创作者给出选择，不从对话记忆补造，也不用默认审美冒充
   已接受形态。形态只决定可执行词汇，不决定身份、地理、持物、可读文字政策与故事状态。
-- 若创作者明确要求全链预览，可对唯一且没有 `unresolved` 问题的资产提案写
-  `candidate` 提示词；来源引用加 `authority:candidate`，文档标明 `provisional` 和
-  `not delivery-ready`，不得声称已经 `accepted`。
+- 若创作者明确要求全链预览，可对唯一且没有 `unresolved` 问题的资产提案写候选提示词；
+  文档标明待确认，不得声称创作者已经接受。
 - 本技能只负责构图、提示词专用约束，以及局部修改中的修改项 `changes` 和保留项 `preserve`；身份、地理和资产状态仍由资产技能负责。
 - 始终保留不绑定供应商的通用提示词。不得创建图片、媒体任务、接口请求、模型参数、轮询记录或画质结论。
 
@@ -114,7 +113,7 @@ license: MIT
 - `剧集/<EP>/assets/image-prompt-specs.jsonl`：权威规格；
 - `剧集/<EP>/assets/image-prompts.md`：由已接受规格和配方 `hash` 重新生成的文本版本。
 
-跨文件发布遵循主技能的提交与恢复流程；不得以半成品覆盖已接受版本。
+用 core `publish` 发布规格和派生文本，并声明直接输入；不得以半成品覆盖当前版本。
 
 ## 自然语言修订
 

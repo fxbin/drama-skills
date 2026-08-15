@@ -14,7 +14,7 @@ license: MIT
 
 从本技能目录读取 `suite-ref.json`，按其中相对 `core_manifest` 定位唯一同级主技能与
 套件清单；确认声明的 core、contract、recipe 和清单 hash 一致后再读写项目。
-随后执行 [阶段契约](references/stage-contract.md) 的运行时预检：先恢复事务、读取状态，再进入本阶段。
+随后按 [阶段契约](references/stage-contract.md) 验证安装、读取 `status` 与本任务的直接输入，再进入本阶段。
 该文件同时给出本阶段的所有权边界、需要从制作形态取得哪些输入，以及本阶段规则表；本技能不读取其他技能的文件。
 
 ## 边界
@@ -126,24 +126,22 @@ field pointer 及必要投影；修订仍路由到 develop/write owner。
 创作者可逐项接受、改名、合并、拆分或暂缓。**creator acceptance 是独立事实**：
 抽取完成、结构校验通过、review 通过都不能替代创作者接受。只发布被接受的身份和
 变体；任何 unresolved 都不得编译到图片提示词或分镜 binding。
-若用户要求一次查看全链而中间没有接受回合，可生成 candidate 预览链：下游必须
-标 `provisional`，ArtifactRef 加 `authority:candidate`，不得伪造 creator decision/
-accepted snapshot，且不得交付。
+若用户要求一次查看全链而中间没有接受回合，可生成待确认的候选预览；不得伪造创作者决定，且不得交付。
 
 ### 7. 发布与修订
 
 发布至 `设定集/*.jsonl` 及 `剧集/<EP>/assets/{occurrences,decisions,continuity}.jsonl`。
 项目记录了 `voice_direction` 时，`设定集/voice-casting.md` 由已接受记录重新渲染——
 它是派生文本，手改不会改变任何身份，下一次渲染就会被覆盖。参考音频本身留在 `输入/`。
-每个非权威重复值都携带 owner artifact/hash/field pointer。资产修改后只标记依赖该
-ID/variant 的提示词、镜头和 review 为 stale；不要重写无关资产或 screenplay。
+跨产物引用保留 owner、项目相对路径与必要的稳定 ID/field。资产修改后只列出直接读取该
+ID/variant 的提示词、镜头和 review，由相应 owner 按需刷新；不要重写无关资产或 screenplay。
 
 ## 规则分类与阻断
 
 - `structural_invariant`：occurrence 必有 source block/hash；decision 必属四类；
   variant 有 base/cause/validity；binding 必须解析到已接受 ID。可机械阻断。
 - `reviewed_invariant`：不可猜含混指代；不可把临时状态混入身份；delta 的剧情原因
-  必须由证据支持。独立 reviewer 引用证据判定，owner 不自批。
+  必须由证据支持。reviewer 引用证据判定，owner 负责修改。
 - `craft_default`：身份不变时优先复用/变体；只跟踪下游有用事实。创作者可说明覆盖。
 - `taste_option`：群演建为个体还是群组、同址空间拆分颗粒度、蒙太奇式跳变方式，
   由制作策略选择，不单独阻断。

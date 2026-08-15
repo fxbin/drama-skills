@@ -17,19 +17,18 @@ license: MIT
 
 从本技能目录读取 `suite-ref.json`，按其中相对 `core_manifest` 定位唯一同级主技能与
 套件清单；确认声明的 core、contract、recipe 和清单 hash 一致后再读写项目。
-随后执行 [阶段契约](references/stage-contract.md) 的运行时预检：先恢复事务、读取状态，再进入本阶段。
+随后按 [阶段契约](references/stage-contract.md) 验证安装、读取 `status` 与本任务的直接输入，再进入本阶段。
 该文件同时给出本阶段的所有权边界、需要从制作形态取得哪些输入，以及本阶段规则表；本技能不读取其他技能的文件。
 
 ## 进入条件与权属
 
 - 可从已接受的镜头或关键帧直接进入，无需重新开发故事；先定位项目和版本一致的主技能。
-- 所有权、下游文件何时变为 `stale` 或项目状态不清时，读
+- 所有权或直接输入影响不清楚时，读
   [阶段契约](references/stage-contract.md) 的所有权边界；需要定位规则 ID
   或解释审查问题时，读同一文件的本阶段规则表。
-- 输入至少包含状态为 `accepted` 的镜头、起始关键帧/边界、时长、连续性终点与对白/声音引用；未接受或 `stale` 时退回 `$short-drama-storyboard`。
+- 输入至少包含当前已确认的镜头、起始关键帧/边界、时长、连续性终点与对白/声音引用；需要更新时退回 `$short-drama-storyboard`。
 - 若创作者明确要求全链预览，可对状态为 `provisional`、但没有 `unresolved` 问题的镜头/关键帧
-  写候选运动说明；保留 `authority:candidate`，禁止声称已经 `accepted`、`approved` 或
-  `delivery-ready`。
+  写候选运动说明；明确标为待确认，禁止声称已接受或已通过。
 - 镜头的起点、终点、时长、对白、资产绑定和下一镜状态全部只读。运动规格只负责有序动作、表演过程、摄影与声音实现，以及派生的结束报告。
 - 视觉、声音和口型等审美选择读取 `short-drama.json#/creator_authority/{visual_direction,production_profile}`；
   直接从本环节开始的项目若为 `unset`，就保留选择，不把默认配置写成已接受事实。
@@ -169,7 +168,7 @@ python3 <skill-dir>/scripts/motion_timing_check.py \
 按 [补拍/替代范围片段](assets/coverage-scope.fragment.json) 用同一文件内稳定的运动记录 ID
 说明母版和补充关系；每项原文要求都要对应到
 当前运动字段或说明去向。补拍默认只补充、不替代母版；运动规格只能提出替代请求，
-独立审查者在下游审查结论中绑定固定 `hash` 后决定，不能回写运动规格形成循环引用。
+reviewer 在下游审查结论中决定，不能回写运动规格形成循环引用。
 
 若收到绑定准确 prompt/spec/reference/config 的项目生产观察，只修改诊断涉及的运动字段，并在
 修订提案中列出 `change_set`、`preserve_set` 和仍未知结果；不能把重复提交相同文本当修复，
@@ -186,8 +185,7 @@ python3 <skill-dir>/scripts/motion_timing_check.py \
 - `剧集/<EP>/storyboard/video-prompts.md`：由已接受规格、容器记录和配方 `hash` 生成的文本版本。
 
 自然语言改提示词时，先展示规格字段怎样变化和重新生成的文本预览；若改动触碰分镜或
-剧本负责的内容，保持当前文件不变，并把修改请求交给对应技能。跨文件发布遵循主技能的
-提交与恢复流程。
+剧本负责的内容，保持当前文件不变，并把修改请求交给对应技能。跨文件产物用 core `publish` 发布，并声明直接输入。
 
 ## 完成标准
 

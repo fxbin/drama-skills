@@ -12,7 +12,7 @@ license: MIT
 
 从本技能目录读取 `suite-ref.json`，按其中相对 `core_manifest` 定位唯一同级主技能与
 套件清单；确认声明的 core、contract、recipe 和清单 hash 一致后再读写项目。
-随后执行 [阶段契约](references/stage-contract.md) 的运行时预检：先恢复事务、读取状态，再进入本阶段。
+随后按 [阶段契约](references/stage-contract.md) 验证安装、读取 `status` 与本任务的直接输入，再进入本阶段。
 该文件同时给出本阶段的所有权边界、需要从制作形态取得哪些输入，以及本阶段规则表；本技能不读取其他技能的文件。
 
 ## 先判断入口
@@ -89,7 +89,7 @@ license: MIT
 - 每集先兑现一部分当集承诺，再留下具体的决定、危险或问题；
 - 没有把格式偏好冒充普遍规律。
 
-这些是所有者自检，不是终审。展示创作者可读的新增/修改摘要，请创作者接受后再作为下游来源；需要质量结论时交给独立的 `$short-drama-review`。本技能不得批准自己的产物。
+这些是所有者自检，不是终审。展示创作者可读的新增/修改摘要，请创作者接受后再作为下游来源；需要质量结论时交给 `$short-drama-review`，优先由未参与当前版本创作的 reviewer 执行。
 
 若项目需要导演阐述，本技能只产出 `项目开发/director-brief.md` 候选，并标明它准备
 写入的 `visual_direction` / `production_profile` 语义差异。创作者接受后，由
@@ -98,7 +98,7 @@ license: MIT
 ## 规则分级
 
 - **`structural_invariant`**：本地可证明的引用、ID、显式状态矛盾；可由校验器阻断。
-- **`reviewed_invariant`**：升级是否真实、承诺是否兑现等语义义务；只能由独立审查者引用证据判断。
+- **`reviewed_invariant`**：升级是否真实、承诺是否兑现等语义义务；由 reviewer 引用证据判断。
 - **`craft_default`**：通常有帮助的做法；创作者说明理由后可覆盖。
 - **`taste_option`**：钩子、弧线、视角、结局气质等选择；不得单独阻断。
 
