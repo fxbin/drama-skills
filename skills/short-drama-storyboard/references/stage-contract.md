@@ -13,28 +13,17 @@
 
 ## 运行时预检
 
-进入本阶段前先完成这套轻量预检。它只检查安装完整性、项目事务状态和已记录的精确引用，
-不评价创作内容。
+进入本阶段前完成同一套短预检；它只确认安装、项目位置和当前直接输入，不评价创作内容。
 
-1. **验证安装**：从本技能目录的 `suite-ref.json` 解析到逻辑安装路径中的 core，用当前
-   环境可用的 Python 3 解释器运行 core 的 `scripts/suite_verify.py`。验证器沿逻辑安装
-   路径逐一检查清单中的技能；混装、缺件、额外可执行文件或 hash 不一致时停止写入，
-   也不要退回源码检出目录“借用”通过验证的兄弟技能。
-2. **先恢复事务，再读状态**：定位项目根目录后，先运行 core 的 `scripts/project_tool.py`
-   的 `recover`，再运行 `status`。`recover` 可重复执行；它报告 blocked 时保持创作者文件
-   原样并先处理冲突，不要绕过 WAL、手改状态文件或假定上次写入成功。`status` 中的
-   accepted/candidate 指针和阻断项是本阶段工作的当前事实。
-3. **只通过公开生命周期写入**：负责人用 `publish` 原子发布候选，并给每个外部结构化引用
-   提供精确 input hash。上游接受引用不继承候选状态。创作者接受、独立审查与内容修订是
-   不同动作。每次修订后重新运行适用的结构校验，并让下游刷新旧 hash。打包是最终交付闸门，
-   不是接受或审查命令；仍有阻断项时不打包。逐场 `coverage-auditions/<SC>.jsonl` 与
-   `scene-visual-plans/<SC>.jsonl` 的 `<SC>` 必须采用 `SC001` 式规范 ID，且文件名必须和记录中
-   可解析的 `scene_ref` 一致；`publish` 只机械核对这项路径/引用一致性，不借此扩张成创作内容 schema。
-4. **读共享 JSON/JSONL 时同时声明读了哪几条记录**：`设定集/*.jsonl` 与项目文件是全项目
-   共享输入，只按整文件 hash 绑定会让后续任何一次增补把此前引用过它的产物全部标为
-   `stale`。发布时对这类输入补 `--input-record <path>=<selector>`（JSONL 用记录 ID，
-   JSON 用 RFC 6901 指针，每条一次），此后只有被绑定的记录变化才会影响本产物。
-   Markdown 没有可机器校验的记录身份，仍按整文件绑定。
+1. **验证安装**：从本技能的 `suite-ref.json` 找到同一安装中的 core，运行
+   `python3 <core>/scripts/suite_verify.py <core>`。混装、缺件或清单校验失败时停止写入。
+2. **读取状态**：定位项目根后运行 `python3 <core>/scripts/project_tool.py status <project>`；
+   使用返回的目录布局，只读取本任务需要的直接输入。
+3. **通过公开命令写入**：owner 用 `publish` 发布产物并用 `--input <path>` 声明直接输入；
+   创作者用 `accept` 决定当前版本，reviewer 用 `review` 记录结论。输入或输出变化时该产物显示
+   `update_needed`，重新发布即可，不递归改写无关产物。
+4. **保持职责分离**：创作者确认、内容修订和复核是不同动作；reviewer 提修改要求，owner 改文件。
+   `package` 只收录当前已确认且复核通过的文本/JSON。
 
 ## 所有权边界
 

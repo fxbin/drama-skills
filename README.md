@@ -8,8 +8,8 @@
 [![License](https://img.shields.io/github/license/worldwonderer/drama-skills)](LICENSE)
 
 面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。九个技能把一个点子或一部长篇材料，
-一路做成分集剧本、资产设定、图片提示词、分镜关键帧、视频提示词和独立审查记录，
-全程用同一套创作者决策、来源引用与连续性契约衔接。适配 Claude Code、Codex 和其他
+一路做成分集剧本、资产设定、图片提示词、分镜关键帧、视频提示词和审查记录，
+用清晰的所有权、创作者确认与连续性契约衔接。适配 Claude Code、Codex 和其他
 支持 Agent Skill 规范的运行环境。
 
 产出是文本：剧本、设定、提示词、审查记录。
@@ -84,7 +84,7 @@ done
 用 $short-drama-storyboard 给关键场次比较导演方案、接受场次视觉计划，再做正式分镜
 用 $short-drama-video-prompts 把分镜逐镜翻译成视频提示词
 
-# 4. 独立审查
+# 4. 审查（最好由未参与当前版本创作的人或上下文执行）
 用 $short-drama-review 审查第 1 集的剧本与提示词
 ```
 
@@ -104,7 +104,7 @@ flowchart LR
     img["图片提示词<br/>$short-drama-image-prompts"]:::phase
     sb["分镜/关键帧<br/>$short-drama-storyboard"]:::phase
     vid["视频提示词<br/>$short-drama-video-prompts"]:::phase
-    rev["独立审查<br/>$short-drama-review"]:::final
+    rev["审查<br/>$short-drama-review"]:::final
     pkg["文本交付包"]:::final
 
     nva -.有原著时.-> dev
@@ -117,7 +117,7 @@ flowchart LR
 
 | 技能 | 职责 |
 |---|---|
-| `short-drama` | 初始化、路由、视觉方向/Look Development、状态、接受/审查生命周期与交付 |
+| `short-drama` | 初始化、路由、视觉方向/Look Development、简洁状态、确认/复核与交付 |
 | `short-drama-novel-analyze` | 长篇原著的抽样改编快评、章节索引、逐章功能提取、剧情单元与节奏、改编价值与分集候选 |
 | `short-drama-develop` | 小说/长材料的可追溯改编、多集整稿的 Agent 主导切片与续跑、故事引擎、分集地图、导演阐述、题材与钩子手册 |
 | `short-drama-write` | 单集目标、因果节拍、可拍剧本和项目选择的制作稿格式 |
@@ -125,9 +125,11 @@ flowchart LR
 | `short-drama-image-prompts` | Lookdev 风格帧、角色/场景/道具参考板提示词与定点修改说明 |
 | `short-drama-storyboard` | 可选场次视觉计划与 Coverage Audition、原文落实、镜头、边界和冻结关键帧 |
 | `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态与补拍说明 |
-| `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与独立结论 |
+| `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
 
-`$short-drama` 是入口路由，负责初始化、继续、恢复和交付，把具体工作转给对应技能。
+`$short-drama` 是入口路由，负责初始化、继续、显示状态和交付，把具体工作转给对应技能。
+项目生命周期只有“待确认、已接受、需修改、已通过、需更新”等创作者可读状态；输入和输出
+变化在读取时检查，不维护恢复日志、传播图或要求用户填写的 hash 证据。
 现成单集剧本可以直接进入规范化或资产拆解；多集整稿需要生成分集地图时，由开发技能按
 文件实际结构建立一次索引、逐集切片并断点续跑；点子从故事开发进入。手上是一部长篇原著时，
 先走 `$short-drama-novel-analyze` 抽样快评，值得拆再拆出分析层与分集候选，
@@ -155,7 +157,8 @@ https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
 /short-drama dashboard
 ```
 
-创作台目前仅支持 macOS/Linux；Windows 支持套件安装与命令行生命周期工具，
+创作台是内容展示与有限文本编辑层，核心创作和制作能力仍在 skills 中，不承担重型工作流编排。
+它目前仅支持 macOS/Linux；Windows 支持套件安装与命令行项目工具，
 但创作台因安全目录描述符要求会拒绝启动。
 
 <img src="docs/assets/dashboard-zh.png" alt="短剧创作台：左侧内容目录，右侧剧本正文" width="680">

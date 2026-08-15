@@ -64,7 +64,7 @@ python3 {技能目录}/scripts/novel_index.py verify \
 python3 {core 技能目录}/scripts/project_tool.py publish {项目根} \
   --owner short-drama-novel-analyze --artifact-id source-analysis:index \
   --output 项目开发/source-analysis/_index.json=项目开发/source-analysis/_work/_index.next.json \
-  --input 输入/{原文文件}=<索引中的 source.sha256>
+  --input 输入/{原文文件}
 ```
 
 脚本识别阿拉伯数字与中文数字章号（含 千 / 两，覆盖千章以上连载），**只认一种编号单位**

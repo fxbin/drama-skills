@@ -39,7 +39,7 @@ license: MIT
 [coverage-audition.md](references/coverage-audition.md)。
 涉及背影、裁切、遮挡、画外或延迟揭示时读
 [阶段契约](references/stage-contract.md) 的参考媒体与补拍一节。
-只有所有权或过期传播不清楚时，才读核心所有权契约。
+只有所有权或直接输入影响不清楚时，才读核心所有权契约。
 
 - 竖屏多人、单房对白、证据揭示、群体轴线或门内外视角：
   [blocking-playbooks.md](references/blocking-playbooks.md)

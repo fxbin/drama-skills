@@ -314,9 +314,7 @@ class ProjectStoreTests(unittest.TestCase):
             project_id = stores[0].discover()[0][0]["id"]
             version = stores[0].read_text(project_id, "notes.txt")["version"]
             # Two stores each load their own project-tool module instance, so the
-            # only thing serializing them is the project's own transaction flock
-            # held across the compare-and-replace. If that lock were absent both
-            # writers would observe the same version and both would save.
+            # project's file lock must cover the compare-and-replace operation.
             barrier = threading.Barrier(3)
             outcomes = []
 
@@ -434,6 +432,30 @@ class ProjectStoreTests(unittest.TestCase):
             make_project(outside, "外部项目")
             (project / "inside.md").write_text("inside", encoding="utf-8")
             (outside / "outside-secret.md").write_text("outside", encoding="utf-8")
+            digest = hashlib.sha256(b"inside").hexdigest()
+            (project / ".short-drama").mkdir()
+            (project / ".short-drama/state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "2.0",
+                        "artifacts": {
+                            "inside": {
+                                "outputs": ["inside.md"],
+                                "inputs": {},
+                                "acceptance": {
+                                    "decision": "accepted",
+                                    "outputs": {"inside.md": digest},
+                                },
+                                "review": {
+                                    "verdict": "approve",
+                                    "outputs": {"inside.md": digest},
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
             store = ProjectStore(
                 workspace, dashboard_server.load_project_tool(SKILL)
             )
@@ -476,6 +498,7 @@ class ProjectStoreTests(unittest.TestCase):
             )
             store.project_tool.project_status_at = original_status
             self.assertEqual(status["title"], "原项目")
+            self.assertEqual(status["artifacts"], {"inside": "approved"})
 
             original_tree = store._tree_from_root
             tree = swap_while(
@@ -534,14 +557,13 @@ class ProjectStoreTests(unittest.TestCase):
             )
 
             status = store.status(project_id)
-            self.assertEqual(status["lifecycle"]["build_state"], {"stale": 1})
             self.assertEqual(
-                status["lifecycle"]["creator_acceptance"], {"not_requested": 1}
+                status["lifecycle"]["artifact_state"], {"update_needed": 1}
             )
-            self.assertEqual(status["lifecycle"]["delivery_gate"], {"blocked": 1})
             persisted = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(
-                persisted["artifacts"]["EP001:script"]["build_state"], "stale"
+                persisted["artifacts"]["EP001:script"]["build_state"],
+                "materialized",
             )
 
     def test_status_overlays_live_hash_drift_after_an_external_edit(self) -> None:
@@ -577,8 +599,9 @@ class ProjectStoreTests(unittest.TestCase):
 
             status = store.status(project_id)
 
-            self.assertEqual(status["lifecycle"]["build_state"], {"stale": 1})
-            self.assertEqual(status["lifecycle"]["delivery_gate"], {"blocked": 1})
+            self.assertEqual(
+                status["lifecycle"]["artifact_state"], {"update_needed": 1}
+            )
 
     def test_status_treats_a_tracked_symlink_as_stale(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -619,8 +642,9 @@ class ProjectStoreTests(unittest.TestCase):
 
             status = store.status(project_id)
 
-            self.assertEqual(status["lifecycle"]["build_state"], {"stale": 1})
-            self.assertEqual(status["lifecycle"]["delivery_gate"], {"blocked": 1})
+            self.assertEqual(
+                status["lifecycle"]["artifact_state"], {"update_needed": 1}
+            )
 
     def test_parent_directory_swap_cannot_redirect_a_text_write(self) -> None:
         if not dashboard_server.SECURE_DIR_FD:
@@ -763,7 +787,7 @@ class DashboardEntrypointTests(unittest.TestCase):
         self.assertTrue(callable(project_tool.project_status))
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_creator_statuses_require_explicit_evidence(self) -> None:
+    def test_frontend_supports_simple_and_legacy_creator_statuses(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
 const logic = require({json.dumps(str(app))});

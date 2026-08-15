@@ -10,7 +10,7 @@
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
 directors. Nine skills take an idea or a long-form source all the way to episode
 scripts, asset decisions, image prompts, storyboard keyframes, video prompts, and
-independent review records — carrying creator decisions, source evidence, and
+review records — carrying clear ownership, creator confirmation, and
 continuity through the entire chain. Works with Claude Code, Codex, and other
 runtimes that support Agent Skills.
 
@@ -97,7 +97,7 @@ Use $short-drama-storyboard to audition distinct directing approaches for key sc
 accept a scene visual plan, then author the formal storyboard
 Use $short-drama-video-prompts to translate each authored shot into a video prompt
 
-# 4. Independent review
+# 4. Review (prefer someone or a context that did not author this version)
 Use $short-drama-review to review EP001's script and prompts
 ```
 
@@ -118,7 +118,7 @@ flowchart LR
     img["Image prompts<br/>$short-drama-image-prompts"]:::phase
     sb["Storyboard/keyframes<br/>$short-drama-storyboard"]:::phase
     vid["Video prompts<br/>$short-drama-video-prompts"]:::phase
-    rev["Independent review<br/>$short-drama-review"]:::final
+    rev["Review<br/>$short-drama-review"]:::final
     pkg["Text delivery package"]:::final
 
     nva -.with a source.-> dev
@@ -131,7 +131,7 @@ flowchart LR
 
 | Skill | Responsibility |
 |---|---|
-| `short-drama` | Init, routing, visual direction/Look Development, state, acceptance/review lifecycle, delivery |
+| `short-drama` | Init, routing, visual direction/Look Development, simple status, confirmation/review, delivery |
 | `short-drama-novel-analyze` | Sampled adaptation triage, chapter index, per-chapter function extraction, story units and rhythm, adaptation value, and episode candidates for a long source |
 | `short-drama-develop` | Traceable adaptation, Agent-led indexing/slicing/resume for complete multi-episode scripts, story engine, episode map, director brief, genre & hook playbook |
 | `short-drama-write` | Episode contract, causal beats, performable screenplay, and the project's accepted production dialect |
@@ -139,14 +139,18 @@ flowchart LR
 | `short-drama-image-prompts` | Lookdev style frames, reusable character/location/prop reference prompts, and scoped edits |
 | `short-drama-storyboard` | Optional scene visual plans and Coverage Auditions, source coverage, shots, boundaries, and frozen keyframes |
 | `short-drama-video-prompts` | Ordered action, multi-actor performance and attention handoffs, camera/audio intent, timing, and exact boundaries |
-| `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and independent verdicts |
+| `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
-`$short-drama` is the entry router: it initializes, resumes, recovers, and delivers
+`$short-drama` is the entry router: it initializes, resumes, shows status, and delivers
 projects, dispatching the actual work to the matching skill. An existing single-episode
 screenplay can enter normalization or asset extraction directly. When a complete
 multi-episode script needs an episode map, development indexes its actual structure once,
 reads one verified slice at a time, and resumes from the on-disk map. An idea or long-form
 source enters through story development.
+
+Project state stays creator-readable: needs confirmation, accepted, revise, approved,
+or update needed. Input/output drift is checked on read; there is no recovery log,
+propagation graph, or user-supplied hash evidence.
 
 The three single-frame prompt paths have distinct ownership: project-level
 `lookdev_frame` prompts test an accepted visual direction; asset prompts preserve
@@ -175,7 +179,9 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 /short-drama dashboard
 ```
 
-The workspace runs locally on macOS/Linux. It uses one page: a plain content list on
+The workspace is a lightweight presentation and limited text-editing layer; core creation
+and production capability stays in the skills, not in a heavy UI workflow. It runs locally
+on macOS/Linux and uses one page: a plain content list on
 the left and an always-visible document on the right. Opening a project loads its
 screenplay immediately; there are no page tabs or pop-up document viewers. Tasks and
 export stay as compact notes below the document, while paths and workflow internals
