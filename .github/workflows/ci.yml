@@ -42,16 +42,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      - name: Run Windows regressions for issues 26 and 27
+      - name: Run Windows portability regressions
         run: >-
           python -B -m unittest
           tests.test_installation_resolution
           tests.test_episode_intake
+          tests.test_standalone_skill_tooling
+          tests.test_golden_project
           tests.test_simple_lifecycle.SimpleLifecycleTests.test_publish_rejects_path_aliases_and_unsafe_episode_ids
           tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_and_verify_selected_approved_text
           -v
-      - name: Verify checked-out suite
-        run: python tools/verify_suite.py skills/short-drama
 
   # Tool versions are pinned on purpose. This repository has no dependency
   # manifest, so an unpinned `pip install ruff` turns main red the next time
@@ -65,8 +65,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: suite manifest matches the shipped tree
-        run: python tools/verify_suite.py skills/short-drama
       - run: python -m pip install --disable-pip-version-check ruff==0.15.11 mypy==2.3.0
       - name: ruff
         run: ruff check .
@@ -75,6 +73,12 @@ jobs:
           mypy skills/short-drama/scripts/project_tool.py
           skills/short-drama/scripts/dashboard_server.py
           skills/short-drama-develop/scripts/episode_intake.py
+          skills/short-drama-assets/scripts/asset_check.py
+          skills/short-drama-image-prompts/scripts/image_prompt_check.py
+          skills/short-drama-produce/scripts/production_tool.py
+          skills/short-drama-produce/scripts/provider_adapters.py
+          skills/short-drama-review/scripts/review_check.py
+          skills/short-drama-video-prompts/scripts/music_spec_check.py
           --ignore-missing-imports
       - uses: actions/setup-node@v4
         with:

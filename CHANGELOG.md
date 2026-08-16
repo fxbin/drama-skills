@@ -11,6 +11,10 @@
 
 ### 变更
 
+- **移除 Suite 级耦合门禁**。删除全局文件 Hash 清单、所有 `suite-ref.json`、完整十技能安装
+  校验和 Suite capability 声明；每个 Skill 可独立安装，缺少 sibling 不再阻断当前任务。
+  `project_tool.py` 同时移除业务路径到技能名的中央注册表，只保留合法阶段目录、受保护目录、
+  原子发布和项目内单一 artifact 路径所有权。Dashboard 继续只读取项目状态。
 - **项目生命周期大幅瘦身**。`project_tool.py` 从恢复日志、快照、传递过期闭包、五条并行
   状态轴和审查 provenance 证明，收敛为每项产物一个创作者可读状态。发布仍验证全部来源并
   在项目锁下逐文件原子替换；接受和复核只绑定当前输出；`status` 在读取时检查输出与直接输入，
@@ -20,6 +24,39 @@
   reviewer 标签和备注。v0.3 状态可继续读取，并在下一次状态变更时迁移到紧凑格式。
 - **Dashboard 明确保持轻量**。它只负责内容展示、已有媒体预览与有限文本编辑；创作、复核、
   生产和交付能力仍由 skills 与项目命令承担。
+- **创作台展示层重排**。增加项目概览、分集进度条带与已有媒体画廊，并支持项目内 TTS/音频
+  预览；不增加生产 API、供应商配置、任务提交按钮、数据库或画布编排。
+
+### 修复
+
+- **全链预览改为有界续跑（修复 #34）**。全链预览和“继续”每轮只执行一个 owner 的一个明确
+  批次；写作、资产、图片提示词、分镜和视频提示词都在当前场景/记录范围完成校验、落盘并报告
+  剩余范围后交还控制权，不再自动进入下一阶段、复核或生产。复核也只执行一次有界 pass，修订
+  与复审必须另起请求；无法取得隔离上下文时诚实自检，不再等待或重试 reviewer provenance。
+  同时移除遗留的全局 `current_checkpoint` 与资产 C2/五轴放行表述，避免旧生命周期重新成为门禁。
+
+### 新增
+
+- **十个 Skill 都可独立离线自证**。补齐 core、开发、原著分析、写作、分镜、视频提示词和生产
+  Skill 的 `Quick Start` 与负例 selftest；CI 会把每个 Skill 单独复制到陌生路径、从无关 cwd
+  运行，证明它不读取 sibling、全局 manifest 或 Dashboard。视频提示词 Skill 同时新增独立的
+  时间线音乐规格与结构校验，不把配乐复制成每镜供应商字段。
+- **确认后生产新增三家可选 adapter**。`short-drama-produce` 在不改变上游中立规格的前提下，
+  支持 GPT Image 2 图片生成/参考图编辑、Seedance 显式模型的 text-to-video，以及 MiniMax
+  Music 3.0 主题曲/纯配乐。凭据和 adapter config 仍在项目外；官方未证明的字段、透明背景、
+  本地 Seedance reference 上传和错误媒体签名都会 fail closed，所有远端执行仍消费一次明确确认。
+- **三个阶段 Skill 补齐独立可运行闭环**。`short-drama-assets`、
+  `short-drama-image-prompts` 与 `short-drama-review` 各自新增原生最小样例、本地结构校验器、
+  离线 selftest 和 `SKILL.md` Quick Start；单独拷走目录后仍可运行，不读取 core、sibling、
+  全局 manifest 或 Dashboard。校验只覆盖可机械证明的 ID、引用、绑定与 verdict 一致性，
+  不把审美判断或固定配方升级成硬门。
+- **`$short-drama-produce` 确认后投产**。新增 provider-neutral 的图片、视频与 TTS job：
+  `prepare` 展示准确数量、prompt/spec、参考、参数、输出、覆盖行为与 adapter；只有创作者看到
+  当前预览并明确确认后，`run` 才以无 shell 的 argv adapter 执行。job 或直接输入变化会让确认
+  失效；adapter 一旦启动即消费确认，失败重试也要再次确认，避免隐性重复费用。
+- **项目外 adapter 与项目内结果记录**。凭据留在环境或系统凭据存储，adapter 配置只在项目外
+  保存命令与超时。结果按确认 targets 原子落到 `production/制作成果`，项目只保存精简运行状态、
+  媒体类型、大小和交付校验和。离线 fixture 覆盖 image/video/TTS 三条真实执行路径。
 
 ## [0.3.0] - 2026-08-13
 

@@ -8,6 +8,15 @@ license: MIT
 
 本技能负责找到项目、显示当前状态并把工作交给正确的创作技能，不代写各阶段内容。
 
+## Quick Start
+
+先离线确认本技能被单独复制后仍能初始化、读取和保护项目路径：
+
+```bash
+python3 {技能目录}/scripts/selftest.py
+python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例短剧"
+```
+
 创作者可读内容使用 `short-drama.json#/language`；交给图片或视频生成器的提示词正文使用
 `#/format/prompt_language`。两者互不推断，详见
 [contract-and-ownership.md](references/contract-and-ownership.md#输出语言契约)。
@@ -15,9 +24,9 @@ license: MIT
 ## 每次请求的起点
 
 1. 使用用户给出的路径，或从当前目录向上寻找最近的 `short-drama.json`。
-2. 从当前安装读取 `suite-manifest.json` 并验证套件；混装、缺件或文件校验失败时停止写入。
-3. 运行 `status`，只读完成当前任务所需的直接输入，不批量加载整个项目。
-4. 按用户眼下要完成的工作路由，不强迫补走完整流水线。
+2. 运行 `status`，只读完成当前任务所需的直接输入，不批量加载整个项目。
+3. 按用户眼下要完成的工作路由；未安装的阶段技能只影响对应路由，不阻断其他工作。
+4. 不强迫补走完整流水线；明确的单阶段任务可以直接交给独立安装的对应技能。
 
 统一预检见 [runtime-preflight.md](references/runtime-preflight.md)，创作入口见
 [creator-workflow.md](references/creator-workflow.md)，所有权见
@@ -35,12 +44,21 @@ license: MIT
 | 写人物、地点、道具和 Look Development 图片提示词 | `$short-drama-image-prompts` |
 | 做覆盖设计、镜头和冻结关键帧 | `$short-drama-storyboard` |
 | 写动作、表演、运镜、声音视频提示词 | `$short-drama-video-prompts` |
+| 写主题曲/配乐意图或校验时间线音乐规格 | `$short-drama-video-prompts`，歌词必须由创作者提供并接受 |
+| 按已确认规格实际生成图片、视频、TTS 或时间线音乐 | `$short-drama-produce` 先展示本次 job，得到明确确认后才执行 |
 | 定制作形态、视觉方向或 Look Development 路径 | `$short-drama` |
 | 校验、审稿或发修订请求 | `$short-drama-review` |
 | 打开创作台、看内容和进度 | `$short-drama dashboard` |
 
 用户的明确意图优先。Look Development 是可选分支；资产图片提示词和分镜在资产确认后可以
 并行，不互相等待。
+
+## 有界续跑
+
+全链预览或“继续”每轮只授权一个 owner 的一个有界工作单元。写作、资产、图片提示词、分镜和
+视频提示词按各自 `Bounded execution` 的批次工作；完成当前批次后报告已覆盖范围、剩余范围与
+下一步，并把控制权交还创作者。不得在同一轮自动进入下一阶段、审查或生产；审查和生产都需要
+各自明确的后续请求，其中生产还必须展示准确 job 并取得确认。
 
 审查尽量交给没有参与该版本创作的 reviewer，以减少自证偏差；运行环境不支持隔离上下文时，
 如实标注为自检即可。CLI 只记录 verdict、reviewer 标签和备注，不收集或伪造上下文证明。
@@ -61,7 +79,7 @@ Reviewer 给出证据和修改请求，内容仍由原 owner 修改。
 Dashboard 是项目内容的轻量展示与有限文本编辑层，核心能力仍在各 skill 中。当用户调用
 `$short-drama dashboard` 时：
 
-1. 完成套件验证并读取 `status`。
+1. 项目存在时读取 `status`；浏览普通目录时直接使用该目录。
 2. 项目内启动时用项目根作为 workspace；否则使用用户给出的容器目录或当前目录。
 3. 从本技能安装目录运行：
 
@@ -71,7 +89,7 @@ Dashboard 是项目内容的轻量展示与有限文本编辑层，核心能力�
 
 4. 回报脚本打印的完整回环地址与停止方式，并保持进程运行。
 
-Dashboard 不扫描 workspace 外部，不保存密钥，不连接外部服务，也不承担工作流编排。它按项目
+Dashboard 不扫描 workspace 外部，不保存密钥，不连接生产 adapter，也不承担工作流编排。它按项目
 和剧集展示正文、结构化卡片以及已有图片/音频/视频；保存只表示保存文件，不代表创作者确认。
 每次启动使用独立本机会话，项目 API 只接受该会话。参数与安全边界见
 [lifecycle-commands.md](references/lifecycle-commands.md#dashboard-启动)。
@@ -116,7 +134,8 @@ Dashboard 不扫描 workspace 外部，不保存密钥，不连接外部服务�
 
 ## 边界
 
-- 当前技能版本只创作与检查文本规格，不直接调用媒体生成服务。
+- 图片、视频和 TTS 生产只由 `$short-drama-produce` 在展示准确 job 并取得本次明确确认后执行；
+  其他技能不直接调用生成服务。
 - 运行时不检索外部或非公开生产来源。
 - 不把别处案例提升为项目定律。
 - 语义冲突不静默修复；不明外部改动由创作者选择保留或重做。

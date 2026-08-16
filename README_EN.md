@@ -8,13 +8,15 @@
 [![License](https://img.shields.io/github/license/worldwonderer/drama-skills)](LICENSE)
 
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
-directors. Nine skills take an idea or a long-form source all the way to episode
+directors. Ten skills take an idea or a long-form source all the way to episode
 scripts, asset decisions, image prompts, storyboard keyframes, video prompts, and
 review records — carrying clear ownership, creator confirmation, and
 continuity through the entire chain. Works with Claude Code, Codex, and other
 runtimes that support Agent Skills.
 
-The output is text: scripts, asset notes, prompts, review records.
+The core output is text: scripts, asset notes, prompts, and review records. After an
+exact preview and explicit user confirmation, an external adapter can also execute
+image, video, TTS, and timeline-level music production.
 
 ## Where this came from
 
@@ -30,10 +32,13 @@ producers maintain projects and write prompts directly through an agent CLI over
 plain files, confirming the prompts before anything goes to generation. It works
 noticeably better. What is left of the in-house tooling is the generation queue.
 
-**Image and video generation are deliberately out of scope:** to prevent unreviewed
-prompts from accidentally triggering paid generation and wasting budget, the suite
-does not call image, video, or audio generation services. Prompts land in files,
-receive human confirmation, and only then move to generation.
+**Confirmation deliberately comes before production:** prompts land in files first.
+The production skill shows the exact count, content, references, parameters, outputs,
+and adapter; it executes only after the user sees and confirms that preview. Any job
+or direct-input change invalidates the confirmation, and a started failure cannot be
+retried without a new confirmation. Credentials stay outside the project. The production
+skill includes optional Seedance, GPT Image 2, and MiniMax Music adapters, while project
+files and the other skills remain provider-neutral.
 
 ## Install
 
@@ -45,7 +50,7 @@ Install this skill suite: https://github.com/worldwonderer/drama-skills
 ```
 
 <details>
-<summary>Manual linking (the nine directories must stay siblings)</summary>
+<summary>Manual linking (install all skills or only the ones you need)</summary>
 
 ```bash
 git clone https://github.com/worldwonderer/drama-skills.git && cd drama-skills
@@ -63,7 +68,10 @@ for skill in skills/*; do
 done
 ```
 
-Remove any same-named skill links first — do not mix versions.
+Each skill is an independent installation unit. For a single writing, review, or
+production capability, link only that directory. `short-drama` provides project
+initialization, status, delivery, and the Dashboard; it is not an installation gate
+for the other skills.
 
 </details>
 
@@ -97,14 +105,19 @@ Use $short-drama-storyboard to audition distinct directing approaches for key sc
 accept a scene visual plan, then author the formal storyboard
 Use $short-drama-video-prompts to translate each authored shot into a video prompt
 
-# 4. Review (prefer someone or a context that did not author this version)
+# 4. Produce after explicit confirmation
+Use $short-drama-produce to preview EP001's accepted image, video, TTS, or timeline-music job; execute only after I confirm
+
+# 5. Review (prefer someone or a context that did not author this version)
 Use $short-drama-review to review EP001's script and prompts
 ```
 
-See [demo/](demo/) for one episode's full excerpt chain: script → asset sheets →
-storyboard → video prompts.
+See [demo/](demo/) for a one-episode excerpt chain. The verifiable eight-episode
+[Golden Sample, *Kindness Is Not a Debt*](examples/golden-project/), demonstrates
+the full path from development and byte-stable screenplay indexes through assets,
+image prompts, storyboards, keyframes, motion prompts, and review.
 
-## The nine skills
+## The ten skills
 
 ```mermaid
 flowchart LR
@@ -118,6 +131,7 @@ flowchart LR
     img["Image prompts<br/>$short-drama-image-prompts"]:::phase
     sb["Storyboard/keyframes<br/>$short-drama-storyboard"]:::phase
     vid["Video prompts<br/>$short-drama-video-prompts"]:::phase
+    prod["Confirmed production<br/>$short-drama-produce"]:::phase
     rev["Review<br/>$short-drama-review"]:::final
     pkg["Text delivery package"]:::final
 
@@ -125,8 +139,9 @@ flowchart LR
     dev -.optional.-> write --> assets
     assets --> img
     assets --> sb --> vid
-    img --> rev
-    vid --> rev --> pkg
+    img --> prod
+    vid --> prod
+    prod --> rev --> pkg
 ```
 
 | Skill | Responsibility |
@@ -138,7 +153,8 @@ flowchart LR
 | `short-drama-assets` | Character/Look, Location/View, Prop/State, optional voice direction, continuity decisions |
 | `short-drama-image-prompts` | Lookdev style frames, reusable character/location/prop reference prompts, and scoped edits |
 | `short-drama-storyboard` | Optional scene visual plans and Coverage Auditions, source coverage, shots, boundaries, and frozen keyframes |
-| `short-drama-video-prompts` | Ordered action, multi-actor performance and attention handoffs, camera/audio intent, timing, and exact boundaries |
+| `short-drama-video-prompts` | Ordered action, multi-actor performance and attention handoffs, camera/audio intent, timing, exact boundaries, and cross-shot timeline-music specs |
+| `short-drama-produce` | Preview a bounded image/video/TTS/music job, require explicit confirmation, execute an external adapter, and record results; optional Seedance, GPT Image 2, and MiniMax Music profiles are included |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
 `$short-drama` is the entry router: it initializes, resumes, shows status, and delivers
@@ -156,7 +172,9 @@ The three single-frame prompt paths have distinct ownership: project-level
 `lookdev_frame` prompts test an accepted visual direction; asset prompts preserve
 reusable character/location/prop facts; and `storyboard` keyframes project a shot's
 start state (plus an end-boundary frame only when the external workflow requires it).
-All three deliver text only and call no media model.
+All three own text specifications only. Actual generation routes to
+`$short-drama-produce`, which displays the exact job and executes it only after
+explicit confirmation.
 
 Key scenes may add a sparse directing layer before formal shots: compare genuinely
 different information timing, audience position, and performance ownership, then
@@ -181,10 +199,10 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 
 The workspace is a lightweight presentation and limited text-editing layer; core creation
 and production capability stays in the skills, not in a heavy UI workflow. It runs locally
-on macOS/Linux and uses one page: a plain content list on
-the left and an always-visible document on the right. Opening a project loads its
-screenplay immediately; there are no page tabs or pop-up document viewers. Tasks and
-export stay as compact notes below the document, while paths and workflow internals
-remain system-owned.
+on macOS/Linux and uses one page: a compact project overview presents episodes and existing
+image/video/audio results, followed by a plain content list and an always-visible document.
+Opening a project loads its screenplay immediately; there are no provider settings,
+generation controls, page tabs, or pop-up document viewers. Production, review, and export
+remain skill actions, while paths and workflow internals remain system-owned.
 
-<img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace: content rail on the left, screenplay on the right" width="680">
+<img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace with project overview, episode progress, existing media, and screenplay" width="680">
