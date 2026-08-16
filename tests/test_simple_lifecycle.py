@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SUITE = Path(__file__).resolve().parents[1]
@@ -343,6 +344,44 @@ class SimpleLifecycleTests(unittest.TestCase):
             self.assertEqual(migrated["schema_version"], "2.0")
             self.assertNotIn("active_transaction", migrated)
 
+    def test_legacy_migration_keeps_the_current_candidate_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            target = root / "剧集/EP001/screenplay.md"
+            target.parent.mkdir(parents=True)
+            target.write_text("new candidate", encoding="utf-8")
+            direct_input = root / "输入/current.md"
+            direct_input.write_text("current input", encoding="utf-8")
+            old_input = root / "输入/old.md"
+            old_input.write_text("old input", encoding="utf-8")
+            def digest(path: Path) -> str:
+                return hashlib.sha256(path.read_bytes()).hexdigest()
+            state_path = root / ".short-drama/state.json"
+            legacy = json.loads(state_path.read_text())
+            legacy["schema_version"] = "1.0.0-draft"
+            legacy["artifacts"] = {
+                "EP001:script": {
+                    "owner": "short-drama-write",
+                    "candidate_targets": {str(target.relative_to(root)): digest(target)},
+                    "accepted_targets": {str(target.relative_to(root)): "0" * 64},
+                    "candidate_inputs": {
+                        str(direct_input.relative_to(root)): digest(direct_input)
+                    },
+                    "accepted_inputs": {str(old_input.relative_to(root)): digest(old_input)},
+                    "creator_acceptance": "accepted",
+                }
+            }
+            project_tool.atomic_json(state_path, legacy)
+
+            project_tool.record_creator_acceptance(
+                root, artifact_id="EP001:script", decision="accepted"
+            )
+            direct_input.write_text("changed after accepting candidate", encoding="utf-8")
+            self.assertEqual(
+                project_tool.project_status(root)["artifacts"]["EP001:script"],
+                "update_needed",
+            )
+
     def test_package_requires_current_approval(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
@@ -353,6 +392,66 @@ class SimpleLifecycleTests(unittest.TestCase):
                     episode="EP001",
                     includes=["剧集/EP001/screenplay.md"],
                 )
+
+    def test_package_rejects_cross_episode_includes_and_omissions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama-write",
+                artifact_id="EP002:script",
+                outputs={"剧集/EP002/screenplay.md": "# 第二集\n"},
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="EP002:script", decision="accepted"
+            )
+            project_tool.record_review(
+                root,
+                artifact_id="EP002:script",
+                verdict="approve",
+                reviewer="reviewer",
+            )
+            with self.assertRaisesRegex(ValueError, "belong to EP001"):
+                project_tool.build_delivery_package(
+                    root,
+                    episode="EP001",
+                    includes=["剧集/EP002/screenplay.md"],
+                )
+
+            self.publish_script(root)
+            self.approve_script(root)
+            with self.assertRaisesRegex(ValueError, "belong to EP001"):
+                project_tool.build_delivery_package(
+                    root,
+                    episode="EP001",
+                    includes=["剧集/EP001/screenplay.md"],
+                    omissions={"剧集/EP002/notes.md": "not requested"},
+                )
+
+    def test_package_writes_the_same_approved_bytes_it_hashed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            approved = b"# first approved version\n"
+            self.publish_script(root, text=approved.decode())
+            self.approve_script(root)
+            source = root / "剧集/EP001/screenplay.md"
+            real_sha256_bytes = project_tool.sha256_bytes
+
+            def mutate_after_hash(content: bytes) -> str:
+                digest = real_sha256_bytes(content)
+                source.write_bytes(b"unapproved race bytes\n")
+                return digest
+
+            with mock.patch.object(
+                project_tool, "sha256_bytes", side_effect=mutate_after_hash
+            ):
+                result = project_tool.build_delivery_package(
+                    root,
+                    episode="EP001",
+                    includes=["剧集/EP001/screenplay.md"],
+                )
+            delivered = root / result["delivery_root"] / "artifacts/剧集/EP001/screenplay.md"
+            self.assertEqual(delivered.read_bytes(), approved)
 
     def test_package_and_verify_selected_approved_text(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -386,6 +485,50 @@ class SimpleLifecycleTests(unittest.TestCase):
             self.assertEqual(verified["status"], "tampered")
             self.assertTrue(any("checksum mismatch" in item for item in verified["problems"]))
             self.assertTrue(any("unexpected delivery file" in item for item in verified["problems"]))
+
+    def test_verify_checks_manifest_file_hashes_even_if_checksums_are_rewritten(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            self.publish_script(root)
+            self.approve_script(root)
+            result = project_tool.build_delivery_package(
+                root, episode="EP001", includes=["剧集/EP001/screenplay.md"]
+            )
+            delivery = root / result["delivery_root"]
+            artifact = delivery / "artifacts/剧集/EP001/screenplay.md"
+            artifact.write_text("laundered bytes", encoding="utf-8")
+            members = [delivery / "manifest.json", artifact]
+            checksums = "".join(
+                f"{project_tool.sha256_file(path)}  {path.relative_to(delivery).as_posix()}\n"
+                for path in members
+            )
+            (delivery / "checksums.sha256").write_text(checksums, encoding="utf-8")
+
+            verified = project_tool.verify_delivery_package(root, episode="EP001")
+            self.assertEqual(verified["status"], "tampered")
+            self.assertTrue(
+                any("manifest hash mismatch" in item for item in verified["problems"])
+            )
+
+    def test_verify_rejects_a_symlinked_delivery_parent(self) -> None:
+        if not hasattr(os, "symlink"):
+            self.skipTest("symlinks are unavailable")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            external = Path(directory) / "external-delivery"
+            package = external / "EP001"
+            package.mkdir(parents=True)
+            (package / "checksums.sha256").write_text("", encoding="utf-8")
+            (root / "交付").rmdir()
+            try:
+                (root / "交付").symlink_to(external, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlink creation is unavailable: {exc}")
+
+            with self.assertRaisesRegex(
+                project_tool.ProjectConflictError, "delivery root"
+            ):
+                project_tool.verify_delivery_package(root, episode="EP001")
 
     def test_package_replaces_a_previous_package_as_one_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

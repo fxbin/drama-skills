@@ -181,6 +181,12 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_link_or_reparse(details: os.stat_result) -> bool:
+    attributes = getattr(details, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return stat.S_ISLNK(details.st_mode) or bool(attributes & reparse_flag)
+
+
 def _fsync_directory(path: Path) -> None:
     if os.name == "nt":
         return
@@ -427,16 +433,20 @@ def _legacy_artifact(record: Mapping[str, Any]) -> dict[str, Any]:
     accepted_targets = record.get("accepted_targets")
     reviewed_targets = record.get("reviewed_targets")
     output_map = (
-        accepted_targets
-        if isinstance(accepted_targets, Mapping)
-        else candidate
+        candidate
         if isinstance(candidate, Mapping)
+        else accepted_targets
+        if isinstance(accepted_targets, Mapping)
         else {}
     )
     outputs = sorted(str(path) for path in output_map if isinstance(path, str))
-    input_map = record.get("accepted_inputs")
+    input_map = (
+        record.get("candidate_inputs")
+        if isinstance(candidate, Mapping)
+        else record.get("accepted_inputs")
+    )
     if not isinstance(input_map, Mapping):
-        input_map = record.get("candidate_inputs")
+        input_map = {}
     inputs = {
         str(path): str(value)
         for path, value in (input_map.items() if isinstance(input_map, Mapping) else [])
@@ -1212,7 +1222,8 @@ def _replace_directory(source: Path, target: Path) -> None:
     moved_old = False
     try:
         if target.exists():
-            if target.is_symlink() or not target.is_dir():
+            details = os.lstat(target)
+            if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
                 raise ProjectConflictError(f"delivery target is unsafe: {target.name}")
             os.replace(target, backup)
             moved_old = True
@@ -1224,6 +1235,16 @@ def _replace_directory(source: Path, target: Path) -> None:
         if moved_old and backup.exists() and not target.exists():
             os.replace(backup, target)
         raise
+
+
+def _require_episode_delivery_path(relative: str, episode: str) -> None:
+    parts = PurePosixPath(relative).parts
+    if (
+        len(parts) < 3
+        or _root_role(parts[0]) != "episodes"
+        or parts[1] != episode
+    ):
+        raise ValueError(f"delivery paths must belong to {episode}: {relative}")
 
 
 def build_delivery_package(
@@ -1243,10 +1264,13 @@ def build_delivery_package(
     omitted = _validate_path_set(root, omission_values, label="omission")
     if set(include_paths).intersection(omitted):
         raise ValueError("a delivery path cannot be both included and omitted")
+    for relative in (*include_paths, *omitted):
+        _require_episode_delivery_path(relative, episode)
 
     with _project_lock(root):
         state = _read_state(root)
         entries: list[dict[str, str]] = []
+        snapshots: dict[str, bytes] = {}
         for relative in include_paths:
             if PurePosixPath(relative).suffix.casefold() not in DELIVERY_SUFFIXES:
                 raise PackageBlockedError(f"delivery source is not text/JSON: {relative}")
@@ -1259,6 +1283,7 @@ def build_delivery_package(
                 data.decode("utf-8")
             except UnicodeDecodeError as exc:
                 raise PackageBlockedError(f"delivery source must be UTF-8: {relative}") from exc
+            snapshots[relative] = data
             entries.append(
                 {
                     "artifact_id": artifact_id,
@@ -1273,15 +1298,22 @@ def build_delivery_package(
             raise PackageBlockedError("mixed project layouts cannot be packaged")
         delivery_root = str(layout["roots"]["delivery"])
         parent = root / delivery_root
-        parent.mkdir(parents=True, exist_ok=True)
+        try:
+            parent_details = os.lstat(parent)
+        except FileNotFoundError:
+            parent.mkdir(parents=True)
+        else:
+            if _is_link_or_reparse(parent_details) or not stat.S_ISDIR(
+                parent_details.st_mode
+            ):
+                raise ProjectConflictError("delivery root is unsafe")
         temporary = parent / f".{episode}.{uuid.uuid4().hex}.tmp"
         temporary.mkdir()
         try:
             for entry in entries:
-                source = _project_path(root, entry["source"])
                 destination = temporary / entry["path"]
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                _atomic_bytes(destination, source.read_bytes())
+                _atomic_bytes(destination, snapshots[entry["source"]])
             manifest = {
                 "schema_version": "1.0",
                 "project_id": state.get("project_id"),
@@ -1321,17 +1353,115 @@ def build_delivery_package(
 
 
 def _delivery_directory(root: Path, episode: str) -> Path:
-    matches = [
-        root / name / episode
-        for name in {CANONICAL_ROOTS["delivery"], LEGACY_ROOTS["delivery"]}
-        if (root / name / episode).exists()
-    ]
+    matches: list[Path] = []
+    for name in {CANONICAL_ROOTS["delivery"], LEGACY_ROOTS["delivery"]}:
+        parent = root / name
+        try:
+            parent_details = os.lstat(parent)
+        except FileNotFoundError:
+            continue
+        if _is_link_or_reparse(parent_details) or not stat.S_ISDIR(
+            parent_details.st_mode
+        ):
+            raise ProjectConflictError("delivery root is unsafe")
+        delivery = parent / episode
+        try:
+            details = os.lstat(delivery)
+        except FileNotFoundError:
+            continue
+        if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
+            raise ProjectConflictError("delivery package is not a regular directory")
+        matches.append(delivery)
     if len(matches) != 1:
         raise FileNotFoundError(f"expected exactly one delivered package for {episode}")
-    delivery = matches[0]
-    if delivery.is_symlink() or not delivery.is_dir():
-        raise ProjectConflictError("delivery package is not a regular directory")
-    return delivery
+    return matches[0]
+
+
+def _manifest_problems(
+    delivery: Path,
+    manifest: object,
+    *,
+    episode: str,
+    checksum_paths: set[str],
+) -> list[str]:
+    problems: list[str] = []
+    if not isinstance(manifest, Mapping):
+        return ["manifest must be an object"]
+    if manifest.get("schema_version") != "1.0":
+        problems.append("manifest schema is invalid")
+    if manifest.get("episode") != episode:
+        problems.append("manifest does not describe this episode")
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        return [*problems, "manifest files must be a list"]
+    manifest_paths: set[str] = set()
+    sources: set[str] = set()
+    for number, entry in enumerate(files, 1):
+        if not isinstance(entry, Mapping) or set(entry) != {
+            "artifact_id",
+            "source",
+            "path",
+            "sha256",
+        }:
+            problems.append(f"manifest file {number} has invalid fields")
+            continue
+        artifact_id = entry.get("artifact_id")
+        source_raw = entry.get("source")
+        path_raw = entry.get("path")
+        digest = entry.get("sha256")
+        if not isinstance(artifact_id, str) or not artifact_id:
+            problems.append(f"manifest file {number} has no artifact id")
+        if not isinstance(source_raw, str) or not isinstance(path_raw, str):
+            problems.append(f"manifest file {number} has an unsafe path")
+            continue
+        try:
+            source = _relative_path(source_raw)
+            relative = _relative_path(path_raw)
+        except ValueError:
+            problems.append(f"manifest file {number} has an unsafe path")
+            continue
+        try:
+            _require_episode_delivery_path(source, episode)
+        except ValueError:
+            problems.append(f"manifest source does not belong to {episode}: {source}")
+        if relative != f"artifacts/{source}":
+            problems.append(f"manifest path does not match its source: {relative}")
+        if relative in manifest_paths:
+            problems.append(f"duplicate manifest path: {relative}")
+        if source in sources:
+            problems.append(f"duplicate manifest source: {source}")
+        manifest_paths.add(relative)
+        sources.add(source)
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            problems.append(f"manifest file {number} has an invalid hash")
+            continue
+        member = delivery / relative
+        if member.is_file() and not member.is_symlink() and sha256_file(member) != digest:
+            problems.append(f"manifest hash mismatch: {relative}")
+    expected_manifest_paths = checksum_paths - {"manifest.json"}
+    if manifest_paths != expected_manifest_paths:
+        problems.append("manifest files do not match checksum members")
+
+    omitted = manifest.get("omitted")
+    if not isinstance(omitted, list):
+        problems.append("manifest omissions must be a list")
+    else:
+        for number, entry in enumerate(omitted, 1):
+            if (
+                not isinstance(entry, Mapping)
+                or set(entry) != {"source", "reason"}
+                or not isinstance(entry.get("source"), str)
+                or not isinstance(entry.get("reason"), str)
+                or not str(entry.get("reason")).strip()
+            ):
+                problems.append(f"manifest omission {number} is invalid")
+                continue
+            try:
+                source = _relative_path(str(entry["source"]))
+                _require_episode_delivery_path(source, episode)
+            except ValueError:
+                problems.append(f"manifest omission {number} has an unsafe source")
+    return problems
 
 
 def verify_delivery_package(root: Path, *, episode: str) -> dict[str, Any]:
@@ -1381,8 +1511,14 @@ def verify_delivery_package(root: Path, *, episode: str) -> dict[str, Any]:
             problems.append(f"checksum mismatch: {relative}")
     try:
         manifest = json.loads((delivery / "manifest.json").read_text(encoding="utf-8"))
-        if not isinstance(manifest, dict) or manifest.get("episode") != episode:
-            problems.append("manifest does not describe this episode")
+        problems.extend(
+            _manifest_problems(
+                delivery,
+                manifest,
+                episode=episode,
+                checksum_paths=set(expected),
+            )
+        )
     except (OSError, UnicodeError, json.JSONDecodeError):
         problems.append("manifest.json is unreadable")
     return {
