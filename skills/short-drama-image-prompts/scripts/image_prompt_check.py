@@ -24,7 +24,24 @@ PURPOSES = {
     "edit_delta",
     "lookdev_frame",
 }
-VENDOR_FIELDS = {"provider", "model", "api_key", "task_id", "remote_id"}
+VENDOR_FIELDS = {
+    "authorization",
+    "credential",
+    "credentials",
+    "model",
+    "model_id",
+    "model_name",
+    "provider",
+    "provider_id",
+    "api_key",
+    "task_id",
+    "remote_id",
+    "access_token",
+    "token",
+    "secret",
+    "password",
+}
+NORMALIZED_VENDOR_FIELDS = {re.sub(r"[^a-z0-9]", "", key) for key in VENDOR_FIELDS}
 
 
 class ValidationError(ValueError):
@@ -110,6 +127,22 @@ def validate_reference_bindings(record: dict[str, Any], label: str) -> None:
             raise ValidationError(f"{item}: unverified references need unresolved_risks")
 
 
+def vendor_field_paths(value: object, prefix: str = "") -> list[str]:
+    leaked: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            name = str(key)
+            path = f"{prefix}.{name}" if prefix else name
+            normalized = re.sub(r"[^a-z0-9]", "", name.casefold())
+            if normalized in NORMALIZED_VENDOR_FIELDS:
+                leaked.append(path)
+            leaked.extend(vendor_field_paths(child, path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            leaked.extend(vendor_field_paths(child, f"{prefix}[{index}]"))
+    return leaked
+
+
 def validate_asset_spec(record: dict[str, Any], label: str) -> None:
     binding = record.get("asset_binding")
     if not isinstance(binding, dict):
@@ -171,7 +204,7 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             raise ValidationError(f"{label}: invalid purpose {purpose!r}")
         if record.get("status") != "candidate":
             raise ValidationError(f"{label}: specs must remain candidate until creator acceptance")
-        leaked = sorted(VENDOR_FIELDS.intersection(record))
+        leaked = sorted(vendor_field_paths(record))
         if leaked:
             raise ValidationError(f"{label}: provider execution fields are forbidden: {', '.join(leaked)}")
         prompt = text(record, "generic_prompt", label)

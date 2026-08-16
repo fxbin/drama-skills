@@ -37,7 +37,15 @@ def main() -> int:
     leaked[0]["provider"] = "example"
     fail(leaked, "provider execution fields")
 
-    print("4 self-tests passed")
+    nested_provider = copy.deepcopy(records)
+    nested_provider[0]["reference_bindings"][0]["provider"] = "example"
+    fail(nested_provider, "reference_bindings[0].provider")
+
+    nested_secret = copy.deepcopy(records)
+    nested_secret[0]["asset_binding"]["credentials"] = {"token": "not-safe"}
+    fail(nested_secret, "asset_binding.credentials")
+
+    print("6 self-tests passed")
     return 0
 
 
