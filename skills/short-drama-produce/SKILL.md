@@ -1,6 +1,6 @@
 ---
 name: short-drama-produce
-description: 在创作者明确确认后，执行短剧项目的图片、视频或 TTS/配音生产任务，并把结果与精简运行记录落回项目。用户说“生成这张图/这段视频/这句配音”“开始跑图/跑视频/合成语音”“把已确认提示词送去生产”，或要求批量执行已确认媒体任务时使用；不负责创作提示词、镜头、台词或声音身份，也绝不把预览、继续、预算说明或既有接受状态当作本次付费生产确认。
+description: 在创作者明确确认后，执行短剧项目的图片、视频、TTS/配音或时间线音乐生产任务，并把结果与精简运行记录落回项目。用户说“生成这张图/这段视频/这句配音/这段配乐”“开始跑图/跑视频/合成语音/生成音乐”“把已确认提示词送去生产”，或要求批量执行已确认媒体任务时使用；不负责创作提示词、镜头、台词、歌词或声音身份，也绝不把预览、继续、预算说明或既有接受状态当作本次付费生产确认。
 license: MIT
 ---
 
@@ -9,6 +9,15 @@ license: MIT
 本技能只负责把已经写好的生产规格安全送到运行环境配置的 adapter。图片提示词仍归
 `$short-drama-image-prompts`，视频提示词归 `$short-drama-video-prompts`，台词与录音表归
 `$short-drama-write`，声音身份归 `$short-drama-assets`。
+
+## Quick Start
+
+先离线验证确认闸门、fixture adapter 和供应商 payload 编译，不发起远端请求：
+
+```bash
+python3 {技能目录}/scripts/selftest.py
+python3 {技能目录}/scripts/provider_adapters.py --selftest
+```
 
 ## 硬闸门
 
@@ -46,6 +55,8 @@ python3 <本技能目录>/scripts/production_tool.py status <project> --job-id <
 - **image**：读取当前图片 prompt/spec、必要参考图和明确的输出尺寸/数量。
 - **video**：读取当前 motion spec、对应 shot/keyframe、必要首尾帧和时长/画幅。
 - **tts**：读取当前录音表中的原句、说话人/声音参考和本句表演要求；不得在生产 job 中改词。
+- **music**：读取已接受的时间线音乐规格；主题曲使用已确认歌词，纯配乐不携带歌词。供应商不能
+  精确承诺时长时，生成 source track 后仍由剪辑按 `mix_intent` 完成落点、循环、淡入淡出和对白 ducking。
 
 一个 job 不混合 modality。大批量工作拆成创作者能看清数量和成本边界的小 job；不为方便把整季
 隐式塞进一次确认。
@@ -57,7 +68,19 @@ adapter 配置必须在项目外，只包含 argv 命令和超时；凭据由 ad
 
 脚本以 JSON stdin 调用 argv 数组，不使用 shell，不拼接命令。adapter 返回本地临时文件；工具只
 接受与已确认 targets 完全一致的结果，并把完整文件原子复制到项目的 `production/制作成果`
-目录。套件不写死供应商、模型或即将变化的 API。
+目录。项目和上游 Skill 不写死供应商、模型或即将变化的 API。
+
+本技能可选提供三个 stdlib adapter，均通过项目外 adapter config 选择，凭据只从运行环境读取：
+
+- [Seedance](references/providers/seedance.md)：模型/Endpoint ID 必须由账号显式配置；内置 runtime
+  只承诺已验证的 text-to-video，未配置可信上传时本地参考图 fail closed。
+- [GPT Image 2](references/providers/gpt-image-2.md)：无参考图走 generation，有参考图走 edit；
+  固定高保真引用并校验尺寸、格式与透明背景限制。
+- [MiniMax Music](references/providers/minimax-music.md)：使用 `music-3.0` 与 hex 结果，区分主题曲
+  和纯配乐，不伪造时长请求字段。
+
+这些 adapter 是已验证请求契约，不是账号可用性或生成质量保证；正式生产仍必须通过上面的本次
+确认闸门，并由审查 Skill 判断产物质量。
 
 仓库自带 `fixture_adapter.py` 只用于离线测试，不代表真实生成质量或默认生产 adapter。
 

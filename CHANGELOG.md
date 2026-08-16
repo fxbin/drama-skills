@@ -37,6 +37,14 @@
 
 ### 新增
 
+- **十个 Skill 都可独立离线自证**。补齐 core、开发、原著分析、写作、分镜、视频提示词和生产
+  Skill 的 `Quick Start` 与负例 selftest；CI 会把每个 Skill 单独复制到陌生路径、从无关 cwd
+  运行，证明它不读取 sibling、全局 manifest 或 Dashboard。视频提示词 Skill 同时新增独立的
+  时间线音乐规格与结构校验，不把配乐复制成每镜供应商字段。
+- **确认后生产新增三家可选 adapter**。`short-drama-produce` 在不改变上游中立规格的前提下，
+  支持 GPT Image 2 图片生成/参考图编辑、Seedance 显式模型的 text-to-video，以及 MiniMax
+  Music 3.0 主题曲/纯配乐。凭据和 adapter config 仍在项目外；官方未证明的字段、透明背景、
+  本地 Seedance reference 上传和错误媒体签名都会 fail closed，所有远端执行仍消费一次明确确认。
 - **三个阶段 Skill 补齐独立可运行闭环**。`short-drama-assets`、
   `short-drama-image-prompts` 与 `short-drama-review` 各自新增原生最小样例、本地结构校验器、
   离线 selftest 和 `SKILL.md` Quick Start；单独拷走目录后仍可运行，不读取 core、sibling、

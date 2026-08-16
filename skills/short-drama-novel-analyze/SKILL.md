@@ -12,6 +12,15 @@ license: MIT
 分析永远是候选。哪条线保留、哪些人合并、从哪里开篇，是创作者的决定，由
 `$short-drama-develop` 立成改编契约。本技能不替它决定，也不批准自己的产物。
 
+## Quick Start
+
+离线验证章节索引、采样和源文件变更检测：
+
+```bash
+python3 {技能目录}/scripts/selftest.py
+python3 {技能目录}/scripts/novel_index.py index <原著.txt> --out <chapter-index.json>
+```
+
 ## 开始前
 
 本技能可独立安装和执行。先读取用户明确提供的原著与本任务直接输入；若当前目录是

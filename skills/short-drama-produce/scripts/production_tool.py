@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Prepare and execute explicitly confirmed short-drama media jobs.
 
-The suite does not embed provider clients. A configured external adapter receives
-one bounded JSON job on stdin and returns local output files on stdout. The
-adapter is launched without a shell and only after a confirmation bound to the
-exact job and current project inputs.
+A configured adapter receives one bounded JSON job on stdin and returns local
+output files on stdout. The adapter is launched without a shell and only after
+a confirmation bound to the exact job and current project inputs. Optional
+provider adapters can ship with this skill, but credentials and adapter config
+remain outside creator projects.
 """
 
 from __future__ import annotations
@@ -41,6 +42,19 @@ MAX_OUTPUT_BYTES = 512 * 1024 * 1024
 MAX_INPUT_BYTES = 50 * 1024 * 1024
 MAX_TOTAL_INPUT_BYTES = 200 * 1024 * 1024
 MAX_TIMEOUT_SECONDS = 3600
+PUBLIC_ERROR_CATEGORIES = {
+    "authentication",
+    "configuration",
+    "contract",
+    "invalid_request",
+    "network",
+    "permission",
+    "provider_response",
+    "rate_limit",
+    "server",
+    "timeout",
+}
+PUBLIC_ERROR_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}")
 ALLOWED_JOB_KEYS = {
     "schema_version",
     "job_id",
@@ -68,6 +82,7 @@ MEDIA_EXTENSIONS = {
     "image": {".png", ".jpg", ".jpeg", ".webp"},
     "video": {".mp4", ".mov", ".webm"},
     "tts": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".opus"},
+    "music": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".opus"},
 }
 MEDIA_TYPES = {
     ".png": "image/png",
@@ -92,6 +107,12 @@ class ConfirmationRequiredError(RuntimeError):
 
 class AdapterError(RuntimeError):
     """A configured media adapter failed or broke its output contract."""
+
+    def __init__(
+        self, message: str, *, public_error: Mapping[str, Any] | None = None
+    ) -> None:
+        super().__init__(message)
+        self.public_error = dict(public_error) if public_error is not None else None
 
 
 def utc_now() -> str:
@@ -122,19 +143,9 @@ def _relative_path(value: object, *, output: bool = False) -> str:
     if pure.parts[0].casefold() == ".short-drama" or pure.name.casefold() == PROJECT_FILE:
         raise ValueError(f"operational project path is not allowed: {value}")
     if output:
-        parts = pure.parts
-        top_level_production = len(parts) >= 2 and parts[0].casefold() == "production"
-        episode_production = (
-            len(parts) >= 4
-            and parts[0] in {"剧集", "episodes"}
-            and re.fullmatch(r"EP\d{3,}", parts[1], re.IGNORECASE) is not None
-            and parts[2] in {"制作成果", "production"}
-        )
-        if not top_level_production and not episode_production:
-            raise ValueError(
-                "media outputs must use top-level production/ or "
-                "剧集|episodes/<EP>/制作成果|production/"
-            )
+        folded = {part.casefold() for part in pure.parts}
+        if "production" not in folded and "制作成果" not in pure.parts:
+            raise ValueError("media outputs must live below a production/制作成果 directory")
     return pure.as_posix()
 
 
@@ -199,6 +210,8 @@ def _open_project_input(root: Path, relative: str) -> Iterator[BinaryIO]:
             os.close(directory_fd)
         return
 
+    # Windows lacks portable openat/O_NOFOLLOW support. Reject reparse/symlink
+    # components, pin the final file handle, and verify its identity before use.
     path = root
     for part in parts:
         path /= part
@@ -381,7 +394,7 @@ def _normalize_job(root: Path, raw: object) -> dict[str, Any]:
         raise ValueError("job_id must be a portable 1-80 character identifier")
     modality = raw.get("modality")
     if modality not in MEDIA_EXTENSIONS:
-        raise ValueError("modality must be image, video, or tts")
+        raise ValueError("modality must be image, video, tts, or music")
     adapter = raw.get("adapter")
     if not isinstance(adapter, str) or JOB_ID_RE.fullmatch(adapter) is None:
         raise ValueError("adapter must be a portable profile name")
@@ -528,6 +541,80 @@ def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str
     return command, timeout
 
 
+def _generic_adapter_error(
+    profile: str,
+    *,
+    category: str,
+    code: str,
+    retryable: bool,
+) -> dict[str, Any]:
+    return {
+        "provider": profile,
+        "category": category,
+        "code": code,
+        "retryable": retryable,
+    }
+
+
+def _parse_public_adapter_error(
+    raw: bytes, *, profile: str, returncode: int
+) -> dict[str, Any]:
+    fallback = _generic_adapter_error(
+        profile,
+        category="provider_response",
+        code=f"adapter_exit_{returncode}",
+        retryable=False,
+    )
+    if len(raw) > MAX_ADAPTER_RESPONSE_BYTES:
+        return fallback
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return fallback
+    error = document.get("error") if isinstance(document, Mapping) else None
+    if not isinstance(error, Mapping) or set(error) - {
+        "provider",
+        "category",
+        "code",
+        "http_status",
+        "request_id",
+        "retryable",
+    }:
+        return fallback
+    provider = error.get("provider")
+    category = error.get("category")
+    code = error.get("code")
+    retryable = error.get("retryable")
+    if (
+        provider != profile
+        or category not in PUBLIC_ERROR_CATEGORIES
+        or not isinstance(code, str)
+        or PUBLIC_ERROR_TOKEN_RE.fullmatch(code) is None
+        or not isinstance(retryable, bool)
+    ):
+        return fallback
+    result: dict[str, Any] = {
+        "provider": provider,
+        "category": category,
+        "code": code,
+        "retryable": retryable,
+    }
+    status = error.get("http_status")
+    if status is not None:
+        if not isinstance(status, int) or isinstance(status, bool) or not 100 <= status <= 599:
+            return fallback
+        result["http_status"] = status
+    request_id = error.get("request_id")
+    if request_id is not None:
+        if (
+            not isinstance(request_id, str)
+            or PUBLIC_ERROR_TOKEN_RE.fullmatch(request_id) is None
+        ):
+            return fallback
+        result["request_id"] = request_id
+    return result
+
+
 def _run_adapter(command: list[str], timeout: int, payload: Mapping[str, Any], root: Path) -> dict[str, Any]:
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         try:
@@ -541,11 +628,38 @@ def _run_adapter(command: list[str], timeout: int, payload: Mapping[str, Any], r
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise AdapterError("adapter timed out; confirmation was consumed") from exc
+            raise AdapterError(
+                "adapter timed out; confirmation was consumed",
+                public_error=_generic_adapter_error(
+                    str(payload["adapter"]),
+                    category="timeout",
+                    code="adapter_timeout",
+                    retryable=True,
+                ),
+            ) from exc
         except OSError as exc:
-            raise AdapterError("adapter could not be started; confirmation was consumed") from exc
+            raise AdapterError(
+                "adapter could not be started; confirmation was consumed",
+                public_error=_generic_adapter_error(
+                    str(payload["adapter"]),
+                    category="configuration",
+                    code="adapter_start_failed",
+                    retryable=False,
+                ),
+            ) from exc
         if completed.returncode != 0:
-            raise AdapterError(f"adapter exited with code {completed.returncode}; confirmation was consumed")
+            size = stdout.tell()
+            stdout.seek(0)
+            raw_error = stdout.read(MAX_ADAPTER_RESPONSE_BYTES + 1)
+            public_error = _parse_public_adapter_error(
+                raw_error if size <= MAX_ADAPTER_RESPONSE_BYTES else b"",
+                profile=str(payload["adapter"]),
+                returncode=completed.returncode,
+            )
+            raise AdapterError(
+                f"adapter exited with code {completed.returncode}; confirmation was consumed",
+                public_error=public_error,
+            )
         size = stdout.tell()
         if size > MAX_ADAPTER_RESPONSE_BYTES:
             raise AdapterError("adapter response is too large; confirmation was consumed")
@@ -587,31 +701,13 @@ def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any
     return result
 
 
-def _copy_output(source: Path, target: Path, *, overwrite: bool) -> tuple[str, int]:
+def _copy_output(source: Path, target: Path) -> tuple[str, int]:
     temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     target.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     size = 0
     try:
-        try:
-            before = source.lstat()
-        except OSError as exc:
-            raise AdapterError(
-                "adapter output file is missing; confirmation was consumed"
-            ) from exc
-        if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode):
-            raise AdapterError("adapter output file is unsafe; confirmation was consumed")
-        descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
-        ):
-            os.close(descriptor)
-            raise AdapterError("adapter output changed while opening; confirmation was consumed")
-        with os.fdopen(descriptor, "rb", closefd=True) as incoming, temporary.open(
-            "xb"
-        ) as outgoing:
+        with source.open("rb") as incoming, temporary.open("xb") as outgoing:
             for chunk in iter(lambda: incoming.read(1024 * 1024), b""):
                 size += len(chunk)
                 if size > MAX_OUTPUT_BYTES:
@@ -620,16 +716,7 @@ def _copy_output(source: Path, target: Path, *, overwrite: bool) -> tuple[str, i
                 outgoing.write(chunk)
             outgoing.flush()
             os.fsync(outgoing.fileno())
-        if overwrite:
-            os.replace(temporary, target)
-        else:
-            try:
-                os.link(temporary, target, follow_symlinks=False)
-            except FileExistsError as exc:
-                raise FileExistsError(
-                    f"output appeared while production was running: {target.name}"
-                ) from exc
-            temporary.unlink()
+        os.replace(temporary, target)
     finally:
         try:
             temporary.unlink()
@@ -675,6 +762,8 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 target = _project_file(root, output)
                 if target.exists() and not job["overwrite"]:
                     raise FileExistsError(f"output exists and overwrite is false: {output}")
+            # Pin every confirmed input into a private immutable snapshot before
+            # consuming confirmation. Provider adapters never reopen live project paths.
             _snapshot_inputs(root, job, snapshot_root)
             run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
             receipt["consumed_at"] = utc_now()
@@ -703,9 +792,7 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
             with _project_lock(root):
                 for target_name, source in adapter_outputs:
                     target = _project_file(root, target_name, create_parent=True)
-                    digest, size = _copy_output(
-                        source, target, overwrite=bool(job["overwrite"])
-                    )
+                    digest, size = _copy_output(source, target)
                     written.append(
                         {
                             "path": target_name,
@@ -721,10 +808,12 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 if isinstance(provider_job_id, str) and len(provider_job_id) <= 200:
                     run["provider_job_id"] = provider_job_id
                 _write_run(root, job_id, run)
-        except Exception:
+        except Exception as exc:
             with _project_lock(root):
                 run["status"] = "failed"
                 run["finished_at"] = utc_now()
+                if isinstance(exc, AdapterError) and exc.public_error is not None:
+                    run["error"] = exc.public_error
                 _write_run(root, job_id, run)
             raise
     return {

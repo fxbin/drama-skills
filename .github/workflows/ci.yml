@@ -75,7 +75,10 @@ jobs:
           skills/short-drama-develop/scripts/episode_intake.py
           skills/short-drama-assets/scripts/asset_check.py
           skills/short-drama-image-prompts/scripts/image_prompt_check.py
+          skills/short-drama-produce/scripts/production_tool.py
+          skills/short-drama-produce/scripts/provider_adapters.py
           skills/short-drama-review/scripts/review_check.py
+          skills/short-drama-video-prompts/scripts/music_spec_check.py
           --ignore-missing-imports
       - uses: actions/setup-node@v4
         with:

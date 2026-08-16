@@ -13,11 +13,16 @@ if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("selftest.py requires Python 3.10 or newer")
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 def fail(findings: list[dict], verdict: dict, marker: str) -> None:
     try:
         validate_records(findings, verdict)
     except ValidationError as exc:
-        assert marker in str(exc), (marker, str(exc))
+        require(marker in str(exc), f"expected {marker!r}, got {exc!s}")
     else:
         raise AssertionError(f"expected failure containing {marker!r}")
 
@@ -26,7 +31,10 @@ def main() -> int:
     findings = load_jsonl(SKILL_ROOT / "examples/minimal-findings.jsonl")
     verdict = load_object(SKILL_ROOT / "examples/minimal-verdict.json")
     result = validate_records(findings, verdict)
-    assert result["open_blockers"] == 1 and result["verdict"] == "REVISE"
+    require(
+        result["open_blockers"] == 1 and result["verdict"] == "REVISE",
+        "valid fixture verdict",
+    )
 
     wrong_count = copy.deepcopy(verdict)
     wrong_count["open_blocker_count"] = 0

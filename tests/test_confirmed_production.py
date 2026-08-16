@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SUITE = Path(__file__).resolve().parents[1]
@@ -54,7 +55,7 @@ class ConfirmedProductionTests(unittest.TestCase):
         overwrite: bool = False,
         parameters: dict | None = None,
     ) -> Path:
-        extensions = {"image": "png", "video": "mp4", "tts": "wav"}
+        extensions = {"image": "png", "video": "mp4", "tts": "wav", "music": "wav"}
         output = output or (
             f"剧集/EP001/制作成果/{modality}/{job_id}.{extensions[modality]}"
         )
@@ -189,11 +190,12 @@ class ConfirmedProductionTests(unittest.TestCase):
                     adapter_config=self.adapter_config(directory),
                 )
 
-    def test_fixture_executes_image_video_and_tts_jobs(self) -> None:
+    def test_fixture_executes_every_supported_media_job(self) -> None:
         signatures = {
             "image": b"\x89PNG",
             "video": b"\x00\x00\x00\x18ftypisom",
             "tts": b"RIFF",
+            "music": b"RIFF",
         }
         for modality, signature in signatures.items():
             with self.subTest(modality=modality), tempfile.TemporaryDirectory() as directory:
@@ -231,10 +233,106 @@ class ConfirmedProductionTests(unittest.TestCase):
                 production_tool.job_status(root, job_id="EP001-SHOT001")["state"],
                 "failed",
             )
+            error = production_tool.job_status(
+                root, job_id="EP001-SHOT001"
+            )["latest_run"]["error"]
+            self.assertEqual(error["code"], "adapter_exit_7")
+            self.assertNotIn("message", error)
             with self.assertRaises(production_tool.ConfirmationRequiredError):
                 production_tool.run_job(
                     root, job_id="EP001-SHOT001", adapter_config=config
                 )
+
+    def test_structured_provider_failure_is_preserved_without_response_body(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            failure = Path(directory) / "safe_failure.py"
+            failure.write_text(
+                "import json, sys\n"
+                "json.dump({'error': {'provider': 'fixture', "
+                "'category': 'rate_limit', 'code': 'rate_limit_exceeded', "
+                "'http_status': 429, 'request_id': 'req_safe_123', "
+                "'retryable': True}}, sys.stdout)\n"
+                "print('provider secret body', file=sys.stderr)\n"
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            config = Path(directory) / "structured-adapters.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(failure)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id="EP001-SHOT001", adapter_config=config
+                )
+            latest = production_tool.job_status(
+                root, job_id="EP001-SHOT001"
+            )["latest_run"]
+            self.assertEqual(
+                latest["error"],
+                {
+                    "provider": "fixture",
+                    "category": "rate_limit",
+                    "code": "rate_limit_exceeded",
+                    "http_status": 429,
+                    "request_id": "req_safe_123",
+                    "retryable": True,
+                },
+            )
+            self.assertNotIn("secret", json.dumps(latest))
+
+    def test_adapter_reads_a_private_confirmed_input_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            config = self.adapter_config(directory)
+            original = (root / "输入/reference.png").read_bytes()
+            adapter_output = Path(directory) / "adapter-output.png"
+            adapter_output.write_bytes(b"fixture output")
+
+            def inspect_snapshot(command, timeout, payload, cwd):
+                snapshot_root = Path(payload["project_root"])
+                self.assertNotEqual(snapshot_root, root)
+                self.assertEqual(
+                    (snapshot_root / "输入/reference.png").read_bytes(), original
+                )
+                live = root / "输入/reference.png"
+                live.write_bytes(b"changed after confirmation consumption")
+                self.assertEqual(
+                    (snapshot_root / "输入/reference.png").read_bytes(), original
+                )
+                return {
+                    "outputs": [
+                        {
+                            "target": payload["outputs"][0],
+                            "source": str(adapter_output),
+                        }
+                    ]
+                }
+
+            with mock.patch.object(
+                production_tool, "_run_adapter", side_effect=inspect_snapshot
+            ):
+                result = production_tool.run_job(
+                    root,
+                    job_id="EP001-SHOT001",
+                    adapter_config=config,
+                )
+            self.assertEqual(result["state"], "succeeded")
 
     def test_existing_output_requires_explicit_overwrite_without_consuming(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

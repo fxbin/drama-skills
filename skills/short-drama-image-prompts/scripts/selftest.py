@@ -13,18 +13,23 @@ if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("selftest.py requires Python 3.10 or newer")
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 def fail(records: list[dict], marker: str) -> None:
     try:
         validate_records(records)
     except ValidationError as exc:
-        assert marker in str(exc), (marker, str(exc))
+        require(marker in str(exc), f"expected {marker!r}, got {exc!s}")
     else:
         raise AssertionError(f"expected failure containing {marker!r}")
 
 
 def main() -> int:
     records = load_jsonl(SKILL_ROOT / "examples/minimal-image-prompt-specs.jsonl")
-    assert validate_records(records)["specs"] == 1
+    require(validate_records(records)["specs"] == 1, "valid fixture count")
 
     duplicate = [records[0], copy.deepcopy(records[0])]
     fail(duplicate, "duplicate spec_id")

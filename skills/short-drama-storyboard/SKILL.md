@@ -14,6 +14,15 @@ license: MIT
 `#/format/prompt_language`，独立运行时由用户指定、未指定则为 `en`。不要用
 其中一个推断另一个。ID、规则编号和字段名在两者之下都保持原样。
 
+## Quick Start
+
+离线验证时长合计和关键帧边界绑定的正反例：
+
+```bash
+python3 {技能目录}/scripts/selftest.py
+python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shots.jsonl> --keyframes <keyframes.jsonl>
+```
+
 ## 开始前
 
 本技能可独立安装和执行。先读取用户明确提供的剧本、资产与本任务直接输入；若当前目录是

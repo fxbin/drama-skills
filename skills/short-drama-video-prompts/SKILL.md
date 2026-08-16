@@ -1,12 +1,14 @@
 ---
 name: short-drama-video-prompts
-description: 为已接受的短剧镜头和关键帧编写或修改可复制的通用视频提示词与运动规格。用户提到视频提示词、文生视频、图生视频动作、人物表演过程、运镜、对白口型、环境运动、镜头时长、起止状态或把分镜转成视频提示词时直接使用；只描述单个已编镜头内的运动、表演、摄影与声音，不生成视频，不调用模型或供应商接口，也不改写分镜边界。
+description: 为已接受的短剧镜头和关键帧编写或修改可复制的通用视频提示词与运动规格，也负责跨镜时间线配乐/主题曲的 provider-neutral 音乐规格。用户提到视频提示词、文生视频、图生视频动作、人物表演过程、运镜、对白口型、环境运动、镜头时长、起止状态、把分镜转成视频提示词、写主题曲/配乐提示词或校验时间线音乐规格时直接使用；视频部分只描述单个已编镜头内的运动、表演、摄影与声音，音乐部分只投影已接受剧情/导演意图和创作者提供的歌词；不生成媒体，不调用供应商，不创作歌词，也不改写分镜边界。
 license: MIT
 ---
 
-# 短剧视频提示词
+# 短剧视频与时间线音乐提示词
 
 把分镜已经决定的一个镜头，写成按时间执行的动作、表演、摄影和声音。运动说明只实现起止边界，不能改写边界。
+当音乐承担跨镜、跨场或主题曲职责时，本技能拥有独立的 provider-neutral 时间线音乐规格；
+它不替创作者写词，也不把配乐为了某个供应商方便而烘焙进每镜。
 
 预览、末端报告与补拍说明是创作者读的：项目内跟随 `short-drama.json#/language`，独立运行时
 跟随用户使用的语言。送给视频生成器的**提示词正文**在项目内跟随
@@ -19,6 +21,15 @@ license: MIT
 `short-drama` 项目且项目工具可用，可以读取 `status` 并使用其发布生命周期，但缺少 core
 或任何其他技能都不是视频提示词工作的阻断条件。[阶段契约](references/stage-contract.md)
 给出本阶段边界、制作形态输入与规则表，无需读取其他技能的文件。
+
+## Quick Start
+
+校验一个独立的时间线音乐规格，不调用供应商或生成媒体：
+
+```bash
+python3 {技能目录}/scripts/music_spec_check.py examples/minimal-music-specs.jsonl
+python3 {技能目录}/scripts/selftest.py
+```
 
 ## 进入条件与权属
 
@@ -45,6 +56,7 @@ license: MIT
 | 生产端提示词写法、台词绑定、负面清单 | [生产提示词语法惯例](references/production-prompt-grammar.md) |
 | 分段交付、槽位职责、时长分配、交付路由与执行触发词 | [交付档案与槽位语义](references/delivery-profile.md) |
 | 多张参考图的用途、补拍或替代版范围 | [阶段契约](references/stage-contract.md) 的参考媒体与补拍 |
+| 时间线主题曲或配乐意图 | [音乐规格模板](assets/music-spec.jsonl.md) |
 
 规格使用 [运动规格模板](assets/motion-spec.jsonl.md)；末镜或下一集记录尚未建立时参考
 [末镜定位示例](assets/motion-terminal.example.jsonl)；可复制交付使用
@@ -209,3 +221,8 @@ reviewer 在下游审查结论中决定，不能回写运动规格形成循环�
 用户要求把已接受运动规格真正生成视频时，交给 `$short-drama-produce`。传递准确的 motion
 spec、起止帧/参考文件、时长、画幅、声音要求和目标路径；生产技能必须展示完整预览并取得
 本次任务的明确确认后才可调用外部 adapter。本技能本身仍只负责规格和提示词。
+
+若音乐承担跨镜、跨场或主题曲职责，先写独立的 provider-neutral
+`music-specs.jsonl`，并用 `scripts/music_spec_check.py` 校验。音乐是时间线层，不能为了某个
+供应商方便而复制进每镜视频提示词。生成时把已接受的 prompt、歌词（如有）、引用和目标路径
+作为独立 `music` job 交给 `$short-drama-produce`。

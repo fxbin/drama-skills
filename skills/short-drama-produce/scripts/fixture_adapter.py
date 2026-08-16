@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline adapter fixture for image, video, and TTS production tests."""
+"""Offline adapter fixture for image, video, TTS, and music production tests."""
 
 from __future__ import annotations
 

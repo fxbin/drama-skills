@@ -13,7 +13,7 @@
 支持 Agent Skill 规范的运行环境。
 
 核心产出是文本：剧本、设定、提示词、审查记录。提示词预览并经用户明确确认后，也可通过
-项目外配置的 adapter 执行图片、视频和 TTS 生产。
+项目外配置的 adapter 执行图片、视频、TTS 和时间线音乐生产。
 
 ## 由来
 
@@ -27,7 +27,8 @@
 
 **刻意把确认放在生产之前**：提示词先落进文件，生产 skill 展示本次准确数量、内容、参考、
 参数、输出和 adapter；用户看到预览并明确确认后才执行。任何内容或直接输入变化都会让确认
-失效，已启动的失败任务也不能无确认重试。供应商凭据不进入项目，套件不写死某家 API。
+失效，已启动的失败任务也不能无确认重试。供应商凭据不进入项目；生产 Skill 自带
+Seedance、GPT Image 2 与 MiniMax Music 的可选 adapter，但项目文件和其他 Skill 不绑定供应商。
 
 ## 安装
 
@@ -88,7 +89,7 @@ done
 用 $short-drama-video-prompts 把分镜逐镜翻译成视频提示词
 
 # 4. 明确确认后投产
-用 $short-drama-produce 预览第 1 集已接受的图片、视频或 TTS 任务；等我确认后再执行
+用 $short-drama-produce 预览第 1 集已接受的图片、视频、TTS 或时间线音乐任务；等我确认后再执行
 
 # 5. 审查（最好由未参与当前版本创作的人或上下文执行）
 用 $short-drama-review 审查第 1 集的剧本与提示词
@@ -134,8 +135,8 @@ flowchart LR
 | `short-drama-assets` | 人物/造型、地点/视图、道具/状态、可选的角色声音方向与连续性决策 |
 | `short-drama-image-prompts` | Lookdev 风格帧、角色/场景/道具参考板提示词与定点修改说明 |
 | `short-drama-storyboard` | 可选场次视觉计划与 Coverage Audition、原文落实、镜头、边界和冻结关键帧 |
-| `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态与补拍说明 |
-| `short-drama-produce` | 展示有边界的图片/视频/TTS 任务，取得本次明确确认后通过外部 adapter 执行并记录结果 |
+| `short-drama-video-prompts` | 单镜动作、多人物表演与注意交接、摄影、声音、起止状态、补拍说明，以及跨镜时间线音乐规格 |
+| `short-drama-produce` | 展示有边界的图片/视频/TTS/音乐任务，取得本次明确确认后通过外部 adapter 执行并记录结果；可选支持 Seedance、GPT Image 2 与 MiniMax Music |
 | `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
 
 `$short-drama` 是入口路由，负责初始化、继续、显示状态和交付，把具体工作转给对应技能。

@@ -17,13 +17,12 @@
 }
 ```
 
-- `modality`: `image`, `video`, or `tts`.
+- `modality`: `image`, `video`, `tts`, or `music`. `tts` is one bounded spoken
+  utterance; `music` is a separately accepted timeline-level cue or song and
+  must not be smuggled into every shot's video job.
 - `source`: optional current project text/spec that owns the prompt.
 - `references`: zero to sixteen current project files actually sent to production.
-- `outputs`: one to sixteen unique paths rooted at top-level `production/` or
-  `剧集|episodes/<EP>/制作成果|production/`; extensions must match the modality.
-  A nested directory merely named `production` does not grant write access to
-  protected input or delivery trees.
+- `outputs`: one to sixteen unique project paths under a `production` or `制作成果` directory; extensions must match the modality.
 - `parameters`: provider-neutral public settings only. Secret-like keys are rejected.
 - `overwrite`: must be explicitly true to replace an existing result.
 
@@ -53,12 +52,14 @@ let the adapter read its environment or operating-system credential store.
 The adapter receives the confirmed job plus:
 
 - `run_id`: unique attempt ID;
-- `project_root`: local absolute path to a private run snapshot containing only
-  the exact confirmed source/reference bytes. It is not the live project and is
-  removed after the attempt.
+- `project_root`: local absolute path to a private, run-scoped snapshot containing
+  the exact confirmed `source` and `references`. It is not the live creator
+  project and is deleted after the attempt.
 
-It may translate provider-neutral parameters into its chosen SDK/API. The suite deliberately does not prescribe a
-provider, model name, polling protocol, or upload mechanism.
+It may translate provider-neutral parameters into its chosen SDK/API. Optional
+provider adapters under `scripts/` document and implement known translations;
+the project job remains provider-neutral, and adapter selection, model access,
+polling and credentials stay in the external runtime configuration.
 
 ## Adapter stdout
 
@@ -78,6 +79,25 @@ On success, write one bounded JSON object to stdout:
 
 Targets must appear in exactly the confirmed order. Sources must be local regular files, not symlinks. The tool copies
 them into the project, records size/media type/checksum, and never stores adapter stdout/stderr or environment values.
+
+On a provider failure, an adapter may write only this whitelisted evidence to stdout:
+
+```json
+{
+  "error": {
+    "provider": "studio-image",
+    "category": "rate_limit",
+    "code": "rate_limit_exceeded",
+    "http_status": 429,
+    "request_id": "request_safe_123",
+    "retryable": true
+  }
+}
+```
+
+Never include provider messages, response bodies, prompts, paths or credentials.
+The production run record keeps only validated fields; malformed failure output
+is replaced with a generic adapter exit code.
 
 A nonzero exit, timeout, malformed response or mismatched output marks the run failed. Because the adapter may have
 submitted paid work before failing locally, confirmation is consumed as soon as execution starts; retry only after a
