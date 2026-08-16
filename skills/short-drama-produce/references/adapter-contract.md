@@ -22,7 +22,10 @@
   must not be smuggled into every shot's video job.
 - `source`: optional current project text/spec that owns the prompt.
 - `references`: zero to sixteen current project files actually sent to production.
-- `outputs`: one to sixteen unique project paths under a `production` or `制作成果` directory; extensions must match the modality.
+- `outputs`: one to sixteen unique paths rooted at top-level `production/` or
+  `剧集|episodes/<EP>/制作成果|production/`; extensions must match the modality.
+  A nested directory merely named `production` does not grant write access to
+  protected input or delivery trees.
 - `parameters`: provider-neutral public settings only. Secret-like keys are rejected.
 - `overwrite`: must be explicitly true to replace an existing result.
 

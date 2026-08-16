@@ -143,9 +143,19 @@ def _relative_path(value: object, *, output: bool = False) -> str:
     if pure.parts[0].casefold() == ".short-drama" or pure.name.casefold() == PROJECT_FILE:
         raise ValueError(f"operational project path is not allowed: {value}")
     if output:
-        folded = {part.casefold() for part in pure.parts}
-        if "production" not in folded and "制作成果" not in pure.parts:
-            raise ValueError("media outputs must live below a production/制作成果 directory")
+        parts = pure.parts
+        top_level_production = len(parts) >= 2 and parts[0].casefold() == "production"
+        episode_production = (
+            len(parts) >= 4
+            and parts[0] in {"剧集", "episodes"}
+            and re.fullmatch(r"EP\d{3,}", parts[1], re.IGNORECASE) is not None
+            and parts[2] in {"制作成果", "production"}
+        )
+        if not top_level_production and not episode_production:
+            raise ValueError(
+                "media outputs must use top-level production/ or "
+                "剧集|episodes/<EP>/制作成果|production/"
+            )
     return pure.as_posix()
 
 
