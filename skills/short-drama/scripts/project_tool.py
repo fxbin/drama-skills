@@ -1140,6 +1140,10 @@ def _authority_tokens(field: str) -> list[str]:
         raise ValueError(
             f"set-authority writes /{AUTHORITY_ROOT_TOKEN}/* and {EPISODE_LENGTH_POINTER} only"
         )
+    if tokens[:2] == [AUTHORITY_ROOT_TOKEN, "decisions_artifact"]:
+        # Where decisions are kept is project layout, not a creative choice; a
+        # decision record must not move the place its own successors are read from.
+        raise ValueError("decisions_artifact is project layout, not a creator choice")
     return tokens
 
 
@@ -1202,18 +1206,30 @@ def _accepted_decision_value(
     return decision["accepted_value"]
 
 
+def _json_kind(value: Any) -> str:
+    """The JSON type of a value. 90 and 92.5 are both numbers."""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, Mapping):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    return "null" if value is None else type(value).__name__
+
+
 def _write_authority_value(project: dict[str, Any], tokens: list[str], value: Any) -> Any:
     cursor: Any = project
     blocks: list[dict[str, Any]] = []
     walked: list[str] = []
     for token in tokens[:-1]:
-        parent = cursor
         cursor = cursor.get(token) if isinstance(cursor, dict) else None
-        if not isinstance(cursor, dict):
-            walked.append(token)
-            raise ValueError(f"project manifest has no object at /{'/'.join(walked)}")
         walked.append(token)
-        del parent
+        if not isinstance(cursor, dict):
+            raise ValueError(f"project manifest has no object at /{'/'.join(walked)}")
         if "status" in cursor:
             blocks.append(cursor)
     leaf = tokens[-1]
@@ -1223,11 +1239,21 @@ def _write_authority_value(project: dict[str, Any], tokens: list[str], value: An
         # know to read.
         raise ValueError(f"project manifest declares no /{'/'.join([*walked, leaf])}")
     current = cursor.get(leaf)
+    if isinstance(current, Mapping) and not isinstance(value, Mapping) and "status" not in current:
+        # A choices map is merged, never replaced wholesale: replacing it would
+        # silently drop the choices a previous decision already recorded.
+        raise ValueError(f"/{'/'.join([*walked, leaf])} needs an object accepted_value")
+    if isinstance(current, Mapping) and isinstance(value, Mapping) and "status" not in current:
+        merged = {**current, **value}
+        cursor[leaf] = merged
+        for block in blocks:
+            block["status"] = "accepted"
+        return merged
     if not (isinstance(current, dict) and "status" in current):
-        if current is not None and not isinstance(value, type(current)):
+        if current is not None and _json_kind(value) != _json_kind(current):
             raise ValueError(
-                f"/{'/'.join([*walked, leaf])} is {type(current).__name__}; "
-                f"accepted_value is {type(value).__name__}"
+                f"/{'/'.join([*walked, leaf])} is {_json_kind(current)}; "
+                f"accepted_value is {_json_kind(value)}"
             )
         cursor[leaf] = value
         # Writing one choice inside an authority block accepts that block: a
@@ -1286,6 +1312,11 @@ def set_creator_authority(
             state["authority"] = bindings
         bindings[field] = {
             "decision": f"{_relative_path(decision_path)}#{decision_id}",
+            # The written value, so a later reader can tell the manifest still
+            # holds what the decision said rather than a hand edit made since.
+            "value_sha256": hashlib.sha256(
+                json.dumps(written, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest(),
             "set_at": utc_now(),
         }
         _save_state(root, state, action="authority_set")

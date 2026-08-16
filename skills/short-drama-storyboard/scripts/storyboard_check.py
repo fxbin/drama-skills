@@ -460,8 +460,9 @@ def check_boundary_entries(shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for boundary in ("start_boundary", "end_boundary"):
             fields = shot.get(boundary)
             if isinstance(fields, str):
-                # A boundary written as one string carries the same defect.
-                fields = {boundary: [fields]}
+                # A boundary written as one string carries the same defect. The
+                # empty key keeps the reported pointer at /<boundary>/0.
+                fields = {"": [fields]}
             if not isinstance(fields, dict):
                 continue
             for name, entries in sorted(fields.items()):
@@ -478,7 +479,7 @@ def check_boundary_entries(shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
                                 "SHT05_BOUNDARY_ENTRY_IS_A_BACK_REFERENCE",
                                 "a boundary entry points back instead of stating the fact",
                                 shot_id=shot_id,
-                                location=f"/{boundary}/{name}/{index}",
+                                location=f"/{boundary}/{name}/{index}" if name else f"/{boundary}/{index}",
                                 entry=entry,
                             )
                         )
