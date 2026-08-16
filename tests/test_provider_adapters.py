@@ -52,6 +52,8 @@ class ProviderCompilerTests(unittest.TestCase):
         payload = provider_adapters.compile_seedance_payload(
             self.video_job(duration=5, ratio="9:16"),
             model="account-enabled-endpoint",
+            allowed_ratios={"9:16"},
+            duration_range=(5, 10),
         )
         self.assertEqual(
             payload,
@@ -76,7 +78,13 @@ class ProviderCompilerTests(unittest.TestCase):
             provider_adapters.compile_seedance_payload(self.video_job(), model="")
         with self.assertRaisesRegex(ValueError, "supported profile"):
             provider_adapters.compile_seedance_payload(
-                self.video_job(ratio="9:16 --seed 4"), model="configured"
+                self.video_job(ratio="9:16 --seed 4"),
+                model="configured",
+                allowed_ratios={"9:16"},
+            )
+        with self.assertRaisesRegex(ValueError, "explicit model profile"):
+            provider_adapters.compile_seedance_payload(
+                self.video_job(duration=5), model="configured"
             )
 
         referenced = self.video_job()
@@ -94,7 +102,9 @@ class ProviderCompilerTests(unittest.TestCase):
         )
         self.assertEqual(payload["content"][1]["role"], "reference_image")
         adaptive = provider_adapters.compile_seedance_payload(
-            self.video_job(ratio="adaptive"), model="configured"
+            self.video_job(ratio="adaptive"),
+            model="configured",
+            allowed_ratios={"adaptive"},
         )
         self.assertTrue(adaptive["content"][0]["text"].endswith("--ratio adaptive"))
 
@@ -242,6 +252,7 @@ class ProviderRuntimeTests(unittest.TestCase):
                             "outputs": ["制作成果/shot.mp4"],
                             "parameters": {},
                             "project_root": str(root),
+                            "output_root": str(root),
                         }
                     )
                     self.assertEqual((path, task_id), (root / "shot.mp4", "seedance-task"))
@@ -270,6 +281,7 @@ class ProviderRuntimeTests(unittest.TestCase):
                             "outputs": ["制作成果/portrait.png"],
                             "parameters": {},
                             "project_root": str(root),
+                            "output_root": str(root),
                         }
                     )
                     self.assertTrue(path.read_bytes().startswith(b"\x89PNG"))
@@ -295,6 +307,7 @@ class ProviderRuntimeTests(unittest.TestCase):
                             "outputs": ["制作成果/cue.mp3"],
                             "parameters": {"is_instrumental": True},
                             "project_root": str(root),
+                            "output_root": str(root),
                         }
                     )
                     self.assertEqual(path.read_bytes(), b"ID3music")
@@ -324,10 +337,15 @@ class ProviderRuntimeTests(unittest.TestCase):
                     )
 
     def test_provider_output_must_match_the_confirmed_media_type(self) -> None:
-        with self.assertRaisesRegex(
-            provider_adapters.AdapterFailure, "target media type"
-        ):
-            provider_adapters._temporary_output("制作成果/frame.png", b"not-a-png")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                provider_adapters.AdapterFailure, "target media type"
+            ):
+                provider_adapters._temporary_output(
+                    {"output_root": directory},
+                    "制作成果/frame.png",
+                    b"not-a-png",
+                )
 
     def test_multipart_references_are_bounded_and_read_from_pinned_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

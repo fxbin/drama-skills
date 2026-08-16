@@ -19,12 +19,11 @@ import re
 import secrets
 import stat
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -170,7 +169,12 @@ def _take(parameters: dict[str, Any], allowed: set[str]) -> dict[str, Any]:
 
 
 def compile_seedance_payload(
-    job: Mapping[str, Any], *, model: str, reference_urls: Sequence[str] = ()
+    job: Mapping[str, Any],
+    *,
+    model: str,
+    reference_urls: Sequence[str] = (),
+    allowed_ratios: Collection[str] | None = None,
+    duration_range: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     """Compile a video production job into the official Seedance task body.
 
@@ -196,11 +200,23 @@ def compile_seedance_payload(
         or not 1 <= duration <= 15
     ):
         raise ValueError("Seedance duration must be an integer from 1 to 15")
+    if duration is not None:
+        if duration_range is None:
+            raise ValueError("Seedance duration needs an explicit model profile")
+        minimum, maximum = duration_range
+        if not 1 <= minimum <= maximum <= 15 or not minimum <= duration <= maximum:
+            raise ValueError("Seedance duration is outside the configured model profile")
     ratio = parameters.get("ratio")
     if ratio is not None and (
         not isinstance(ratio, str) or ratio.strip() not in SEEDANCE_RATIOS
     ):
         raise ValueError("Seedance ratio is outside the supported profile")
+    if ratio is not None:
+        configured_ratios = set(allowed_ratios or ())
+        if not configured_ratios:
+            raise ValueError("Seedance ratio needs an explicit model profile")
+        if not configured_ratios <= SEEDANCE_RATIOS or ratio.strip() not in configured_ratios:
+            raise ValueError("Seedance ratio is outside the configured model profile")
     text = prompt
     if ratio is not None:
         text += f" --ratio {ratio.strip()}"
@@ -233,6 +249,53 @@ def compile_seedance_payload(
         else:
             raise ValueError("Seedance adapter accepts image references only")
     return {"model": model.strip(), "content": content}
+
+
+def _seedance_runtime_profile(
+) -> tuple[frozenset[str] | None, tuple[int, int] | None]:
+    raw_ratios = os.environ.get("SEEDANCE_ALLOWED_RATIOS")
+    allowed_ratios = (
+        frozenset(item.strip() for item in raw_ratios.split(",") if item.strip())
+        if raw_ratios is not None
+        else None
+    )
+    minimum_raw = os.environ.get("SEEDANCE_MIN_DURATION")
+    maximum_raw = os.environ.get("SEEDANCE_MAX_DURATION")
+    if (minimum_raw is None) != (maximum_raw is None):
+        raise AdapterFailure(
+            "Seedance duration profile is incomplete",
+            category="configuration",
+            code="invalid_model_profile",
+        )
+    try:
+        duration_range = (
+            (int(minimum_raw), int(maximum_raw))
+            if minimum_raw is not None and maximum_raw is not None
+            else None
+        )
+    except ValueError as exc:
+        raise AdapterFailure(
+            "Seedance duration profile is invalid",
+            category="configuration",
+            code="invalid_model_profile",
+        ) from exc
+    if allowed_ratios is not None and (
+        not allowed_ratios or not allowed_ratios <= SEEDANCE_RATIOS
+    ):
+        raise AdapterFailure(
+            "Seedance ratio profile is invalid",
+            category="configuration",
+            code="invalid_model_profile",
+        )
+    if duration_range is not None and not (
+        1 <= duration_range[0] <= duration_range[1] <= 15
+    ):
+        raise AdapterFailure(
+            "Seedance duration profile is invalid",
+            category="configuration",
+            code="invalid_model_profile",
+        )
+    return allowed_ratios, duration_range
 
 
 def compile_gpt_image_2_payload(job: Mapping[str, Any]) -> dict[str, Any]:
@@ -534,22 +597,45 @@ def _validate_media_content(target: str, content: bytes) -> None:
         raise AdapterFailure("provider output does not match the target media type")
 
 
-def _temporary_output(target: str, content: bytes) -> Path:
+def _output_root(job: Mapping[str, Any]) -> Path:
+    raw = job.get("output_root")
+    if not isinstance(raw, str):
+        raise ValueError("output_root is invalid")
+    root = Path(raw)
+    if not root.is_absolute():
+        raise ValueError("output_root is invalid")
+    try:
+        details = root.lstat()
+    except OSError as exc:
+        raise ValueError("output_root is missing") from exc
+    if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
+        raise ValueError("output_root is unsafe")
+    return root
+
+
+def _temporary_output(
+    job: Mapping[str, Any], target: str, content: bytes
+) -> Path:
     if not content or len(content) > MAX_OUTPUT_BYTES:
         raise AdapterFailure("provider output is too large")
     _validate_media_content(target, content)
-    directory = Path(tempfile.mkdtemp(prefix="short-drama-provider-"))
-    path = directory / ("result" + Path(target).suffix.casefold())
-    path.write_bytes(content)
+    path = _output_root(job) / ("result" + Path(target).suffix.casefold())
+    with path.open("xb") as handle:
+        handle.write(content)
     return path
 
 
-def _download(url: str, target: str, *, provider: str = "seedance") -> Path:
+def _download(
+    job: Mapping[str, Any],
+    url: str,
+    target: str,
+    *,
+    provider: str = "seedance",
+) -> Path:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or not parsed.netloc:
         raise AdapterFailure("provider output URL is invalid")
-    directory = Path(tempfile.mkdtemp(prefix="short-drama-provider-"))
-    path = directory / ("result" + Path(target).suffix.casefold())
+    path = _output_root(job) / ("result" + Path(target).suffix.casefold())
     size = 0
     try:
         with urllib.request.urlopen(url, timeout=180) as response, path.open("xb") as handle:
@@ -595,7 +681,13 @@ def _run_seedance(job: Mapping[str, Any]) -> tuple[Path, str]:
         raise AdapterFailure(
             "Seedance local references require an external trusted HTTPS upload adapter"
         )
-    body = compile_seedance_payload(job, model=model)
+    allowed_ratios, duration_range = _seedance_runtime_profile()
+    body = compile_seedance_payload(
+        job,
+        model=model,
+        allowed_ratios=allowed_ratios,
+        duration_range=duration_range,
+    )
     base = _base_url("SEEDANCE_BASE_URL", SEEDANCE_BASE_URL)
     created, _ = _request_json(
         f"{base}/contents/generations/tasks",
@@ -632,7 +724,12 @@ def _run_seedance(job: Mapping[str, Any]) -> tuple[Path, str]:
                     code="missing_video_url",
                     request_id=task_id,
                 )
-            return _download(url, job["outputs"][0], provider="seedance"), task_id
+            return _download(
+                job,
+                url,
+                job["outputs"][0],
+                provider="seedance",
+            ), task_id
         if isinstance(status, str) and status.casefold() in TERMINAL_FAILURES:
             raise AdapterFailure(
                 "Seedance task failed",
@@ -723,7 +820,7 @@ def _run_openai(job: Mapping[str, Any]) -> tuple[Path, str | None]:
             code="invalid_image_data",
             request_id=request_id,
         ) from exc
-    return _temporary_output(job["outputs"][0], content), request_id
+    return _temporary_output(job, job["outputs"][0], content), request_id
 
 
 def _run_minimax(job: Mapping[str, Any]) -> tuple[Path, str | None]:
@@ -758,7 +855,10 @@ def _run_minimax(job: Mapping[str, Any]) -> tuple[Path, str | None]:
     if not content:
         raise AdapterFailure("MiniMax returned empty audio data")
     trace_id = result.get("trace_id")
-    return _temporary_output(job["outputs"][0], content), trace_id if isinstance(trace_id, str) else None
+    return (
+        _temporary_output(job, job["outputs"][0], content),
+        trace_id if isinstance(trace_id, str) else None,
+    )
 
 
 def _selftest() -> None:
@@ -776,7 +876,12 @@ def _selftest() -> None:
     }
     if compile_gpt_image_2_payload(image)["model"] != OPENAI_MODEL:
         raise RuntimeError("GPT Image 2 self-test failed")
-    seedance = compile_seedance_payload(video, model="configured-model")
+    seedance = compile_seedance_payload(
+        video,
+        model="configured-model",
+        allowed_ratios={"9:16"},
+        duration_range=(5, 10),
+    )
     if seedance["model"] != "configured-model":
         raise RuntimeError("Seedance model self-test failed")
     if not seedance["content"][0]["text"].endswith("--ratio 9:16 --dur 5"):

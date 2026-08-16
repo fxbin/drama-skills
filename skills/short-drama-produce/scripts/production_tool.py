@@ -673,7 +673,9 @@ def _run_adapter(command: list[str], timeout: int, payload: Mapping[str, Any], r
     return response
 
 
-def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any]) -> list[tuple[str, Path]]:
+def _validate_adapter_outputs(
+    job: Mapping[str, Any], response: Mapping[str, Any], output_root: Path
+) -> list[tuple[str, Path]]:
     entries = response.get("outputs")
     if not isinstance(entries, list) or not all(isinstance(entry, Mapping) for entry in entries):
         raise AdapterError("adapter outputs are invalid; confirmation was consumed")
@@ -686,14 +688,10 @@ def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any
         if not isinstance(target, str) or not isinstance(source, str):
             raise AdapterError("adapter output paths are invalid; confirmation was consumed")
         path = Path(source)
-        try:
-            details = path.lstat()
-        except OSError as exc:
-            raise AdapterError("adapter output file is missing; confirmation was consumed") from exc
-        if stat.S_ISLNK(details.st_mode) or not stat.S_ISREG(details.st_mode):
-            raise AdapterError("adapter output file is unsafe; confirmation was consumed")
-        if details.st_size > MAX_OUTPUT_BYTES:
-            raise AdapterError("adapter output file is too large; confirmation was consumed")
+        if not path.is_absolute() or path.parent != output_root or path.name in {"", ".", ".."}:
+            raise AdapterError(
+                "adapter output must use the run staging directory; confirmation was consumed"
+            )
         result.append((target, path))
     expected = list(job["outputs"])
     if [target for target, _ in result] != expected:
@@ -701,13 +699,36 @@ def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any
     return result
 
 
-def _copy_output(source: Path, target: Path) -> tuple[str, int]:
+def _copy_output(
+    source: Path, target: Path, *, overwrite: bool
+) -> tuple[str, int]:
     temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     target.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     size = 0
+    descriptor = -1
     try:
-        with source.open("rb") as incoming, temporary.open("xb") as outgoing:
+        try:
+            before = source.lstat()
+        except OSError as exc:
+            raise AdapterError(
+                "adapter output file is missing; confirmation was consumed"
+            ) from exc
+        if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode):
+            raise AdapterError("adapter output file is unsafe; confirmation was consumed")
+        descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+        ):
+            raise AdapterError("adapter output changed while opening; confirmation was consumed")
+        if opened.st_size > MAX_OUTPUT_BYTES:
+            raise AdapterError("adapter output file is too large; confirmation was consumed")
+        with os.fdopen(descriptor, "rb", closefd=True) as incoming, temporary.open(
+            "xb"
+        ) as outgoing:
+            descriptor = -1
             for chunk in iter(lambda: incoming.read(1024 * 1024), b""):
                 size += len(chunk)
                 if size > MAX_OUTPUT_BYTES:
@@ -716,8 +737,19 @@ def _copy_output(source: Path, target: Path) -> tuple[str, int]:
                 outgoing.write(chunk)
             outgoing.flush()
             os.fsync(outgoing.fileno())
-        os.replace(temporary, target)
+        if overwrite:
+            os.replace(temporary, target)
+        else:
+            try:
+                os.link(temporary, target, follow_symlinks=False)
+            except FileExistsError as exc:
+                raise FileExistsError(
+                    f"output appeared while production was running: {target.name}"
+                ) from exc
+            temporary.unlink()
     finally:
+        if descriptor >= 0:
+            os.close(descriptor)
         try:
             temporary.unlink()
         except FileNotFoundError:
@@ -743,7 +775,11 @@ def _write_run(root: Path, job_id: str, run: Mapping[str, Any]) -> None:
 def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
     root = find_project(root)
     with tempfile.TemporaryDirectory(prefix="short-drama-inputs-") as directory:
-        snapshot_root = Path(directory)
+        attempt_root = Path(directory)
+        snapshot_root = attempt_root / "inputs"
+        output_root = attempt_root / "outputs"
+        snapshot_root.mkdir()
+        output_root.mkdir()
         with _project_lock(root):
             job = _read_job(root, job_id)
             command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
@@ -784,15 +820,23 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
             _write_run(root, job_id, run)
 
         payload = {key: job[key] for key in ALLOWED_JOB_KEYS if key in job}
-        payload.update({"run_id": run_id, "project_root": str(snapshot_root)})
+        payload.update(
+            {
+                "run_id": run_id,
+                "project_root": str(snapshot_root),
+                "output_root": str(output_root),
+            }
+        )
         try:
             response = _run_adapter(command, timeout, payload, root)
-            adapter_outputs = _validate_adapter_outputs(job, response)
+            adapter_outputs = _validate_adapter_outputs(job, response, output_root)
             written: list[dict[str, Any]] = []
             with _project_lock(root):
                 for target_name, source in adapter_outputs:
                     target = _project_file(root, target_name, create_parent=True)
-                    digest, size = _copy_output(source, target)
+                    digest, size = _copy_output(
+                        source, target, overwrite=bool(job["overwrite"])
+                    )
                     written.append(
                         {
                             "path": target_name,

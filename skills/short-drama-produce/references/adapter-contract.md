@@ -55,6 +55,10 @@ The adapter receives the confirmed job plus:
 - `project_root`: local absolute path to a private, run-scoped snapshot containing
   the exact confirmed `source` and `references`. It is not the live creator
   project and is deleted after the attempt.
+- `output_root`: empty private, run-scoped staging directory owned by the
+  production tool. Every adapter output source must be a direct regular-file
+  child of this directory. The whole directory is deleted after success or
+  failure.
 
 It may translate provider-neutral parameters into its chosen SDK/API. Optional
 provider adapters under `scripts/` document and implement known translations;
@@ -77,8 +81,11 @@ On success, write one bounded JSON object to stdout:
 }
 ```
 
-Targets must appear in exactly the confirmed order. Sources must be local regular files, not symlinks. The tool copies
-them into the project, records size/media type/checksum, and never stores adapter stdout/stderr or environment values.
+Targets must appear in exactly the confirmed order. Sources must be direct
+regular-file children of `output_root`, not symlinks. The tool opens each source
+without following links, copies the pinned bytes into the project, records
+size/media type/checksum, and removes staging. It never stores adapter
+stdout/stderr or environment values.
 
 On a provider failure, an adapter may write only this whitelisted evidence to stdout:
 

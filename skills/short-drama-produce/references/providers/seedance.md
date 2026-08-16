@@ -17,11 +17,18 @@ Optional environment:
 - `SEEDANCE_BASE_URL` (default `https://ark.cn-beijing.volces.com/api/v3`)
 - `SEEDANCE_POLL_INTERVAL` (default `5` seconds)
 - `SEEDANCE_TIMEOUT_SECONDS` (default `1800` seconds)
+- `SEEDANCE_ALLOWED_RATIOS`: comma-separated subset explicitly supported by
+  the configured model, such as `9:16,16:9`.
+- `SEEDANCE_MIN_DURATION` and `SEEDANCE_MAX_DURATION`: the configured model's
+  explicit inclusive duration range. Set both or neither.
 
-The job must have modality `video` and exactly one `.mp4` output. Supported public parameters are `duration` (the
-bundled safety envelope is 1–15 seconds) and `ratio` (`adaptive`, `1:1`, `3:4`, `4:3`, `9:16`, `16:9`, or `21:9`).
-They are compiled into the documented prompt switches `--dur` and `--ratio`, not sent as unverified top-level fields.
-The configured model/endpoint may support a narrower subset; account/model availability remains a runtime concern.
+The job must have modality `video` and exactly one `.mp4` output. Optional
+`duration` and `ratio` parameters are accepted only when the external runtime
+profile above explicitly permits their values. The broad parser envelope is
+1–15 seconds and `adaptive`, `1:1`, `3:4`, `4:3`, `9:16`, `16:9`, or `21:9`,
+but it is never treated as proof that a particular model supports the whole
+set. Values are compiled into the documented prompt switches `--dur` and
+`--ratio`, not sent as unverified top-level fields.
 The bundled runtime adapter currently supports text-to-video only. Local references fail closed because the public video
 contract does not prove that a local data URL is accepted. A deployment that needs image-to-video must add an external,
 authorized upload step and call `compile_seedance_payload` with the resulting HTTPS or `asset://` URI; do not put a

@@ -107,6 +107,8 @@ def main() -> int:
             "parameters": {"duration": 5, "ratio": "9:16"},
         },
         model="configured-endpoint",
+        allowed_ratios={"9:16"},
+        duration_range=(5, 10),
         )["content"][0]["text"].endswith("--ratio 9:16 --dur 5"),
         "Seedance profile did not compile explicit prompt switches",
     )
