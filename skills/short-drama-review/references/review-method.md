@@ -60,8 +60,9 @@ A useful finding contains:
 “The dialogue is weak” is invalid. A finding should identify the exact exchange, say what fails to change, and tell
 the write owner what outcome must be restored.
 
-Detailed templates may carry source hashes for archival evidence or media observations. Those hashes are optional
-review metadata, not lifecycle inputs and not proof of reviewer independence.
+A findings or verdict file declares each upstream snapshot once under `sources`, and every reference names that
+snapshot key plus the record. Those source hashes are archival review metadata, not lifecycle inputs and not proof
+of reviewer independence.
 
 ## Cross-layer synthesis
 

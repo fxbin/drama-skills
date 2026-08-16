@@ -28,8 +28,9 @@ python3 {技能目录}/scripts/asset_check.py \
 python3 {技能目录}/scripts/selftest.py
 ```
 
-校验器只检查稳定 ID、来源引用、创作者接受状态与 Look → Character 绑定；身份是否可信、差异
-是否有戏剧依据仍由创作者和 reviewer 判断。输入路径不存在于当前目录时，会相对本技能目录解析。
+校验器只检查稳定 ID、引用能否解析到本文件首行 `sources` 声明的快照、创作者接受状态与
+Look → Character 绑定；身份是否可信、差异是否有戏剧依据仍由创作者和 reviewer 判断。
+输入路径不存在于当前目录时，会相对本技能目录解析。
 
 ## 边界
 
@@ -94,8 +95,8 @@ python3 {技能目录}/scripts/selftest.py
 - 不猜“她”“那个人”“另一把钥匙”指谁；保留原称谓和证据，状态设为 unresolved。
 - 区分出镜、画外声、屏幕/照片呈现、仅被提及；被提及不等于要做视觉资产。
 - 不把每个名词都建档。只保留影响识别、复用、提示词、镜头或连续性的事实。
-- occurrence 不反向 hash 引用未来 decisions；先写 locator，decision 再单向引用
-  occurrence 的 exact snapshot。
+- 未来的 decisions 先用 locator 指位；decision 建立后由它单向引用 occurrence 的
+  exact snapshot。
 
 方法与反例见 `references/occurrence-extraction.md`，记录形状见
 `assets/occurrences.example.jsonl`。
@@ -134,8 +135,8 @@ python3 {技能目录}/scripts/selftest.py
 
 为交接所需的资产状态变化记录 before、after、剧本原因、开始/结束边界和受影响 binding。
 重点检查造型/伤势、持物/所有权、道具状态、地点时段/天气/光态以及跨集 outgoing。
-若为审查需要把知识或关系状态放进 ledger，只保存权威字段的 artifact/hash/
-field pointer 及必要投影；修订仍路由到 develop/write owner。
+若为审查需要把知识或关系状态放进 ledger，只保存指向权威字段的引用（`src` 加
+`record_id`、`field`）及必要投影；修订仍路由到 develop/write owner。
 镜头内部姿势、视线、左右手和站位由 storyboard 边界拥有；资产记录只引用，不抢写。
 
 详见 `references/continuity-delta.md` 与 `assets/continuity.example.jsonl`。
@@ -160,12 +161,13 @@ field pointer 及必要投影；修订仍路由到 develop/write owner。
 发布至 `设定集/*.jsonl` 及 `剧集/<EP>/assets/{occurrences,decisions,continuity}.jsonl`。
 项目记录了 `voice_direction` 时，`设定集/voice-casting.md` 由已接受记录重新渲染——
 它是派生文本，手改不会改变任何身份，下一次渲染就会被覆盖。参考音频本身留在 `输入/`。
-跨产物引用保留 owner、项目相对路径与必要的稳定 ID/field。资产修改后只列出直接读取该
+每个文件在首行 `sources` 里声明一次它引用到的上游快照，引用本身写 `src` 加稳定 ID/field，
+形状见[阶段契约](references/stage-contract.md#跨产物引用)。资产修改后只列出直接读取该
 ID/variant 的提示词、镜头和 review，由相应 owner 按需刷新；不要重写无关资产或 screenplay。
 
 ## 规则分类与阻断
 
-- `structural_invariant`：occurrence 必有 source block/hash；decision 必属四类；
+- `structural_invariant`：occurrence 必有已声明的来源快照与 block ID；decision 必属四类；
   variant 有 base/cause/validity；binding 必须解析到已接受 ID。可机械阻断。
 - `reviewed_invariant`：不可猜含混指代；不可把临时状态混入身份；delta 的剧情原因
   必须由证据支持。reviewer 引用证据判定，owner 负责修改。

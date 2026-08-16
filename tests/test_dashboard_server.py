@@ -991,7 +991,8 @@ const logic = require({json.dumps(str(app))});
 const projected = logic.creatorProjection({{
   name: "林夏",
   description: "克制、敏锐",
-  source_ref: {{artifact: "剧集/EP001/screenplay.md", hash: "a".repeat(64)}},
+  sources: {{screenplay: {{owner: "short-drama-assets", artifact: "剧集/EP001/screenplay.md", hash: "a".repeat(64)}}}},
+  source_ref: {{src: "screenplay"}},
   owner: "short-drama-assets",
   schema_version: "1.0",
   appearance: {{costume: "浅灰风衣", shape: "窄肩长款", shadow_direction: "右后方", evidence_hash: "b".repeat(64)}},
@@ -1025,6 +1026,8 @@ process.stdout.write(JSON.stringify(projected));
         self.assertIn("第三场", projected["notes"][1])
         for forbidden in (
             "source_ref",
+            "sources",
+            "src",
             "artifact",
             "hash",
             "owner",

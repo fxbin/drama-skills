@@ -125,7 +125,7 @@
 2. **本次提示词的呈现方法（由图片提示词环节管理）**：`readable | symbolic |
    blank | postproduction`，回答这次参考图怎样处理该真相。
 
-规格必须保存来源政策的产物引用、`hash`、字段位置、两层选择和对应理由。
+规格必须保存来源政策的产物引用（`src` 与 `record_id`）、字段位置、两层选择和对应理由。
 默认映射：
 
 | 资产来源政策 | 允许的呈现方法 | 要求 |
@@ -174,8 +174,8 @@
 
 ### 参考图可以决定哪些内容（`IMG-09`）
 
-`reference_bindings` 为每张参考记录稳定 `slot_id`、显式唯一 `order`、准确的 `artifact_ref`、
-一个主要 `role`、`may_control`、`must_not_control`、`admission_status`、可选的准确
+`reference_bindings` 为每张参考记录稳定 `slot_id`、显式唯一 `order`、准确的 `artifact_ref`
+（文件头 `sources` 中的快照键 `src` 加该参考的 `record_id`）、一个主要 `role`、`may_control`、`must_not_control`、`admission_status`、可选的准确
 `reference_observation_ref` 与 `unresolved_risks`。数组重排或插入新参考不能改变已有槽位语义。
 常见用途包括身份、造型/状态、
 地理、构图、尺度和效果；项目也可以增加更具体的用途。

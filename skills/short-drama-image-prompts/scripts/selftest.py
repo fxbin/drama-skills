@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import sys
+from typing import Any
 
 from image_prompt_check import SKILL_ROOT, ValidationError, load_jsonl, validate_records
 
@@ -18,39 +19,66 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def fail(records: list[dict], marker: str) -> None:
+def fail(records: list[dict[str, Any]], sources: dict[str, dict[str, Any]], marker: str) -> None:
     try:
-        validate_records(records)
+        validate_records(records, sources)
     except ValidationError as exc:
         require(marker in str(exc), f"expected {marker!r}, got {exc!s}")
     else:
         raise AssertionError(f"expected failure containing {marker!r}")
 
 
+def expanded(ref: dict[str, Any], sources: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    entry = sources[ref["src"]]
+    inline = {key: entry[key] for key in ("owner", "artifact", "hash")}
+    inline.update({key: value for key, value in ref.items() if key != "src"})
+    return inline
+
+
 def main() -> int:
-    records = load_jsonl(SKILL_ROOT / "examples/minimal-image-prompt-specs.jsonl")
-    require(validate_records(records)["specs"] == 1, "valid fixture count")
+    sources, records = load_jsonl(SKILL_ROOT / "examples/minimal-image-prompt-specs.jsonl")
+    require(validate_records(records, sources)["specs"] == 1, "valid fixture count")
+    require(len(sources) == 3, "fixture declares its upstream snapshots once")
 
     duplicate = [records[0], copy.deepcopy(records[0])]
-    fail(duplicate, "duplicate spec_id")
+    fail(duplicate, sources, "duplicate spec_id")
 
     bad_order = copy.deepcopy(records)
     bad_order[0]["reference_bindings"].append(copy.deepcopy(bad_order[0]["reference_bindings"][0]))
-    fail(bad_order, "duplicate slot_id")
+    fail(bad_order, sources, "duplicate slot_id")
 
     leaked = copy.deepcopy(records)
     leaked[0]["provider"] = "example"
-    fail(leaked, "provider execution fields")
+    fail(leaked, sources, "provider execution fields")
 
     nested_provider = copy.deepcopy(records)
     nested_provider[0]["reference_bindings"][0]["provider"] = "example"
-    fail(nested_provider, "reference_bindings[0].provider")
+    fail(nested_provider, sources, "reference_bindings[0].provider")
 
     nested_secret = copy.deepcopy(records)
     nested_secret[0]["asset_binding"]["credentials"] = {"token": "not-safe"}
-    fail(nested_secret, "asset_binding.credentials")
+    fail(nested_secret, sources, "asset_binding.credentials")
 
-    print("6 self-tests passed")
+    undeclared = copy.deepcopy(records)
+    undeclared[0]["asset_binding"]["identity_ref"]["src"] = "no-such-source"
+    fail(undeclared, sources, "REF_SRC_IS_NOT_DECLARED")
+
+    unbound = copy.deepcopy(records)
+    del unbound[0]["source_refs"][0]["src"]
+    fail(unbound, sources, "REF_HAS_NO_UPSTREAM_BINDING")
+
+    # Projects released before the sources declaration write the snapshot inline on
+    # every reference; both forms resolve to the same upstream binding.
+    inline = copy.deepcopy(records)
+    binding = inline[0]["asset_binding"]
+    binding["identity_ref"] = expanded(binding["identity_ref"], sources)
+    binding["variant_ref"] = expanded(binding["variant_ref"], sources)
+    inline[0]["source_refs"] = [expanded(ref, sources) for ref in inline[0]["source_refs"]]
+    for slot in inline[0]["reference_bindings"]:
+        slot["artifact_ref"] = expanded(slot["artifact_ref"], sources)
+    require(validate_records(inline, {})["specs"] == 1, "inline snapshots resolve without sources")
+
+    print("10 self-tests passed")
     return 0
 
 

@@ -51,8 +51,9 @@ python3 {技能目录}/scripts/screenplay_index.py <screenplay.md> --output <scr
 ### 2. 确定单集契约的唯一 owner
 
 - **有 accepted `项目开发/episode-map.jsonl` 记录**：复制
-  [episode-card.json](assets/episode-card.json)。它只保存上游 artifact/hash/record
-  pointer 和写作执行选择；不复制、不改写 incoming/objective/turn/payoff/handoff。
+  [episode-card.json](assets/episode-card.json)。它在 `sources` 里声明上游快照，用
+  `{"src": "episode-map", "record_id": "EP001"}` 指向那条记录，其余只保存写作执行选择；
+  不复制、不改写 incoming/objective/turn/payoff/handoff。
 - **没有 development map 的 script-first 项目**：复制
   [episode-card-standalone.json](assets/episode-card-standalone.json)，以 `write_standalone`
   模式拥有最小单集契约。
@@ -83,7 +84,14 @@ diff，让创作者明确选择 authority 迁移，将 standalone 契约标记 s
 关系字段遵守同一约定：同一 `beats.jsonl` 内的前因、铺垫与兑现只写稳定
 `because_of_ids`/`setup_ids`/`payoff_ids`，避免自引用文件哈希；来自 episode map、
 前集或其他 owner artifact 的关系写 canonical `because_of_refs`/`setup_refs`/
-`payoff_refs`。`*_refs` 不能放裸 ID、路径字符串或复述文本。
+`payoff_refs`。`*_refs` 只放引用对象。
+
+引用这样写：文件首行的 `{"record_type": "sources", "schema_version": "1.0.0",
+"sources": {...}}` 记录把每个上游快照声明一次，`sources` 的每个短键映射到
+`{"owner": ..., "artifact": ..., "hash": ...}`；每条引用写
+`{"src": "<sources 键>", "record_id": "<记录 ID>"}`，需要时再加 `field` 指向该记录内
+的 JSON pointer。指向整个 artifact 时只写 `{"src": "<sources 键>"}`。同一份文件里
+同一个键始终指同一个快照。`.json` 文件把同样的 `sources` 对象写在顶层。
 
 ### 4. 先定场景功能，再写正文
 
@@ -141,7 +149,8 @@ source issue 的 refs 都保持 candidate；accepted 剧本发布后再以默认
 
 创作者要为录音准备台词表时，复制
 [voice-record-sheet.jsonl.md](assets/voice-record-sheet.jsonl.md)。它是**剧本的投影，
-不是第二份台词权威**：每行逐字等于对应剧本块并绑定其 `hash`，要改词就改剧本再重新投影。
+不是第二份台词权威**：首行声明所引 `screenplay-index.jsonl` 快照，其后每行用
+`source_ref` 绑定一个剧本块并逐字等于该块，要改词就改剧本再重新投影。
 
 录音顺序几乎从不是剧情顺序（通常按人物集中录），配音者失去的正是上下文，所以每行要补
 对谁说、接谁的话、此刻他知道什么、这一句要达成什么。写策略而不是情绪词——"愤怒"不可

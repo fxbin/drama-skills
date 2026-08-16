@@ -7,7 +7,7 @@ import copy
 import sys
 from pathlib import Path
 
-from asset_check import SKILL_ROOT, ValidationError, load_jsonl, validate_records
+from asset_check import SKILL_ROOT, RecordFile, ValidationError, load_jsonl, validate_records
 
 MINIMUM_PYTHON = (3, 10)
 if sys.version_info < MINIMUM_PYTHON:
@@ -19,7 +19,7 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def expect_failure(characters: list[dict], looks: list[dict], marker: str) -> None:
+def expect_failure(characters: RecordFile, looks: RecordFile, marker: str) -> None:
     try:
         validate_records(characters, looks)
     except ValidationError as exc:
@@ -29,6 +29,11 @@ def expect_failure(characters: list[dict], looks: list[dict], marker: str) -> No
         raise AssertionError(f"expected validation failure containing {marker!r}")
 
 
+def edited(source: RecordFile, index: int) -> tuple[RecordFile, dict]:
+    records = copy.deepcopy(source.records)
+    return RecordFile(copy.deepcopy(source.sources), records), records[index]
+
+
 def main() -> int:
     example = Path(SKILL_ROOT, "examples/minimal")
     characters = load_jsonl(example / "characters.jsonl")
@@ -36,22 +41,43 @@ def main() -> int:
     result = validate_records(characters, looks)
     require(result["characters"] == 1 and result["looks"] == 1, "valid fixture count")
 
-    duplicate = copy.deepcopy(characters[0])
-    expect_failure([*characters, duplicate], looks, "duplicate character_id")
+    duplicate = copy.deepcopy(characters.records[0])
+    expect_failure(
+        RecordFile(characters.sources, [*characters.records, duplicate]),
+        looks,
+        "duplicate character_id",
+    )
 
-    broken_look = copy.deepcopy(looks)
-    broken_look[0]["character_ref"]["record_id"] = "CHAR-MISSING"
+    broken_look, record = edited(looks, 0)
+    record["character_ref"]["record_id"] = "CHAR-MISSING"
     expect_failure(characters, broken_look, "does not resolve")
 
-    candidate = copy.deepcopy(characters)
-    candidate[0]["creator_acceptance"] = {"status": "proposed", "decision_ref": None}
+    undeclared, record = edited(looks, 0)
+    record["character_ref"]["src"] = "not-declared"
+    expect_failure(characters, undeclared, "REF_SRC_IS_NOT_DECLARED")
+
+    unbound, record = edited(looks, 0)
+    record["character_ref"] = {"record_id": "CHAR-LIN"}
+    expect_failure(characters, unbound, "REF_HAS_NO_UPSTREAM_BINDING")
+
+    # A released project may still carry the snapshot inline on the reference.
+    inline, record = edited(looks, 0)
+    record["character_ref"] = {
+        **inline.sources["characters"],
+        "record_id": "CHAR-LIN",
+    }
+    inline.sources.pop("characters")
+    require(validate_records(characters, inline)["status"] == "valid", "inline snapshot")
+
+    candidate, record = edited(characters, 0)
+    record["creator_acceptance"] = {"status": "proposed", "decision_ref": None}
     require(validate_records(candidate, looks)["status"] == "valid", "candidate status")
 
-    invalid = copy.deepcopy(characters)
-    invalid[0]["creator_acceptance"] = {"status": "approved", "decision_ref": None}
+    invalid, record = edited(characters, 0)
+    record["creator_acceptance"] = {"status": "approved", "decision_ref": None}
     expect_failure(invalid, looks, "invalid creator_acceptance status")
 
-    print("5 self-tests passed")
+    print("8 self-tests passed")
     return 0
 
 

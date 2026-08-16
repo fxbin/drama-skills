@@ -71,7 +71,7 @@
 | ID | Class | Knowledge |
 |---|---|---|
 | REV-01 | structural_invariant | Run mechanical checks before spending creative review attention. |
-| REV-02 | structural_invariant | A finding includes artifact/hash, evidence, impact, required fix, owner, severity, and status. |
+| REV-02 | structural_invariant | A finding binds its target through the file's `sources` declaration (`src` plus record), and includes evidence, impact, required fix, owner, severity, and status. |
 | REV-03 | reviewed_invariant | Semantic invention cites the source fact and conflicting downstream fact. |
 | REV-04 | craft_default | Prefer a reviewer who did not author the current targets; disclose self-review, and keep reviewer findings separate from owner edits. |
 | REV-05 | craft_default | Diagnose repeated structure or generic language with location and impact; do not label output merely "AI-ish". |

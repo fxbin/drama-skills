@@ -9,11 +9,107 @@ import math
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 MINIMUM_PYTHON = (3, 10)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("music_spec_check.py requires Python 3.10 or newer")
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE RESOLVER
+#
+# Each skill carries its own copy of this block. A skill must stay runnable
+# after copying only its own directory, so the suite has no shared library and
+# this file imports nothing from outside its own skill.
+# ---------------------------------------------------------------------------
+
+SOURCES_RECORD_TYPE = "sources"
+SOURCES_SCHEMA_VERSION = "1.0.0"
+
+
+class ResolvedRef(NamedTuple):
+    """An upstream reference with its snapshot resolved, whichever form it used."""
+
+    owner: str
+    artifact: str
+    hash: str
+    record_id: str | None
+    field: str | None
+    authority: str | None
+
+
+class RefFinding(NamedTuple):
+    """A structural defect in a reference object."""
+
+    code: str
+    location: str
+    detail: str
+
+
+def load_sources(document: Any) -> dict[str, dict[str, Any]]:
+    """Return the ``sources`` declaration of a parsed file, or ``{}`` if absent.
+
+    Accepts a parsed ``.json`` document (a dict) or the parsed record list of a
+    ``.jsonl`` file, whose declaration lives on the first record.
+    """
+    if isinstance(document, list):
+        document = document[0] if document else None
+    if not isinstance(document, dict):
+        return {}
+    declared = document.get("sources")
+    if not isinstance(declared, dict):
+        return {}
+    return {key: value for key, value in declared.items() if isinstance(value, dict)}
+
+
+def resolve_ref(
+    ref: Any, sources: dict[str, dict[str, Any]], location: str
+) -> tuple[ResolvedRef | None, RefFinding | None]:
+    """Resolve a reference object written in either the compact or expanded form."""
+    if not isinstance(ref, dict):
+        return None, RefFinding("REF_IS_NOT_AN_OBJECT", location, f"got {type(ref).__name__}")
+    src = ref.get("src")
+    if isinstance(src, str):
+        entry = sources.get(src)
+        if entry is None:
+            return None, RefFinding(
+                "REF_SRC_IS_NOT_DECLARED", location, f"src {src!r} has no sources entry"
+            )
+        owner, artifact, digest = entry.get("owner"), entry.get("artifact"), entry.get("hash")
+        if not (isinstance(owner, str) and isinstance(artifact, str) and isinstance(digest, str)):
+            return None, RefFinding(
+                "SOURCE_ENTRY_IS_INCOMPLETE",
+                location,
+                f"sources[{src!r}] needs owner/artifact/hash",
+            )
+    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact", "hash")):
+        owner, artifact, digest = ref["owner"], ref["artifact"], ref["hash"]
+    else:
+        return None, RefFinding(
+            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact+hash"
+        )
+    optional = {
+        key: ref[key]
+        for key in ("record_id", "field", "authority")
+        if isinstance(ref.get(key), str)
+    }
+    return (
+        ResolvedRef(
+            owner,
+            artifact,
+            digest,
+            optional.get("record_id"),
+            optional.get("field"),
+            optional.get("authority"),
+        ),
+        None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# END REFERENCE RESOLVER
+# ---------------------------------------------------------------------------
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 HASH_RE = re.compile(r"[0-9a-f]{64}")
@@ -38,7 +134,9 @@ TOP_LEVEL_FIELDS = {
     "status",
 }
 SCOPE_FIELDS = {"episode_id", "start_seconds", "end_seconds"}
-REFERENCE_FIELDS = {"owner", "artifact", "hash", "record_id", "field", "authority"}
+REFERENCE_FIELDS = {"src", "owner", "artifact", "hash", "record_id", "field", "authority"}
+SOURCES_HEADER_FIELDS = {"record_type", "schema_version", "sources"}
+SOURCE_ENTRY_FIELDS = {"owner", "artifact", "hash"}
 MIX_FIELDS = {"entry", "exit", "duck_under_dialogue", "loop"}
 MUSIC_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 EPISODE_ID_RE = re.compile(r"EP(?:[0-9]{3}|[1-9][0-9]{3,})")
@@ -106,21 +204,62 @@ def _reject_vendor_fields(value: object, label: str) -> None:
             _reject_vendor_fields(child, f"{label}[{index}]")
 
 
-def _validate_ref(value: object, label: str) -> None:
+def _validate_ref(value: object, label: str, sources: dict[str, dict[str, Any]]) -> None:
     if not isinstance(value, dict):
         raise ValidationError(f"{label} must be a reference object")
     _exact_fields(value, REFERENCE_FIELDS, label)
-    for key in ("owner", "artifact", "hash"):
-        _text(value.get(key), f"{label}.{key}")
-    if HASH_RE.fullmatch(str(value["hash"])) is None:
+    resolved, finding = resolve_ref(value, sources, label)
+    if finding is not None:
+        raise ValidationError(f"{finding.location}: {finding.code}: {finding.detail}")
+    if resolved is None:
+        raise ValidationError(f"{label} could not be resolved")
+    for key, text in (
+        ("owner", resolved.owner),
+        ("artifact", resolved.artifact),
+        ("hash", resolved.hash),
+    ):
+        _text(text, f"{label}.{key}")
+    if HASH_RE.fullmatch(resolved.hash) is None:
         raise ValidationError(f"{label}.hash must be lowercase sha256")
     if not isinstance(value.get("record_id") or value.get("field"), str):
         raise ValidationError(f"{label} needs record_id or field")
 
 
+def split_sources_header(
+    records: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    """Split a leading ``sources`` header off the file's own records.
+
+    The header declares each upstream snapshot once, so a reference only names
+    the snapshot key and the record it points at.
+    """
+    if not records or records[0].get("record_type") != SOURCES_RECORD_TYPE:
+        return {}, list(records)
+    header, *specs = records
+    _exact_fields(header, SOURCES_HEADER_FIELDS, "sources header")
+    if header.get("schema_version") != SOURCES_SCHEMA_VERSION:
+        raise ValidationError(f"sources header schema_version must be {SOURCES_SCHEMA_VERSION}")
+    declared = header.get("sources")
+    if not isinstance(declared, dict) or not declared:
+        raise ValidationError("sources header must declare at least one source")
+    for key, entry in declared.items():
+        label = f"sources[{key!r}]"
+        if not isinstance(entry, dict):
+            raise ValidationError(f"{label} must be an object")
+        _exact_fields(entry, SOURCE_ENTRY_FIELDS, label)
+        for field in sorted(SOURCE_ENTRY_FIELDS):
+            _text(entry.get(field), f"{label}.{field}")
+        if HASH_RE.fullmatch(str(entry["hash"])) is None:
+            raise ValidationError(f"{label}.hash must be lowercase sha256")
+    return load_sources(header), specs
+
+
 def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
+    sources, specs = split_sources_header(records)
+    if not specs:
+        raise ValidationError("no music specs")
     identifiers: set[str] = set()
-    for index, record in enumerate(records, 1):
+    for index, record in enumerate(specs, 1):
         label = f"music[{index}]"
         _reject_vendor_fields(record, label)
         _exact_fields(record, TOP_LEVEL_FIELDS, label)
@@ -149,7 +288,7 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         if not isinstance(refs, list) or not refs:
             raise ValidationError(f"{label}.source_refs must be a non-empty list")
         for ref_index, ref in enumerate(refs, 1):
-            _validate_ref(ref, f"{label}.source_refs[{ref_index}]")
+            _validate_ref(ref, f"{label}.source_refs[{ref_index}]", sources)
 
         _text(record.get("narrative_function"), f"{label}.narrative_function")
         _text(record.get("prompt"), f"{label}.prompt", maximum=2_000)
@@ -175,7 +314,7 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         if record.get("status") not in {"candidate", "accepted", "revise"}:
             raise ValidationError(f"{label}.status must be candidate, accepted, or revise")
 
-    return {"status": "valid", "music_specs": len(records)}
+    return {"status": "valid", "music_specs": len(specs)}
 
 
 def main(argv: list[str] | None = None) -> int:

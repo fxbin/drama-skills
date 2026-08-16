@@ -1,4 +1,21 @@
 {
+  "sources": {
+    "screenplay-index": {
+      "owner": "short-drama-write",
+      "artifact": "剧集/EP002/screenplay-index.jsonl",
+      "hash": "ca12a6c1de460acebdd0ed7f3fd969591155dafbb9b608ccc524eac8fa3b3cd3"
+    },
+    "short-drama": {
+      "owner": "short-drama",
+      "artifact": "short-drama.json",
+      "hash": "63c4ba91f0c65c79b08aff608655004aea8efe370ec98445f2866f6e457633d7"
+    },
+    "shots": {
+      "owner": "short-drama-storyboard",
+      "artifact": "剧集/EP002/storyboard/shots.jsonl",
+      "hash": "fd154ba3229b25b79c84e5b02f29242e278899d578feb99750bf1f425f9ebddd"
+    }
+  },
   "episode_id": "EP002",
   "dispositions": [
     {
@@ -7,9 +24,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-01",
           "authority": "candidate"
         }
@@ -21,9 +36,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-01",
           "authority": "candidate"
         }
@@ -35,9 +48,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-01",
           "authority": "candidate"
         }
@@ -49,9 +60,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-01",
           "authority": "candidate"
         }
@@ -63,9 +72,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-02",
           "authority": "candidate"
         }
@@ -77,9 +84,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-02",
           "authority": "candidate"
         }
@@ -91,9 +96,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-03",
           "authority": "candidate"
         }
@@ -105,9 +108,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-03",
           "authority": "candidate"
         }
@@ -119,9 +120,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-03",
           "authority": "candidate"
         }
@@ -133,9 +132,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-03",
           "authority": "candidate"
         }
@@ -147,9 +144,7 @@
       "reason": "Assigned once to the primary shot that delivers this block.",
       "shot_refs": [
         {
-          "owner": "short-drama-storyboard",
-          "artifact": "剧集/EP002/storyboard/shots.jsonl",
-          "hash": "ecda1c6a993a8eb6760a1e5b0203cdf8ed7cf80868c43077bf084df590d259b0",
+          "src": "shots",
           "record_id": "SHOT-EP002-03",
           "authority": "candidate"
         }
@@ -165,9 +160,7 @@
     ],
     "unresolved_durations": [],
     "target_ref": {
-      "owner": "short-drama",
-      "artifact": "short-drama.json",
-      "hash": "63c4ba91f0c65c79b08aff608655004aea8efe370ec98445f2866f6e457633d7",
+      "src": "short-drama",
       "field": "/format/target_seconds_per_episode"
     },
     "target_seconds": null,
@@ -175,9 +168,7 @@
     "disposition": "no_target_declared"
   },
   "screenplay_ref": {
-    "owner": "short-drama-write",
-    "artifact": "剧集/EP002/screenplay-index.jsonl",
-    "hash": "a6a1320df7ea301789049c09c034a1ae270019a79040ece9fb9043fc77b18b73"
+    "src": "screenplay-index"
   },
   "status": "candidate"
 }

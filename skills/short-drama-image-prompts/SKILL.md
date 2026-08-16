@@ -103,7 +103,7 @@ python3 {技能目录}/scripts/selftest.py
 
 1. 准确的资产 ID 与版本 ID；
 2. 稳定识别点与本版本的变化；
-3. 来源的 `artifact/hash/field`；
+3. 来源引用：文件头 `sources` 里的快照键 `src`、`record_id` 与 `field`；
 4. 用途、构图、背景、光线与文字政策；
 5. 每张参考图的准确引用、单一作用、可参考内容、不可照搬内容与检查状态；只有
    创作者/参考图权利人的说明，或经过授权的输入参考图检查，才能给出像素/文字结论；
@@ -118,7 +118,7 @@ python3 {技能目录}/scripts/selftest.py
 
 按“用途/主体 → 识别点 → 状态差异 → 构图/方向/尺度/空间关系 → 材质/色彩/光线 → 背景 → 文字政策 → 排除/保留”组织。身份、地理、尺度和可读文字等重要事实先于“精致、电影感”等空泛审美词。
 
-- `structural_invariant`：绑定准确的已接受 ID/版本；局部修改写清 `target/hash/region`、`changes`、`preserve` 和连续性影响；`readable` 不得与全局 `no-text` 并存。
+- `structural_invariant`：绑定准确的已接受 ID/版本；局部修改写清 `target_ref` 与 `entity_or_region`、`changes`、`preserve` 和连续性影响；`readable` 不得与全局 `no-text` 并存。
 - `reviewed_invariant`：人物在一个规格中保持同一身份和一套连贯造型；场景保持清楚的地理；道具保持可辨尺度、形制与功能。
 - `reviewed_invariant`：参考图只决定已经声明的内容；构图、尺度或效果参考不得顺带改写身份、文字、人数或故事状态。
 - `craft_default`：用少量可观察、彼此不重复的识别点；负面约束只防止当前风险，不写长篇万能禁词。

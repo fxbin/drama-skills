@@ -79,7 +79,7 @@ python3 {技能目录}/scripts/selftest.py
 
 建立只读的起止边界清单：
 
-- 镜头/关键帧准确的 `artifact/hash/field` 引用；
+- 镜头/关键帧引用：文件头 `sources` 声明的快照 key（`src`）加准确的 `record_id`/`field`；
 - 时长，以及起点姿态、重心、目光、双手、持物和空间关系；
 - 分镜负责的结束姿态/状态与连续性终点；
 - 准确的对白、画外音、音效和声音引用；
@@ -201,7 +201,9 @@ reviewer 在下游审查结论中决定，不能回写运动规格形成循环�
 
 先向创作者展示起止边界摘要、动作/表演顺序、摄影/声音选择、时长警告和可复制提示词。接受后写：
 
-- `剧集/<EP>/storyboard/motion-specs.jsonl`：运动规格字段和只读来源引用；
+- `剧集/<EP>/storyboard/motion-specs.jsonl`：首行 `sources` 声明本文件引用的上游快照，
+  其后每行一条运动规格，字段与只读来源引用见
+  [motion-spec.jsonl.md](assets/motion-spec.jsonl.md)；
 - `剧集/<EP>/storyboard/delivery-containers.jsonl`：**仅当项目声明了多镜交付容器时**，
   记录容器成员顺序、各成员已接受时长的只读引用与容器时长，模板见
   [delivery-container.jsonl.md](assets/delivery-container.jsonl.md)；

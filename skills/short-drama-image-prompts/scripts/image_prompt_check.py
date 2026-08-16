@@ -8,11 +8,103 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 MINIMUM_PYTHON = (3, 10)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("image_prompt_check.py requires Python 3.10 or newer")
+
+# ---------------------------------------------------------------------------
+# REFERENCE RESOLVER -- reference implementation.
+#
+# Each skill checker carries its own copy of this block. The suite has no shared
+# library on purpose: a skill must stay runnable after copying only its own
+# directory, so duplicating these few lines across skills is the correct shape.
+# Copy the block verbatim; do not import it.
+# ---------------------------------------------------------------------------
+
+SOURCES_RECORD_TYPE = "sources"
+SOURCES_SCHEMA_VERSION = "1.0.0"
+
+
+class ResolvedRef(NamedTuple):
+    """An upstream reference with its snapshot resolved, whichever form it used."""
+
+    owner: str
+    artifact: str
+    hash: str
+    record_id: str | None
+    field: str | None
+    authority: str | None
+
+
+class RefFinding(NamedTuple):
+    """A structural defect in a reference object."""
+
+    code: str
+    location: str
+    detail: str
+
+
+def load_sources(document: Any) -> dict[str, dict[str, Any]]:
+    """Return the ``sources`` declaration of a parsed file, or ``{}`` if absent.
+
+    Accepts a parsed ``.json`` document (a dict) or the parsed record list of a
+    ``.jsonl`` file, whose declaration lives on the first record.
+    """
+    if isinstance(document, list):
+        document = document[0] if document else None
+    if not isinstance(document, dict):
+        return {}
+    declared = document.get("sources")
+    if not isinstance(declared, dict):
+        return {}
+    return {key: value for key, value in declared.items() if isinstance(value, dict)}
+
+
+def resolve_ref(
+    ref: Any, sources: dict[str, dict[str, Any]], location: str
+) -> tuple[ResolvedRef | None, RefFinding | None]:
+    """Resolve a reference object written in either the compact or expanded form."""
+    if not isinstance(ref, dict):
+        return None, RefFinding("REF_IS_NOT_AN_OBJECT", location, f"got {type(ref).__name__}")
+    src = ref.get("src")
+    if isinstance(src, str):
+        entry = sources.get(src)
+        if entry is None:
+            return None, RefFinding(
+                "REF_SRC_IS_NOT_DECLARED", location, f"src {src!r} has no sources entry"
+            )
+        owner, artifact, digest = entry.get("owner"), entry.get("artifact"), entry.get("hash")
+        if not (isinstance(owner, str) and isinstance(artifact, str) and isinstance(digest, str)):
+            return None, RefFinding(
+                "SOURCE_ENTRY_IS_INCOMPLETE", location, f"sources[{src!r}] needs owner/artifact/hash"
+            )
+    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact", "hash")):
+        owner, artifact, digest = ref["owner"], ref["artifact"], ref["hash"]
+    else:
+        return None, RefFinding(
+            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact+hash"
+        )
+    optional = {
+        key: ref[key] for key in ("record_id", "field", "authority") if isinstance(ref.get(key), str)
+    }
+    return (
+        ResolvedRef(
+            owner,
+            artifact,
+            digest,
+            optional.get("record_id"),
+            optional.get("field"),
+            optional.get("authority"),
+        ),
+        None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# END REFERENCE RESOLVER
+# ---------------------------------------------------------------------------
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 HASH_RE = re.compile(r"[0-9a-f]{64}")
@@ -55,7 +147,12 @@ def resolve_input(value: str | Path) -> Path:
     return SKILL_ROOT / path
 
 
-def load_jsonl(value: str | Path) -> list[dict[str, Any]]:
+def load_jsonl(value: str | Path) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    """Return the file's ``sources`` declaration and its prompt-spec records.
+
+    A leading ``{"record_type": "sources", ...}`` header declares the upstream
+    snapshots the specs point at; it is not a spec and never counts as one.
+    """
     path = resolve_input(value)
     records: list[dict[str, Any]] = []
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -68,9 +165,15 @@ def load_jsonl(value: str | Path) -> list[dict[str, Any]]:
         if not isinstance(record, dict):
             raise ValidationError(f"{path}:{number}: each record must be an object")
         records.append(record)
+    sources: dict[str, dict[str, Any]] = {}
+    if records and records[0].get("record_type") == SOURCES_RECORD_TYPE:
+        header = records.pop(0)
+        if not isinstance(header.get("sources"), dict):
+            raise ValidationError(f"{path}: the sources header must declare a sources object")
+        sources = load_sources(header)
     if not records:
         raise ValidationError(f"{path}: no prompt specs")
-    return records
+    return sources, records
 
 
 def text(record: dict[str, Any], key: str, label: str) -> str:
@@ -87,18 +190,31 @@ def nonempty_list(record: dict[str, Any], key: str, label: str) -> list[Any]:
     return value
 
 
-def validate_ref(value: Any, label: str, *, field_allowed: bool = True) -> None:
+def validate_ref(
+    value: Any,
+    sources: dict[str, dict[str, Any]],
+    label: str,
+    *,
+    field_allowed: bool = True,
+) -> None:
     if not isinstance(value, dict):
         raise ValidationError(f"{label}: reference must be an object")
-    for key in ("owner", "artifact", "hash"):
-        text(value, key, label)
-    if HASH_RE.fullmatch(str(value["hash"])) is None:
+    resolved, finding = resolve_ref(value, sources, label)
+    if finding is not None:
+        raise ValidationError(f"{label}: {finding.code}: {finding.detail}")
+    if resolved is None:
+        raise ValidationError(f"{label}: reference could not be resolved")
+    if not resolved.owner.strip() or not resolved.artifact.strip():
+        raise ValidationError(f"{label}: owner and artifact must be non-empty text")
+    if HASH_RE.fullmatch(resolved.hash) is None:
         raise ValidationError(f"{label}: hash must be lowercase sha256")
     if "record_id" not in value and (not field_allowed or "field" not in value):
         raise ValidationError(f"{label}: record_id or field is required")
 
 
-def validate_reference_bindings(record: dict[str, Any], label: str) -> None:
+def validate_reference_bindings(
+    record: dict[str, Any], sources: dict[str, dict[str, Any]], label: str
+) -> None:
     bindings = record.get("reference_bindings", [])
     if not isinstance(bindings, list):
         raise ValidationError(f"{label}: reference_bindings must be a list")
@@ -116,7 +232,7 @@ def validate_reference_bindings(record: dict[str, Any], label: str) -> None:
             raise ValidationError(f"{item}: order must be a unique positive integer")
         slots.add(slot)
         orders.add(order)
-        validate_ref(binding.get("artifact_ref"), f"{item}.artifact_ref")
+        validate_ref(binding.get("artifact_ref"), sources, f"{item}.artifact_ref")
         text(binding, "role", item)
         nonempty_list(binding, "may_control", item)
         nonempty_list(binding, "must_not_control", item)
@@ -143,27 +259,35 @@ def vendor_field_paths(value: object, prefix: str = "") -> list[str]:
     return leaked
 
 
-def validate_asset_spec(record: dict[str, Any], label: str) -> None:
+def validate_asset_spec(
+    record: dict[str, Any], sources: dict[str, dict[str, Any]], label: str
+) -> None:
     binding = record.get("asset_binding")
     if not isinstance(binding, dict):
         raise ValidationError(f"{label}: asset_binding must be an object")
-    validate_ref(binding.get("identity_ref"), f"{label}.asset_binding.identity_ref")
-    validate_ref(binding.get("variant_ref"), f"{label}.asset_binding.variant_ref")
+    validate_ref(binding.get("identity_ref"), sources, f"{label}.asset_binding.identity_ref")
+    validate_ref(binding.get("variant_ref"), sources, f"{label}.asset_binding.variant_ref")
     for index, ref in enumerate(nonempty_list(record, "source_refs", label), 1):
-        validate_ref(ref, f"{label}.source_refs[{index}]")
+        validate_ref(ref, sources, f"{label}.source_refs[{index}]")
     nonempty_list(record, "identity_or_form_anchors", label)
 
     if record["purpose"] == "edit_delta":
         edit = record.get("edit")
         if not isinstance(edit, dict):
             raise ValidationError(f"{label}: edit_delta requires edit")
-        validate_ref(edit.get("target_ref"), f"{label}.edit.target_ref")
+        validate_ref(edit.get("target_ref"), sources, f"{label}.edit.target_ref")
         nonempty_list(edit, "changes", f"{label}.edit")
         nonempty_list(edit, "preserve", f"{label}.edit")
         text(edit, "continuity_impact", f"{label}.edit")
 
     handling = record.get("text_handling")
     if isinstance(handling, dict):
+        if "source_policy_ref" in handling:
+            validate_ref(
+                handling.get("source_policy_ref"),
+                sources,
+                f"{label}.text_handling.source_policy_ref",
+            )
         treatment = handling.get("render_treatment")
         if not isinstance(treatment, dict):
             raise ValidationError(f"{label}: text_handling.render_treatment is required")
@@ -174,24 +298,32 @@ def validate_asset_spec(record: dict[str, Any], label: str) -> None:
                 raise ValidationError(f"{label}: readable text conflicts with a no-text constraint")
 
 
-def validate_lookdev_spec(record: dict[str, Any], label: str) -> None:
-    validate_ref(record.get("direction_ref"), f"{label}.direction_ref")
-    validate_ref(record.get("production_profile_ref"), f"{label}.production_profile_ref")
+def validate_lookdev_spec(
+    record: dict[str, Any], sources: dict[str, dict[str, Any]], label: str
+) -> None:
+    validate_ref(record.get("direction_ref"), sources, f"{label}.direction_ref")
+    validate_ref(record.get("production_profile_ref"), sources, f"{label}.production_profile_ref")
     subjects = nonempty_list(record, "subject_bindings", label)
     for index, subject in enumerate(subjects, 1):
         if not isinstance(subject, dict):
             raise ValidationError(f"{label}.subject_bindings[{index}]: must be an object")
-        validate_ref(subject.get("identity_ref"), f"{label}.subject_bindings[{index}].identity_ref")
-        text(subject, "role", f"{label}.subject_bindings[{index}]")
+        item = f"{label}.subject_bindings[{index}]"
+        validate_ref(subject.get("identity_ref"), sources, f"{item}.identity_ref")
+        if "variant_ref" in subject:
+            validate_ref(subject.get("variant_ref"), sources, f"{item}.variant_ref")
+        text(subject, "role", item)
     text(record, "test_question", label)
     nonempty_list(record, "stable_visual_rules", label)
     if record.get("lookdev_axis") == "high_pressure_scene":
         refs = nonempty_list(record, "story_context_refs", label)
         for index, ref in enumerate(refs, 1):
-            validate_ref(ref, f"{label}.story_context_refs[{index}]")
+            validate_ref(ref, sources, f"{label}.story_context_refs[{index}]")
 
 
-def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
+def validate_records(
+    records: list[dict[str, Any]], sources: dict[str, dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    sources = sources or {}
     identifiers: set[str] = set()
     for index, record in enumerate(records, 1):
         label = f"spec[{index}]"
@@ -210,20 +342,28 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         prompt = text(record, "generic_prompt", label)
         if HASH_RE.search(prompt) or "<sha256>" in prompt:
             raise ValidationError(f"{label}: generic_prompt leaks internal hashes")
-        validate_reference_bindings(record, label)
+        validate_reference_bindings(record, sources, label)
         if purpose == "lookdev_frame":
-            validate_lookdev_spec(record, label)
+            validate_lookdev_spec(record, sources, label)
         else:
-            validate_asset_spec(record, label)
+            validate_asset_spec(record, sources, label)
     return {
         "status": "valid",
         "specs": len(records),
-        "checks": ["unique_ids", "accepted_bindings", "reference_slots", "prompt_hygiene"],
+        "sources": len(sources),
+        "checks": [
+            "unique_ids",
+            "accepted_bindings",
+            "source_resolution",
+            "reference_slots",
+            "prompt_hygiene",
+        ],
     }
 
 
 def validate_file(path: str | Path) -> dict[str, Any]:
-    return validate_records(load_jsonl(path))
+    sources, records = load_jsonl(path)
+    return validate_records(records, sources)
 
 
 def main() -> int:

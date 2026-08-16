@@ -4,6 +4,7 @@
 
 - [独立运行与项目集成](#独立运行与项目集成)
 - [所有权边界](#所有权边界)
+- [跨产物引用](#跨产物引用)
 - [制作形态需要什么](#制作形态需要什么)
 - [本阶段规则](#本阶段规则)
 
@@ -29,6 +30,39 @@
 - **本阶段继承**：剧本给出的身份、地理与文字政策；故事状态条目是开发/剧本的只读投影。
 - **本阶段不越权**：不决定镜头构图与动作终态，不改写剧情事实。台账里的故事状态只带来源
   指针，不构成第二个取值权威。
+
+## 跨产物引用
+
+同一份上游快照被一个文件反复引用时，在开头声明一次，之后每条引用只写快照键和记录 ID。
+声明本身也占篇幅，所以只被引用一两次的快照直接把 `owner`、`artifact`、`hash` 写在那条引用里。
+
+`.jsonl` 的第一行是声明记录：
+
+```json
+{"record_type":"sources","schema_version":"1.0.0","sources":{"screenplay-index":{"owner":"short-drama-write","artifact":"剧集/EP003/screenplay-index.jsonl","hash":"<sha256>"},"characters":{"owner":"short-drama-assets","artifact":"设定集/characters.jsonl","hash":"<sha256>"}}}
+```
+
+`.json` 用顶层 `"sources"` 对象，条目形状相同。
+
+`sources` 的键短、小写，由产物文件名派生（`characters`、`looks`、`locations`、
+`location-views`、`props`、`prop-states`、`occurrences`、`screenplay-index`），在本文件内
+唯一且稳定。同一文件内，一个产物只声明一个 `hash`。
+
+引用写成：
+
+```json
+{"src":"characters","record_id":"CHAR-GUHE"}
+```
+
+指向记录中某个字段时加 `field`（JSON pointer）；引用方需要区分权威等级时加 `authority`
+（`accepted` / `candidate`），它属于这一条引用，不属于快照。指向整份产物或产物级字段时
+省略 `record_id`。
+
+`assets/*.example.jsonl` 是模板目录，每条记录各有自己的 `destination`。把一条记录复制进
+它的目标文件时，把这条记录用到的 `sources` 条目一并写进那个文件的声明行。
+
+尚未发布的下游产物写 locator：`owner`、项目相对路径、`selector` 和 `status`。它在真正
+发布并有 `hash` 之后才进入 `sources`，改写成 `src` 引用。
 
 ## 制作形态需要什么
 
@@ -59,7 +93,7 @@
 
 | ID | Class | Knowledge |
 |---|---|---|
-| AST-01 | structural_invariant | Extract occurrences with source block/hash before creating or binding an asset. |
+| AST-01 | structural_invariant | Extract occurrences with a declared source snapshot and block ID before creating or binding an asset. |
 | AST-02 | reviewed_invariant | Reconcile each occurrence as reuse, new identity, new variant, or unresolved—never guess an ambiguous name/pronoun. |
 | AST-03 | craft_default | Separate Character/Look, Location/View, and Prop/State. |
 | AST-04 | reviewed_invariant | Persistent identifying anchors and mutable state are not mixed. |

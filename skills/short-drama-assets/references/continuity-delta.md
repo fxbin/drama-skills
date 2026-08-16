@@ -40,8 +40,9 @@
 有效范围，以及指向现有使用方的 `affected_binding_refs` 或指向未来使用方的
 `affected_binding_locators`。没有变化时不能只写“更新了”。
 
-**`structural_invariant` CON-06：** `affected_binding_refs` 要覆盖所有已经存在的使用方；
-尚未建立的使用方在真正发布前只能写定位信息，不能伪造产物引用。
+**`structural_invariant` CON-06：** `affected_binding_refs` 要覆盖所有已经存在的使用方，
+每条写 `src` 加 `record_id`；尚未建立的使用方在真正发布前写
+`affected_binding_locators`：`owner`、项目相对路径、`selector` 和 `status`。
 
 ## 需要追踪的五组状态
 
@@ -61,10 +62,11 @@
 1. 在资产出现记录中发现明确变化或边界不一致。
 2. 读取上一个状态为 `accepted` 的记录，绝不从下游提示词反推。
 3. 写清单一的 `before` 和 `after`；一个复合事件可以拆成多条同因变化。
-4. 引用导致变化的剧本段、`hash` 和字段。
+4. 在首行 `sources` 声明导致变化的剧本快照，`cause_ref` 写 `src` 加 `record_id` 与需要的
+   `field`。
 5. 声明从哪个剧本段、场次或集开始生效，到何时结束；没有明确终点时写 `open_ended`。
-6. 已经存在的使用方写入 `affected_binding_refs`；尚未生成的镜头或提示词只写
-   `affected_binding_locators`，不伪造 `hash` 或产物引用。
+6. 已经存在的使用方写入 `affected_binding_refs`；尚未生成的镜头或提示词写
+   `affected_binding_locators`，等它发布后再改成 `src` 引用。
 7. 与下一处相连的开始状态比较：一致就通过，不一致就明确提出修订。
 
 ### “未知”不等于“恢复默认”
