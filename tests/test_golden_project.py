@@ -85,15 +85,14 @@ SENSITIVE_KEYS = {
     "userId",
 }
 SENSITIVE_TEXT = (
-    "100794",
-    "jurilu_backup",
-    "192.168.31.139",
     "mongodb://",
     "http://",
     "https://",
     "/Users/",
     "C:\\Users\\",
 )
+IPV4_LITERAL = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
+LONG_DECIMAL_LITERAL = re.compile(r"(?<![A-Za-z0-9])\d{6,}(?![A-Za-z0-9])")
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -189,6 +188,8 @@ class GoldenProjectTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 for needle in SENSITIVE_TEXT:
                     self.assertNotIn(needle, text)
+                self.assertNotRegex(text, IPV4_LITERAL)
+                self.assertNotRegex(text, LONG_DECIMAL_LITERAL)
                 self.assertNotRegex(text, placeholder)
                 if path.suffix == ".json":
                     documents = [json.loads(text)]
