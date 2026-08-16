@@ -55,11 +55,10 @@ A request for an end-to-end preview authorizes drafting, not acceptance. Its run
 3. persist a candidate without inventing creator acceptance;
 4. report the included scope, remaining scope and next useful action, then **return control to the creator**.
 
-Stop rule: do not automatically enter the next owner stage, review, or production. A creator message such as “continue”
-authorizes only the next bounded unit, not the rest of the pipeline. Review is a separate bounded work unit and
-runs only when the creator explicitly requests it or when an explicitly requested delivery needs a verdict.
-Keep undecided work in `needs_confirmation`; delivery remains blocked until the creator accepts the relevant
-outputs.
+The turn ends at step 4. A creator message such as “continue” authorizes the next bounded unit. The next owner
+stage, review and production each begin on their own explicit request; review also runs when an explicitly
+requested delivery needs a verdict. Undecided work stays in `needs_confirmation`, and delivery waits until the
+creator accepts the relevant outputs.
 
 For a revision:
 

@@ -70,12 +70,16 @@ python3 {技能目录}/scripts/selftest.py
 [风格帧 Markdown 模板](assets/lookdev-prompts.md)，不先加载普通资产超集再删字段。普通资产交付文本
 使用 [Markdown 模板](assets/image-prompts.md)。只加载当前类型所需资料。
 
-## Bounded execution
+## 每轮的工作单元
 
-- One work unit covers one `explicit asset-ID set`; a request for all assets is split into named sets.
-- Validate and persist only that unit, then report its `included scope`, `remaining scope`, unresolved bindings and next useful set.
-- After the report, `return control` to the creator; do not continue into another set, media generation or a downstream stage in the same turn.
-- Unless the current request is explicitly a review request, do not invoke `$short-drama-review` automatically.
+一轮处理一组明确的资产 ID。“给所有资产写提示词”拆成若干个具名集合，每轮：
+
+1. 只读这组资产的直接输入，写它们的提示词规格，跑本地结构检查；
+2. 落盘这一组，其余资产保持原样；
+3. 报告已覆盖范围、剩余范围、未决绑定和下一组值得做的资产；
+4. 交还控制权，等创作者的下一次请求。
+
+实际生成、下游阶段和审查各自是独立的工作单元，由创作者明确请求时开始。
 
 ## 工作流
 

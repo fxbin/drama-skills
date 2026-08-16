@@ -67,12 +67,16 @@ python3 {技能目录}/scripts/selftest.py
 
 缺少 index 时，不凭行号冒充稳定来源；先请 write owner 对剧本建立 block ID/hash。
 
-## Bounded execution
+## 每轮的工作单元
 
-- One work unit covers one explicit `source scene/block range`; a whole-episode request is split at source boundaries.
-- Validate and persist only that unit, then report its `included scope`, `remaining scope`, unresolved occurrences and next useful unit.
-- After the report, `return control` to the creator; do not continue into another range, image prompts or storyboard in the same turn.
-- Unless the current request is explicitly a review request, do not invoke `$short-drama-review` automatically.
+一轮处理一个明确的来源场次/块范围。整集请求按来源边界拆成若干轮，每轮：
+
+1. 只读这个范围的直接输入，拆出它的资产事实，跑本地结构检查；
+2. 落盘这个范围，其余范围保持原样；
+3. 报告已覆盖范围、剩余范围、未决 occurrence 和下一个值得做的范围；
+4. 交还控制权，等创作者的下一次请求。
+
+图片提示词、分镜和审查各自是独立的工作单元，由创作者明确请求时开始。
 
 ## 工作流
 

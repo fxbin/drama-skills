@@ -62,12 +62,16 @@ python3 {技能目录}/scripts/selftest.py
 [末镜定位示例](assets/motion-terminal.example.jsonl)；可复制交付使用
 [Markdown 模板](assets/video-prompts.md)。只加载本次问题需要的资料。
 
-## Bounded execution
+## 每轮的工作单元
 
-- One work unit covers `one scene or contiguous shot range`; a whole-episode request is split at those boundaries.
-- Validate and persist only that unit, then report its `included scope`, `remaining scope`, unresolved motion fields and next useful range.
-- After the report, `return control` to the creator; do not continue into another range, production or repackaging in the same turn.
-- Unless the current request is explicitly a review request, do not invoke `$short-drama-review` automatically.
+一轮处理一个场次或一段连续镜头范围。整集请求按这些边界拆成若干轮，每轮：
+
+1. 只读这个范围的直接输入，写它的逐镜运动规格，跑本地结构检查；
+2. 落盘这个范围，其余范围保持原样；
+3. 报告已覆盖范围、剩余范围、未决 motion 字段和下一个值得做的范围；
+4. 交还控制权，等创作者的下一次请求。
+
+生产、重新打包和审查各自是独立的工作单元，由创作者明确请求时开始。
 
 ## 工作流
 

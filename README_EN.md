@@ -165,8 +165,7 @@ reads one verified slice at a time, and resumes from the on-disk map. An idea or
 source enters through story development.
 
 Project state stays creator-readable: needs confirmation, accepted, revise, approved,
-or update needed. Input/output drift is checked on read; there is no recovery log,
-propagation graph, or user-supplied hash evidence.
+or update needed. Input/output drift is checked on read.
 
 The three single-frame prompt paths have distinct ownership: project-level
 `lookdev_frame` prompts test an accepted visual direction; asset prompts preserve

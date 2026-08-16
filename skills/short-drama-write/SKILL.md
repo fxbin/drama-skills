@@ -31,12 +31,16 @@ python3 {技能目录}/scripts/screenplay_index.py <screenplay.md> --output <scr
 3. **已有规范剧本**：保留作者语言，做定点修订；先说明改动意图和影响。
 4. **已有非规范文本，目的是进入后续制作**：保存原始字节；只提议场景标题、对白/动作分块、生产标签与索引所需的最小规范化。展示语义新增、删除、改写、未映射段落与不确定处，得到创作者接受后才能发布。不得补造故事引擎、节拍或新剧情。
 
-## Bounded execution
+## 每轮的工作单元
 
-- One work unit covers one explicit `scene or scene group`; a whole-episode request does not remove this boundary.
-- Validate and persist only that unit, then report its `included scope`, `remaining scope`, unresolved decisions and next useful unit.
-- After the report, `return control` to the creator; do not enter asset extraction, production or another scene group in the same turn.
-- Unless the current request is explicitly a review request, do not invoke `$short-drama-review` automatically.
+一轮写一个明确的场景或场景组。“把整集写完”也按场景边界拆成若干轮，每轮：
+
+1. 只读这个单元的直接输入，写或改它的正文，跑本地结构检查；
+2. 落盘这个单元，其余范围保持原样；
+3. 报告已覆盖范围、剩余范围、未决决定和下一个值得做的单元；
+4. 交还控制权，等创作者的下一次请求。
+
+资产拆解、生产和审查各自是独立的工作单元，由创作者明确请求时开始。
 
 ## 每次执行
 

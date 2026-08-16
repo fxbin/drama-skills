@@ -1,6 +1,6 @@
 # 项目定位与发布纪律
 
-core 只管理当前项目的目录、生命周期和交付，不校验 sibling 技能、安装版本或文件清单。
+core 只管理当前项目的目录、生命周期和交付。
 
 ## 1. 读取项目状态
 
@@ -20,7 +20,7 @@ python3 <core>/scripts/project_tool.py status <project>
 - `review` 只记录当前输出的复核结论；reviewer 不直接改 owner 文件。
 - 输入或输出变化后，该产物显示 `update_needed`，重新发布即可；不递归改写下游状态。
 - `package` 只收录当前 `approved` 的文本/JSON，不能替代接受或复核。
-- 第一次发布可以由任意非空 owner 认领合法阶段路径；core 不维护业务文件到技能名的注册表。
+- 第一次发布由任意非空 owner 认领合法阶段路径，此后这条路径归该 owner。
 - 同一项目路径仍只能属于一个 artifact，输入、交付和机器状态目录仍受保护。
 
 完整参数见 [lifecycle-commands.md](lifecycle-commands.md)，权威边界见
