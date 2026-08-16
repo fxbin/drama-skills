@@ -453,6 +453,31 @@ class SimpleLifecycleTests(unittest.TestCase):
             delivered = root / result["delivery_root"] / "artifacts/剧集/EP001/screenplay.md"
             self.assertEqual(delivered.read_bytes(), approved)
 
+    def test_package_rejects_bytes_changed_after_approval_check(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            self.publish_script(root, text="# approved\n")
+            self.approve_script(root)
+            source = root / "剧集/EP001/screenplay.md"
+            real_artifact_state = project_tool._artifact_state
+
+            def mutate_after_check(project_root, record):
+                state = real_artifact_state(project_root, record)
+                source.write_text("unapproved before snapshot", encoding="utf-8")
+                return state
+
+            with mock.patch.object(
+                project_tool, "_artifact_state", side_effect=mutate_after_check
+            ), self.assertRaisesRegex(
+                project_tool.PackageBlockedError, "changed after approval"
+            ):
+                project_tool.build_delivery_package(
+                    root,
+                    episode="EP001",
+                    includes=["剧集/EP001/screenplay.md"],
+                )
+            self.assertFalse((root / "交付/EP001").exists())
+
     def test_package_and_verify_selected_approved_text(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)

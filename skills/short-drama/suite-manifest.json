@@ -169,7 +169,7 @@
     "short-drama/references/routing-examples.md": "5c977cf4cf320758e42f5d778d5937c312a39acbb86b54cb62b6aa1e53fe93d7",
     "short-drama/references/runtime-preflight.md": "055f0f0fd182c854540f0b34cc818bb3d279cac4772965bb78114460444c8f15",
     "short-drama/scripts/dashboard_server.py": "ea2690cd86df98b5184f1b24e972876c267aa0ff6ca815a99675de5f2b202cdd",
-    "short-drama/scripts/project_tool.py": "563cb09685d114f73ffab3b956ac99ba8c60079741c30ff3e3811e3968fa9bed",
+    "short-drama/scripts/project_tool.py": "c0681bb46f69348591dd0f93ca9db75f45eba664cf02da950c82356d29379014",
     "short-drama/scripts/suite_verify.py": "b7b4116b5e640d1ac0b119da6d4ab82144cd40dbcb0a035e8818f2921c683deb"
   },
   "public_skills": [

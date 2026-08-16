@@ -1283,13 +1283,32 @@ def build_delivery_package(
                 data.decode("utf-8")
             except UnicodeDecodeError as exc:
                 raise PackageBlockedError(f"delivery source must be UTF-8: {relative}") from exc
+            digest = sha256_bytes(data)
+            acceptance = record.get("acceptance")
+            review = record.get("review")
+            accepted_outputs = (
+                acceptance.get("outputs") if isinstance(acceptance, Mapping) else None
+            )
+            reviewed_outputs = (
+                review.get("outputs") if isinstance(review, Mapping) else None
+            )
+            if (
+                not isinstance(accepted_outputs, Mapping)
+                or not isinstance(reviewed_outputs, Mapping)
+                or accepted_outputs.get(relative) != digest
+                or reviewed_outputs.get(relative) != digest
+                or not _inputs_current(root, record)
+            ):
+                raise PackageBlockedError(
+                    f"delivery source changed after approval: {relative}"
+                )
             snapshots[relative] = data
             entries.append(
                 {
                     "artifact_id": artifact_id,
                     "source": relative,
                     "path": f"artifacts/{relative}",
-                    "sha256": sha256_bytes(data),
+                    "sha256": digest,
                 }
             )
 
