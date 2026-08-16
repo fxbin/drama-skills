@@ -8,6 +8,15 @@ license: MIT
 
 把单集意图写成可表演、可追踪且会改变故事状态的场景。`screenplay.md` 是唯一可编辑剧本源；卡片和节拍帮助推理，不是另一份正文。
 
+## Quick Start
+
+离线验证剧本分块索引与录音表逐字投影：
+
+```bash
+python3 {技能目录}/scripts/selftest.py
+python3 {技能目录}/scripts/screenplay_index.py <screenplay.md> --output <screenplay-index.jsonl>
+```
+
 ## 开始前
 
 本技能可独立安装和执行。先读取用户明确提供的单集材料与本任务直接输入；若当前目录是

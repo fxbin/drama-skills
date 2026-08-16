@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Prepare and execute explicitly confirmed short-drama media jobs.
 
-The suite does not embed provider clients. A configured external adapter receives
-one bounded JSON job on stdin and returns local output files on stdout. The
-adapter is launched without a shell and only after a confirmation bound to the
-exact job and current project inputs.
+A configured adapter receives one bounded JSON job on stdin and returns local
+output files on stdout. The adapter is launched without a shell and only after
+a confirmation bound to the exact job and current project inputs. Optional
+provider adapters can ship with this skill, but credentials and adapter config
+remain outside creator projects.
 """
 
 from __future__ import annotations
@@ -36,11 +37,25 @@ PRODUCTION_ROOT = Path(".short-drama/production")
 JOB_SCHEMA = "1.0"
 JOB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 MAX_JOB_BYTES = 256 * 1024
+MAX_RUN_RECORD_BYTES = 256 * 1024
 MAX_ADAPTER_RESPONSE_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 512 * 1024 * 1024
 MAX_INPUT_BYTES = 50 * 1024 * 1024
 MAX_TOTAL_INPUT_BYTES = 200 * 1024 * 1024
 MAX_TIMEOUT_SECONDS = 3600
+PUBLIC_ERROR_CATEGORIES = {
+    "authentication",
+    "configuration",
+    "contract",
+    "invalid_request",
+    "network",
+    "permission",
+    "provider_response",
+    "rate_limit",
+    "server",
+    "timeout",
+}
+PUBLIC_ERROR_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}")
 ALLOWED_JOB_KEYS = {
     "schema_version",
     "job_id",
@@ -53,6 +68,8 @@ ALLOWED_JOB_KEYS = {
     "parameters",
     "overwrite",
 }
+STORED_EXECUTION_KEYS = ALLOWED_JOB_KEYS | {"inputs"}
+STORED_JOB_KEYS = STORED_EXECUTION_KEYS | {"fingerprint", "prepared_at"}
 SECRET_KEYS = {
     "authorization",
     "credential",
@@ -68,6 +85,7 @@ MEDIA_EXTENSIONS = {
     "image": {".png", ".jpg", ".jpeg", ".webp"},
     "video": {".mp4", ".mov", ".webm"},
     "tts": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".opus"},
+    "music": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".opus"},
 }
 MEDIA_TYPES = {
     ".png": "image/png",
@@ -92,6 +110,12 @@ class ConfirmationRequiredError(RuntimeError):
 
 class AdapterError(RuntimeError):
     """A configured media adapter failed or broke its output contract."""
+
+    def __init__(
+        self, message: str, *, public_error: Mapping[str, Any] | None = None
+    ) -> None:
+        super().__init__(message)
+        self.public_error = dict(public_error) if public_error is not None else None
 
 
 def utc_now() -> str:
@@ -199,6 +223,8 @@ def _open_project_input(root: Path, relative: str) -> Iterator[BinaryIO]:
             os.close(directory_fd)
         return
 
+    # Windows lacks portable openat/O_NOFOLLOW support. Reject reparse/symlink
+    # components, pin the final file handle, and verify its identity before use.
     path = root
     for part in parts:
         path /= part
@@ -278,62 +304,292 @@ def _canonical(document: object) -> bytes:
     ).encode("utf-8")
 
 
-def _atomic_bytes(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("xb") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        if os.name != "nt":
-            descriptor = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-    finally:
+def _check_metadata_parts(parts: tuple[str, ...]) -> None:
+    if any(
+        not part
+        or part in {".", ".."}
+        or "/" in part
+        or "\\" in part
+        for part in parts
+    ):
+        raise ValueError("production metadata path is invalid")
+
+
+@contextlib.contextmanager
+def _metadata_directory(
+    root: Path, parts: tuple[str, ...], *, create: bool
+) -> Iterator[tuple[Path, int | None]]:
+    """Pin one metadata directory without following project-controlled parents."""
+    root = root.resolve()
+    _check_metadata_parts(parts)
+    all_parts = (".short-drama", "production", *parts)
+    directory = root.joinpath(*all_parts)
+    if os.name != "nt" and os.open in os.supports_dir_fd:
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory_fd = os.open(root, flags)
         try:
-            temporary.unlink()
+            try:
+                for part in all_parts:
+                    try:
+                        next_fd = os.open(
+                            part, flags | nofollow, dir_fd=directory_fd
+                        )
+                    except FileNotFoundError:
+                        if not create:
+                            raise
+                        try:
+                            os.mkdir(part, mode=0o700, dir_fd=directory_fd)
+                        except FileExistsError:
+                            pass
+                        next_fd = os.open(
+                            part, flags | nofollow, dir_fd=directory_fd
+                        )
+                    details = os.fstat(next_fd)
+                    if not stat.S_ISDIR(details.st_mode):
+                        os.close(next_fd)
+                        raise ValueError("production metadata directory is unsafe")
+                    os.close(directory_fd)
+                    directory_fd = next_fd
+            except FileNotFoundError:
+                raise
+            except OSError as exc:
+                raise ValueError("production metadata directory is unsafe") from exc
+            yield directory, directory_fd
+        finally:
+            os.close(directory_fd)
+        return
+
+    current = root
+    for part in all_parts:
+        current /= part
+        try:
+            details = current.lstat()
         except FileNotFoundError:
-            pass
+            if not create:
+                raise
+            try:
+                current.mkdir(mode=0o700)
+            except FileExistsError:
+                pass
+            details = current.lstat()
+        if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
+            raise ValueError("production metadata directory is unsafe")
+    if not current.resolve().is_relative_to(root):
+        raise ValueError("production metadata directory escapes the project")
+    yield current, None
 
 
-def _atomic_json(path: Path, document: Mapping[str, Any]) -> None:
-    _atomic_bytes(path, _canonical(document) + b"\n")
+def _metadata_atomic_json(
+    root: Path, directory_parts: tuple[str, ...], name: str, document: Mapping[str, Any]
+) -> None:
+    _check_metadata_parts((name,))
+    content = _canonical(document) + b"\n"
+    temporary_name = f".{name}.{uuid.uuid4().hex}.tmp"
+    with _metadata_directory(root, directory_parts, create=True) as (
+        directory,
+        directory_fd,
+    ):
+        if directory_fd is not None:
+            descriptor = -1
+            try:
+                descriptor = os.open(
+                    temporary_name,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                    dir_fd=directory_fd,
+                )
+                with os.fdopen(descriptor, "wb", closefd=True) as handle:
+                    descriptor = -1
+                    handle.write(content)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(
+                    temporary_name,
+                    name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                )
+                os.fsync(directory_fd)
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+                try:
+                    os.unlink(temporary_name, dir_fd=directory_fd)
+                except FileNotFoundError:
+                    pass
+            return
+
+        before = directory.stat(follow_symlinks=False)
+        temporary = directory / temporary_name
+        try:
+            with temporary.open("xb") as handle:
+                opened = os.fstat(handle.fileno())
+                if not stat.S_ISREG(opened.st_mode):
+                    raise ValueError("production metadata file is unsafe")
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            after = directory.lstat()
+            if (
+                _is_link_or_reparse(after)
+                or not stat.S_ISDIR(after.st_mode)
+                or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
+            ):
+                raise ValueError("production metadata directory changed")
+            os.replace(temporary, directory / name)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _metadata_read_json(
+    root: Path, directory_parts: tuple[str, ...], name: str, *, maximum: int
+) -> object:
+    _check_metadata_parts((name,))
+    with _metadata_directory(root, directory_parts, create=False) as (
+        directory,
+        directory_fd,
+    ):
+        if directory_fd is not None:
+            descriptor = os.open(
+                name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=directory_fd,
+            )
+            with os.fdopen(descriptor, "rb", closefd=True) as handle:
+                details = os.fstat(handle.fileno())
+                if not stat.S_ISREG(details.st_mode) or details.st_size > maximum:
+                    raise ValueError("production metadata file is unsafe")
+                raw = handle.read(maximum + 1)
+        else:
+            path = directory / name
+            before = path.lstat()
+            if (
+                _is_link_or_reparse(before)
+                or not stat.S_ISREG(before.st_mode)
+                or before.st_size > maximum
+            ):
+                raise ValueError("production metadata file is unsafe")
+            with path.open("rb") as handle:
+                opened = os.fstat(handle.fileno())
+                if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                    raise ValueError("production metadata file changed while opening")
+                raw = handle.read(maximum + 1)
+        if len(raw) > maximum:
+            raise ValueError("production metadata file is too large")
+        return json.loads(raw.decode("utf-8"))
+
+
+def _metadata_unlink(
+    root: Path, directory_parts: tuple[str, ...], name: str
+) -> None:
+    _check_metadata_parts((name,))
+    with _metadata_directory(root, directory_parts, create=False) as (
+        directory,
+        directory_fd,
+    ):
+        if directory_fd is not None:
+            os.unlink(name, dir_fd=directory_fd)
+        else:
+            path = directory / name
+            details = path.lstat()
+            if _is_link_or_reparse(details) or not stat.S_ISREG(details.st_mode):
+                raise ValueError("production metadata file is unsafe")
+            path.unlink()
+
+
+def _metadata_json_names(root: Path, directory_parts: tuple[str, ...]) -> list[str]:
+    try:
+        with _metadata_directory(root, directory_parts, create=False) as (
+            directory,
+            directory_fd,
+        ):
+            names = os.listdir(directory_fd if directory_fd is not None else directory)
+    except FileNotFoundError:
+        return []
+    return sorted(
+        name
+        for name in names
+        if isinstance(name, str)
+        and name.endswith(".json")
+        and "/" not in name
+        and "\\" not in name
+    )
 
 
 @contextlib.contextmanager
 def _project_lock(root: Path) -> Iterator[None]:
-    lock_path = root / ".short-drama/production.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+b") as handle:
-        if os.name == "nt":
-            import msvcrt
-
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b"0")
-                handle.flush()
-            handle.seek(0)
-            locking = getattr(msvcrt, "locking")
-            lock = getattr(msvcrt, "LK_LOCK")
-            unlock = getattr(msvcrt, "LK_UNLCK")
-            locking(handle.fileno(), lock, 1)
-            try:
-                yield
-            finally:
-                handle.seek(0)
-                locking(handle.fileno(), unlock, 1)
+    with _metadata_directory(root, (), create=True) as (directory, directory_fd):
+        if directory_fd is not None:
+            descriptor = os.open(
+                "lock",
+                os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=directory_fd,
+            )
+            details = os.fstat(descriptor)
+            if not stat.S_ISREG(details.st_mode):
+                os.close(descriptor)
+                raise ValueError("production lock is unsafe")
+            handle_context = os.fdopen(descriptor, "a+b", closefd=True)
         else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            lock_path = directory / "lock"
+            before: os.stat_result | None
             try:
-                yield
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                before = lock_path.lstat()
+            except FileNotFoundError:
+                before = None
+            else:
+                if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode):
+                    raise ValueError("production lock is unsafe")
+            handle_context = lock_path.open("a+b")
+            opened = os.fstat(handle_context.fileno())
+            after = lock_path.lstat()
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or _is_link_or_reparse(after)
+                or not stat.S_ISREG(after.st_mode)
+                or (opened.st_dev, opened.st_ino) != (after.st_dev, after.st_ino)
+                or (
+                    before is not None
+                    and (before.st_dev, before.st_ino)
+                    != (opened.st_dev, opened.st_ino)
+                )
+            ):
+                handle_context.close()
+                raise ValueError("production lock changed while opening")
+        with handle_context as handle:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"0")
+                    handle.flush()
+                handle.seek(0)
+                locking = getattr(msvcrt, "locking")
+                lock = getattr(msvcrt, "LK_LOCK")
+                unlock = getattr(msvcrt, "LK_UNLCK")
+                locking(handle.fileno(), lock, 1)
+                try:
+                    yield
+                finally:
+                    handle.seek(0)
+                    locking(handle.fileno(), unlock, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _job_key(job_id: str) -> str:
@@ -381,7 +637,7 @@ def _normalize_job(root: Path, raw: object) -> dict[str, Any]:
         raise ValueError("job_id must be a portable 1-80 character identifier")
     modality = raw.get("modality")
     if modality not in MEDIA_EXTENSIONS:
-        raise ValueError("modality must be image, video, or tts")
+        raise ValueError("modality must be image, video, tts, or music")
     adapter = raw.get("adapter")
     if not isinstance(adapter, str) or JOB_ID_RE.fullmatch(adapter) is None:
         raise ValueError("adapter must be a portable profile name")
@@ -442,25 +698,100 @@ def prepare_job(root: Path, job_file: Path) -> dict[str, Any]:
     raw = json.loads(job_file.read_text(encoding="utf-8"))
     job = _normalize_job(root, raw)
     with _project_lock(root):
-        running = _latest_run(root, str(job["job_id"]))
-        if running and running.get("status") == "running":
+        if _active_run(root, str(job["job_id"])) is not None:
             raise RuntimeError("this job is already running")
-        _atomic_json(_job_path(root, str(job["job_id"])), job)
+        job_name = f"{_job_key(str(job['job_id']))}.json"
+        _metadata_atomic_json(root, ("jobs",), job_name, job)
         try:
-            _confirmation_path(root, str(job["job_id"])).unlink()
+            _metadata_unlink(root, ("confirmations",), job_name)
         except FileNotFoundError:
             pass
     return _preview(job)
 
 
+def _validate_stored_job(
+    root: Path, document: object, *, expected_job_id: str | None = None
+) -> dict[str, Any]:
+    root = root.resolve()
+    if not isinstance(document, dict) or set(document) != STORED_JOB_KEYS:
+        raise ValueError("stored job fields are invalid")
+    job_id = document.get("job_id")
+    if (
+        not isinstance(job_id, str)
+        or JOB_ID_RE.fullmatch(job_id) is None
+        or (expected_job_id is not None and job_id != expected_job_id)
+    ):
+        raise ValueError("stored job id is invalid")
+    if document.get("schema_version") != JOB_SCHEMA:
+        raise ValueError("stored job schema is invalid")
+    modality = document.get("modality")
+    if modality not in MEDIA_EXTENSIONS:
+        raise ValueError("stored job modality is invalid")
+    adapter = document.get("adapter")
+    if not isinstance(adapter, str) or JOB_ID_RE.fullmatch(adapter) is None:
+        raise ValueError("stored job adapter is invalid")
+    prompt = document.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 100_000:
+        raise ValueError("stored job prompt is invalid")
+    source = document.get("source")
+    if source is not None and _relative_path(source) != source:
+        raise ValueError("stored job source is invalid")
+    references = _string_list(
+        document.get("references"), label="stored references", limit=16
+    )
+    if any(_relative_path(reference) != reference for reference in references):
+        raise ValueError("stored job references are invalid")
+    outputs = _string_list(document.get("outputs"), label="stored outputs", limit=16)
+    if not outputs or len(outputs) != len(set(outputs)):
+        raise ValueError("stored job outputs are invalid")
+    for output in outputs:
+        if _relative_path(output, output=True) != output:
+            raise ValueError("stored job output is invalid")
+        if PurePosixPath(output).suffix.casefold() not in MEDIA_EXTENSIONS[str(modality)]:
+            raise ValueError("stored job output extension is invalid")
+        _project_file(root, output)
+    parameters = document.get("parameters")
+    if (
+        not isinstance(parameters, Mapping)
+        or _contains_secret_key(parameters)
+        or len(_canonical(parameters)) > 64 * 1024
+    ):
+        raise ValueError("stored job parameters are invalid")
+    if not isinstance(document.get("overwrite"), bool):
+        raise ValueError("stored job overwrite flag is invalid")
+    input_paths = ([source] if source is not None else []) + references
+    if len(input_paths) != len(set(input_paths)):
+        raise ValueError("stored job inputs are duplicated")
+    inputs = document.get("inputs")
+    if not isinstance(inputs, Mapping) or set(inputs) != set(input_paths):
+        raise ValueError("stored job input hashes are invalid")
+    if any(
+        not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        for digest in inputs.values()
+    ):
+        raise ValueError("stored job input hash is invalid")
+    fingerprint = document.get("fingerprint")
+    execution = {key: document[key] for key in STORED_EXECUTION_KEYS}
+    if (
+        not isinstance(fingerprint, str)
+        or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
+        or sha256_bytes(_canonical(execution)) != fingerprint
+    ):
+        raise ValueError("stored job fingerprint is invalid")
+    _parse_run_timestamp(document.get("prepared_at"), label="prepared_at")
+    return document
+
+
 def _read_job(root: Path, job_id: str) -> dict[str, Any]:
     if JOB_ID_RE.fullmatch(job_id) is None:
         raise ValueError("invalid job_id")
-    path = _job_path(root, job_id)
-    document = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or document.get("job_id") != job_id:
-        raise ValueError("stored job is invalid")
-    return document
+    document = _metadata_read_json(
+        root,
+        ("jobs",),
+        f"{_job_key(job_id)}.json",
+        maximum=MAX_JOB_BYTES,
+    )
+    return _validate_stored_job(root, document, expected_job_id=job_id)
 
 
 def _preview(job: Mapping[str, Any]) -> dict[str, Any]:
@@ -484,6 +815,8 @@ def _preview(job: Mapping[str, Any]) -> dict[str, Any]:
 def confirm_job(root: Path, *, job_id: str, confirmation: str) -> dict[str, Any]:
     root = find_project(root)
     with _project_lock(root):
+        if _active_run(root, job_id) is not None:
+            raise RuntimeError("this job is already running")
         job = _read_job(root, job_id)
         expected = _preview(job)["confirmation"]
         if confirmation != expected:
@@ -496,7 +829,9 @@ def confirm_job(root: Path, *, job_id: str, confirmation: str) -> dict[str, Any]
             "consumed_at": None,
             "run_id": None,
         }
-        _atomic_json(_confirmation_path(root, job_id), receipt)
+        _metadata_atomic_json(
+            root, ("confirmations",), f"{_job_key(job_id)}.json", receipt
+        )
     return {"job_id": job_id, "state": "confirmed"}
 
 
@@ -528,6 +863,80 @@ def _load_adapter(config_path: Path, profile: str, root: Path) -> tuple[list[str
     return command, timeout
 
 
+def _generic_adapter_error(
+    profile: str,
+    *,
+    category: str,
+    code: str,
+    retryable: bool,
+) -> dict[str, Any]:
+    return {
+        "provider": profile,
+        "category": category,
+        "code": code,
+        "retryable": retryable,
+    }
+
+
+def _parse_public_adapter_error(
+    raw: bytes, *, profile: str, returncode: int
+) -> dict[str, Any]:
+    fallback = _generic_adapter_error(
+        profile,
+        category="provider_response",
+        code=f"adapter_exit_{returncode}",
+        retryable=False,
+    )
+    if len(raw) > MAX_ADAPTER_RESPONSE_BYTES:
+        return fallback
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return fallback
+    error = document.get("error") if isinstance(document, Mapping) else None
+    if not isinstance(error, Mapping) or set(error) - {
+        "provider",
+        "category",
+        "code",
+        "http_status",
+        "request_id",
+        "retryable",
+    }:
+        return fallback
+    provider = error.get("provider")
+    category = error.get("category")
+    code = error.get("code")
+    retryable = error.get("retryable")
+    if (
+        provider != profile
+        or category not in PUBLIC_ERROR_CATEGORIES
+        or not isinstance(code, str)
+        or PUBLIC_ERROR_TOKEN_RE.fullmatch(code) is None
+        or not isinstance(retryable, bool)
+    ):
+        return fallback
+    result: dict[str, Any] = {
+        "provider": provider,
+        "category": category,
+        "code": code,
+        "retryable": retryable,
+    }
+    status = error.get("http_status")
+    if status is not None:
+        if not isinstance(status, int) or isinstance(status, bool) or not 100 <= status <= 599:
+            return fallback
+        result["http_status"] = status
+    request_id = error.get("request_id")
+    if request_id is not None:
+        if (
+            not isinstance(request_id, str)
+            or PUBLIC_ERROR_TOKEN_RE.fullmatch(request_id) is None
+        ):
+            return fallback
+        result["request_id"] = request_id
+    return result
+
+
 def _run_adapter(command: list[str], timeout: int, payload: Mapping[str, Any], root: Path) -> dict[str, Any]:
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         try:
@@ -541,11 +950,38 @@ def _run_adapter(command: list[str], timeout: int, payload: Mapping[str, Any], r
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise AdapterError("adapter timed out; confirmation was consumed") from exc
+            raise AdapterError(
+                "adapter timed out; confirmation was consumed",
+                public_error=_generic_adapter_error(
+                    str(payload["adapter"]),
+                    category="timeout",
+                    code="adapter_timeout",
+                    retryable=True,
+                ),
+            ) from exc
         except OSError as exc:
-            raise AdapterError("adapter could not be started; confirmation was consumed") from exc
+            raise AdapterError(
+                "adapter could not be started; confirmation was consumed",
+                public_error=_generic_adapter_error(
+                    str(payload["adapter"]),
+                    category="configuration",
+                    code="adapter_start_failed",
+                    retryable=False,
+                ),
+            ) from exc
         if completed.returncode != 0:
-            raise AdapterError(f"adapter exited with code {completed.returncode}; confirmation was consumed")
+            size = stdout.tell()
+            stdout.seek(0)
+            raw_error = stdout.read(MAX_ADAPTER_RESPONSE_BYTES + 1)
+            public_error = _parse_public_adapter_error(
+                raw_error if size <= MAX_ADAPTER_RESPONSE_BYTES else b"",
+                profile=str(payload["adapter"]),
+                returncode=completed.returncode,
+            )
+            raise AdapterError(
+                f"adapter exited with code {completed.returncode}; confirmation was consumed",
+                public_error=public_error,
+            )
         size = stdout.tell()
         if size > MAX_ADAPTER_RESPONSE_BYTES:
             raise AdapterError("adapter response is too large; confirmation was consumed")
@@ -559,7 +995,9 @@ def _run_adapter(command: list[str], timeout: int, payload: Mapping[str, Any], r
     return response
 
 
-def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any]) -> list[tuple[str, Path]]:
+def _validate_adapter_outputs(
+    job: Mapping[str, Any], response: Mapping[str, Any], output_root: Path
+) -> list[tuple[str, Path]]:
     entries = response.get("outputs")
     if not isinstance(entries, list) or not all(isinstance(entry, Mapping) for entry in entries):
         raise AdapterError("adapter outputs are invalid; confirmation was consumed")
@@ -572,14 +1010,10 @@ def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any
         if not isinstance(target, str) or not isinstance(source, str):
             raise AdapterError("adapter output paths are invalid; confirmation was consumed")
         path = Path(source)
-        try:
-            details = path.lstat()
-        except OSError as exc:
-            raise AdapterError("adapter output file is missing; confirmation was consumed") from exc
-        if stat.S_ISLNK(details.st_mode) or not stat.S_ISREG(details.st_mode):
-            raise AdapterError("adapter output file is unsafe; confirmation was consumed")
-        if details.st_size > MAX_OUTPUT_BYTES:
-            raise AdapterError("adapter output file is too large; confirmation was consumed")
+        if not path.is_absolute() or path.parent != output_root or path.name in {"", ".", ".."}:
+            raise AdapterError(
+                "adapter output must use the run staging directory; confirmation was consumed"
+            )
         result.append((target, path))
     expected = list(job["outputs"])
     if [target for target, _ in result] != expected:
@@ -587,11 +1021,14 @@ def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any
     return result
 
 
-def _copy_output(source: Path, target: Path, *, overwrite: bool) -> tuple[str, int]:
+def _copy_output(
+    source: Path, target: Path, *, overwrite: bool
+) -> tuple[str, int]:
     temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     target.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     size = 0
+    descriptor = -1
     try:
         try:
             before = source.lstat()
@@ -607,11 +1044,13 @@ def _copy_output(source: Path, target: Path, *, overwrite: bool) -> tuple[str, i
             not stat.S_ISREG(opened.st_mode)
             or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
         ):
-            os.close(descriptor)
             raise AdapterError("adapter output changed while opening; confirmation was consumed")
+        if opened.st_size > MAX_OUTPUT_BYTES:
+            raise AdapterError("adapter output file is too large; confirmation was consumed")
         with os.fdopen(descriptor, "rb", closefd=True) as incoming, temporary.open(
             "xb"
         ) as outgoing:
+            descriptor = -1
             for chunk in iter(lambda: incoming.read(1024 * 1024), b""):
                 size += len(chunk)
                 if size > MAX_OUTPUT_BYTES:
@@ -631,6 +1070,8 @@ def _copy_output(source: Path, target: Path, *, overwrite: bool) -> tuple[str, i
                 ) from exc
             temporary.unlink()
     finally:
+        if descriptor >= 0:
+            os.close(descriptor)
         try:
             temporary.unlink()
         except FileNotFoundError:
@@ -639,30 +1080,111 @@ def _copy_output(source: Path, target: Path, *, overwrite: bool) -> tuple[str, i
 
 
 def _latest_run(root: Path, job_id: str) -> dict[str, Any] | None:
-    directory = _run_directory(root, job_id)
-    if not directory.is_dir():
-        return None
-    paths = sorted(directory.glob("*.json"))
-    if not paths:
-        return None
-    value = json.loads(paths[-1].read_text(encoding="utf-8"))
-    return value if isinstance(value, dict) else None
+    history = _read_run_history(root, job_id)
+    return history[-1] if history else None
+
+
+def _parse_run_timestamp(value: object, *, label: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"production run {label} is invalid")
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(f"production run {label} is invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"production run {label} is invalid")
+    return parsed.astimezone(timezone.utc)
+
+
+def _completed_run_order(run: Mapping[str, Any]) -> tuple[datetime, str]:
+    return (
+        _parse_run_timestamp(run.get("finished_at"), label="finished_at"),
+        str(run["run_id"]),
+    )
+
+
+def _read_run_history(root: Path, job_id: str) -> list[dict[str, Any]]:
+    directory_parts = ("runs", _job_key(job_id))
+    history: list[dict[str, Any]] = []
+    for name in _metadata_json_names(root, directory_parts):
+        document = _metadata_read_json(
+            root, directory_parts, name, maximum=MAX_RUN_RECORD_BYTES
+        )
+        if (
+            not isinstance(document, dict)
+            or document.get("job_id") != job_id
+            or not isinstance(document.get("run_id"), str)
+            or document.get("status") not in {"running", "succeeded", "failed"}
+            or not isinstance(document.get("fingerprint"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", str(document.get("fingerprint"))) is None
+        ):
+            raise ValueError("production run record is invalid")
+        started_at = _parse_run_timestamp(
+            document.get("started_at"), label="started_at"
+        )
+        finished_at = document.get("finished_at")
+        if document["status"] == "running":
+            if finished_at is not None:
+                raise ValueError("running production run has finished_at")
+        else:
+            completed_at = _parse_run_timestamp(finished_at, label="finished_at")
+            if completed_at < started_at:
+                raise ValueError("production run finished before it started")
+        history.append(document)
+    # Completed runs are ordered by completion because that is when their
+    # terminal state and output claim become authoritative. Any unresolved
+    # running attempt sorts last so status cannot hide it behind a later start.
+    history.sort(
+        key=lambda run: (
+            run["status"] == "running",
+            (
+                _parse_run_timestamp(run.get("started_at"), label="started_at")
+                if run["status"] == "running"
+                else _completed_run_order(run)[0]
+            ),
+            str(run["run_id"]),
+        )
+    )
+    return history
+
+
+def _active_run(root: Path, job_id: str) -> dict[str, Any] | None:
+    running = [
+        run for run in _read_run_history(root, job_id) if run["status"] == "running"
+    ]
+    return running[-1] if running else None
 
 
 def _write_run(root: Path, job_id: str, run: Mapping[str, Any]) -> None:
-    _atomic_json(_run_directory(root, job_id) / f"{run['run_id']}.json", run)
+    _metadata_atomic_json(
+        root,
+        ("runs", _job_key(job_id)),
+        f"{run['run_id']}.json",
+        run,
+    )
 
 
 def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
     root = find_project(root)
     with tempfile.TemporaryDirectory(prefix="short-drama-inputs-") as directory:
-        snapshot_root = Path(directory)
+        attempt_root = Path(directory)
+        snapshot_root = attempt_root / "inputs"
+        output_root = attempt_root / "outputs"
+        snapshot_root.mkdir()
+        output_root.mkdir()
         with _project_lock(root):
+            if _active_run(root, job_id) is not None:
+                raise RuntimeError("this job is already running")
             job = _read_job(root, job_id)
             command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
-            receipt_path = _confirmation_path(root, job_id)
             try:
-                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                receipt = _metadata_read_json(
+                    root,
+                    ("confirmations",),
+                    f"{_job_key(job_id)}.json",
+                    maximum=MAX_RUN_RECORD_BYTES,
+                )
             except FileNotFoundError as exc:
                 raise ConfirmationRequiredError("job needs explicit confirmation") from exc
             if (
@@ -675,11 +1197,18 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 target = _project_file(root, output)
                 if target.exists() and not job["overwrite"]:
                     raise FileExistsError(f"output exists and overwrite is false: {output}")
+            # Pin every confirmed input into a private immutable snapshot before
+            # consuming confirmation. Provider adapters never reopen live project paths.
             _snapshot_inputs(root, job, snapshot_root)
             run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
             receipt["consumed_at"] = utc_now()
             receipt["run_id"] = run_id
-            _atomic_json(receipt_path, receipt)
+            _metadata_atomic_json(
+                root,
+                ("confirmations",),
+                f"{_job_key(job_id)}.json",
+                receipt,
+            )
             run = {
                 "schema_version": JOB_SCHEMA,
                 "run_id": run_id,
@@ -695,10 +1224,16 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
             _write_run(root, job_id, run)
 
         payload = {key: job[key] for key in ALLOWED_JOB_KEYS if key in job}
-        payload.update({"run_id": run_id, "project_root": str(snapshot_root)})
+        payload.update(
+            {
+                "run_id": run_id,
+                "project_root": str(snapshot_root),
+                "output_root": str(output_root),
+            }
+        )
         try:
             response = _run_adapter(command, timeout, payload, root)
-            adapter_outputs = _validate_adapter_outputs(job, response)
+            adapter_outputs = _validate_adapter_outputs(job, response, output_root)
             written: list[dict[str, Any]] = []
             with _project_lock(root):
                 for target_name, source in adapter_outputs:
@@ -721,10 +1256,12 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
                 if isinstance(provider_job_id, str) and len(provider_job_id) <= 200:
                     run["provider_job_id"] = provider_job_id
                 _write_run(root, job_id, run)
-        except Exception:
+        except Exception as exc:
             with _project_lock(root):
                 run["status"] = "failed"
                 run["finished_at"] = utc_now()
+                if isinstance(exc, AdapterError) and exc.public_error is not None:
+                    run["error"] = exc.public_error
                 _write_run(root, job_id, run)
             raise
     return {
@@ -743,7 +1280,12 @@ def job_status(root: Path, *, job_id: str) -> dict[str, Any]:
         state = "needs_reconfirmation"
     else:
         try:
-            receipt = json.loads(_confirmation_path(root, job_id).read_text(encoding="utf-8"))
+            receipt = _metadata_read_json(
+                root,
+                ("confirmations",),
+                f"{_job_key(job_id)}.json",
+                maximum=MAX_RUN_RECORD_BYTES,
+            )
         except FileNotFoundError:
             receipt = None
         if latest and latest.get("status") == "running":
@@ -764,6 +1306,277 @@ def job_status(root: Path, *, job_id: str) -> dict[str, Any]:
     }
 
 
+def _hash_production_output(root: Path, relative: str) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with _open_project_input(root, relative) as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            size += len(chunk)
+            if size > MAX_OUTPUT_BYTES:
+                raise ValueError("production output exceeds the size limit")
+            digest.update(chunk)
+    return digest.hexdigest(), size
+
+
+def _validated_succeeded_outputs(
+    job: Mapping[str, Any], run: Mapping[str, Any]
+) -> list[tuple[str, str, int]]:
+    expected = job.get("outputs")
+    entries = run.get("outputs")
+    if (
+        not isinstance(expected, list)
+        or not isinstance(entries, list)
+        or len(entries) != len(expected)
+    ):
+        raise ValueError("succeeded outputs do not match the current job")
+    validated: list[tuple[str, str, int]] = []
+    for expected_path, output in zip(expected, entries, strict=True):
+        if not isinstance(output, Mapping) or set(output) != {
+            "path",
+            "media_type",
+            "bytes",
+            "sha256",
+        }:
+            raise ValueError("succeeded output record fields are invalid")
+        output_path = output.get("path")
+        digest = output.get("sha256")
+        size = output.get("bytes")
+        media_type = output.get("media_type")
+        if (
+            not isinstance(expected_path, str)
+            or output_path != expected_path
+            or not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size < 0
+            or media_type
+            != MEDIA_TYPES.get(PurePosixPath(expected_path).suffix.casefold())
+        ):
+            raise ValueError("succeeded output record is invalid")
+        validated.append((output_path, digest, size))
+    return validated
+
+
+def audit_project(root: Path) -> dict[str, Any]:
+    """Reconcile local attempt history and current output bytes, not media quality."""
+    root = find_project(root)
+    jobs: list[dict[str, Any]] = []
+    problems: list[dict[str, Any]] = []
+    for name in _metadata_json_names(root, ("jobs",)):
+        try:
+            document = _metadata_read_json(
+                root, ("jobs",), name, maximum=MAX_JOB_BYTES
+            )
+            job = _validate_stored_job(root, document)
+            job_id = job["job_id"]
+            if not isinstance(job_id, str) or name != f"{_job_key(job_id)}.json":
+                raise ValueError("stored job is invalid")
+            jobs.append(job)
+        except (OSError, ValueError, json.JSONDecodeError):
+            problems.append(
+                {
+                    "code": "invalid_job_record",
+                    "record": name,
+                    "action": "repair_production_metadata",
+                }
+            )
+
+    attempts_total = 0
+    attempts_succeeded = 0
+    attempts_failed = 0
+    attempts_running = 0
+    attempts_superseded = 0
+    repeated_content = 0
+    recovered_jobs = 0
+    running_jobs = 0
+    terminal_failed_jobs = 0
+    retryable_terminal_failed_jobs = 0
+    current_output_claims: dict[
+        str, tuple[tuple[datetime, str], str, int, str, str]
+    ] = {}
+
+    for job in jobs:
+        job_id = str(job["job_id"])
+        try:
+            history = _read_run_history(root, job_id)
+        except (OSError, ValueError, json.JSONDecodeError):
+            problems.append(
+                {
+                    "code": "invalid_run_history",
+                    "job_id": job_id,
+                    "action": "repair_production_metadata",
+                }
+            )
+            continue
+        attempts_total += len(history)
+        completed = [run for run in history if run["status"] != "running"]
+        running = [run for run in history if run["status"] == "running"]
+        current = [
+            run for run in history if run["fingerprint"] == job["fingerprint"]
+        ]
+        current_completed = [run for run in current if run["status"] != "running"]
+        current_running = [run for run in current if run["status"] == "running"]
+        attempts_succeeded += sum(run["status"] == "succeeded" for run in completed)
+        attempts_failed += sum(run["status"] == "failed" for run in completed)
+        attempts_running += len(running)
+        attempts_superseded += len(history) - len(current)
+        if running:
+            running_jobs += 1
+            for run in running:
+                problems.append(
+                    {
+                        "code": "running_attempt",
+                        "job_id": job_id,
+                        "run_id": str(run["run_id"]),
+                        "action": "wait_or_investigate_running_attempt",
+                    }
+                )
+        fingerprints = [
+            str(run.get("fingerprint"))
+            for run in history
+            if isinstance(run.get("fingerprint"), str)
+        ]
+        repeated_content += len(fingerprints) - len(set(fingerprints))
+        succeeded_indexes = [
+            index
+            for index, run in enumerate(current_completed)
+            if run["status"] == "succeeded"
+        ]
+        failed_indexes = [
+            index
+            for index, run in enumerate(current_completed)
+            if run["status"] == "failed"
+        ]
+        if succeeded_indexes and failed_indexes and min(failed_indexes) < max(succeeded_indexes):
+            recovered_jobs += 1
+        if (
+            not current_running
+            and current_completed
+            and current_completed[-1]["status"] == "failed"
+        ):
+            terminal_failed_jobs += 1
+            error = current_completed[-1].get("error")
+            retryable = isinstance(error, Mapping) and error.get("retryable") is True
+            if retryable:
+                retryable_terminal_failed_jobs += 1
+            problems.append(
+                {
+                    "code": (
+                        "terminal_retryable_failure" if retryable else "terminal_failure"
+                    ),
+                    "job_id": job_id,
+                    "run_id": current_completed[-1]["run_id"],
+                    "action": (
+                        "inspect_then_reconfirm_retry" if retryable else "inspect_failure"
+                    ),
+                }
+            )
+        for run in current:
+            if run["status"] != "succeeded":
+                continue
+            try:
+                outputs = _validated_succeeded_outputs(job, run)
+            except ValueError:
+                problems.append(
+                    {
+                        "code": "invalid_succeeded_output_record",
+                        "job_id": job_id,
+                        "run_id": str(run["run_id"]),
+                        "action": "repair_production_metadata",
+                    }
+                )
+                continue
+            for output_path, digest, size in outputs:
+                run_id = str(run["run_id"])
+                claim_order = _completed_run_order(run)
+                claim = current_output_claims.get(output_path)
+                if claim is None or claim_order > claim[0]:
+                    current_output_claims[output_path] = (
+                        claim_order,
+                        digest,
+                        size,
+                        job_id,
+                        run_id,
+                    )
+
+        if not _inputs_current(root, job):
+            problems.append(
+                {
+                    "code": "job_inputs_changed",
+                    "job_id": job_id,
+                    "action": "prepare_and_confirm_again",
+                }
+            )
+
+    output_verified = 0
+    output_missing = 0
+    output_modified = 0
+    for relative, (
+        _claim_order,
+        expected_digest,
+        expected_size,
+        job_id,
+        run_id,
+    ) in sorted(current_output_claims.items()):
+        try:
+            safe_relative = _relative_path(relative, output=True)
+            digest, size = _hash_production_output(root, safe_relative)
+        except (FileNotFoundError, OSError, ValueError):
+            output_missing += 1
+            problems.append(
+                {
+                    "code": "output_missing_or_unsafe",
+                    "job_id": job_id,
+                    "run_id": run_id,
+                    "path": relative,
+                    "action": "restore_or_reproduce_output",
+                }
+            )
+            continue
+        if digest != expected_digest or size != expected_size:
+            output_modified += 1
+            problems.append(
+                {
+                    "code": "output_digest_mismatch",
+                    "job_id": job_id,
+                    "run_id": run_id,
+                    "path": relative,
+                    "action": "review_current_bytes_or_reproduce_output",
+                }
+            )
+        else:
+            output_verified += 1
+
+    return {
+        "status": "attention" if problems else "pass",
+        "scope": "operational_evidence_only",
+        "quality_verdict": "not_assessed",
+        "jobs": {
+            "total": len(jobs),
+            "running": running_jobs,
+            "recovered": recovered_jobs,
+            "terminal_failed": terminal_failed_jobs,
+            "retryable_terminal_failed": retryable_terminal_failed_jobs,
+        },
+        "attempts": {
+            "total": attempts_total,
+            "succeeded": attempts_succeeded,
+            "failed": attempts_failed,
+            "running": attempts_running,
+            "superseded": attempts_superseded,
+            "repeated_content": repeated_content,
+        },
+        "outputs": {
+            "claimed_current": len(current_output_claims),
+            "verified": output_verified,
+            "missing": output_missing,
+            "modified": output_modified,
+        },
+        "problems": problems,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run confirmed short-drama media jobs.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -781,6 +1594,10 @@ def build_parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status", help="Show one media job state.")
     status.add_argument("project")
     status.add_argument("--job-id", required=True)
+    audit = commands.add_parser(
+        "audit", help="Reconcile attempt history and current output bytes."
+    )
+    audit.add_argument("project")
     return parser
 
 
@@ -799,8 +1616,10 @@ def main(argv: list[str] | None = None) -> int:
                 job_id=args.job_id,
                 adapter_config=Path(args.adapter_config),
             )
-        else:
+        elif args.command == "status":
             result = job_status(Path(args.project), job_id=args.job_id)
+        else:
+            result = audit_project(Path(args.project))
         print(json.dumps(result, ensure_ascii=True, sort_keys=True))
         return 0
     except Exception as exc:

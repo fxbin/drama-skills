@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline adapter fixture for image, video, and TTS production tests."""
+"""Offline adapter fixture for image, video, TTS, and music production tests."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import base64
 import json
 import struct
 import sys
-import tempfile
 import wave
 from pathlib import Path
 
@@ -29,10 +28,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fail", action="store_true")
     args = parser.parse_args()
-    job = json.load(sys.stdin)
+    job = json.load(sys.stdin.buffer)
     if args.fail:
         return 7
-    directory = Path(tempfile.mkdtemp(prefix="short-drama-fixture-"))
+    directory_raw = job.get("output_root")
+    if not isinstance(directory_raw, str):
+        return 8
+    directory = Path(directory_raw)
+    if not directory.is_absolute() or not directory.is_dir() or directory.is_symlink():
+        return 8
     outputs = []
     for index, target in enumerate(job["outputs"]):
         suffix = Path(target).suffix.lower()

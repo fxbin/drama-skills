@@ -14,6 +14,11 @@ if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("selftest.py requires Python 3.10 or newer")
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
 def expect_failure(characters: list[dict], looks: list[dict], marker: str) -> None:
     try:
         validate_records(characters, looks)
@@ -29,7 +34,7 @@ def main() -> int:
     characters = load_jsonl(example / "characters.jsonl")
     looks = load_jsonl(example / "looks.jsonl")
     result = validate_records(characters, looks)
-    assert result["characters"] == 1 and result["looks"] == 1
+    require(result["characters"] == 1 and result["looks"] == 1, "valid fixture count")
 
     duplicate = copy.deepcopy(characters[0])
     expect_failure([*characters, duplicate], looks, "duplicate character_id")
@@ -40,7 +45,7 @@ def main() -> int:
 
     candidate = copy.deepcopy(characters)
     candidate[0]["creator_acceptance"] = {"status": "proposed", "decision_ref": None}
-    assert validate_records(candidate, looks)["status"] == "valid"
+    require(validate_records(candidate, looks)["status"] == "valid", "candidate status")
 
     invalid = copy.deepcopy(characters)
     invalid[0]["creator_acceptance"] = {"status": "approved", "decision_ref": None}

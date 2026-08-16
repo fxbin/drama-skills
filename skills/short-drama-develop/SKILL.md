@@ -8,6 +8,15 @@ license: MIT
 
 把创作者的意图变成能持续制造**选择、代价与状态变化**的故事系统。保留创作者的题材、结局和尺度选择；不要把流行套路当成剧情答案。
 
+## Quick Start
+
+离线验证多集整稿的精确索引、切片和源文件变更检测：
+
+```bash
+python3 {技能目录}/scripts/selftest.py
+python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <episode-intake-index.json>
+```
+
 ## 开始前
 
 本技能可独立安装和执行。先读取用户明确提供的材料与本任务直接输入；若当前目录是

@@ -1,11 +1,12 @@
 import importlib.util
 import json
-from unittest import mock
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SUITE = Path(__file__).resolve().parents[1]
@@ -54,7 +55,7 @@ class ConfirmedProductionTests(unittest.TestCase):
         overwrite: bool = False,
         parameters: dict | None = None,
     ) -> Path:
-        extensions = {"image": "png", "video": "mp4", "tts": "wav"}
+        extensions = {"image": "png", "video": "mp4", "tts": "wav", "music": "wav"}
         output = output or (
             f"剧集/EP001/制作成果/{modality}/{job_id}.{extensions[modality]}"
         )
@@ -169,6 +170,112 @@ class ConfirmedProductionTests(unittest.TestCase):
                     adapter_config=self.adapter_config(directory),
                 )
 
+    def test_stored_job_tampering_cannot_reuse_an_old_confirmation(self) -> None:
+        mutations = {
+            "prompt": lambda document: document.update(prompt="未确认的新提示词"),
+            "output": lambda document: document.update(
+                outputs=["production/unconfirmed.png"]
+            ),
+            "parameters": lambda document: document.update(parameters={"count": 9}),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(field=label), tempfile.TemporaryDirectory() as directory:
+                root = self.make_project(directory)
+                job = self.write_job(root)
+                preview = self.prepare_and_confirm(root, job)
+                stored_path = production_tool._job_path(root, preview["job_id"])
+                document = json.loads(stored_path.read_text(encoding="utf-8"))
+                original_fingerprint = document["fingerprint"]
+                mutate(document)
+                self.assertEqual(document["fingerprint"], original_fingerprint)
+                stored_path.write_text(
+                    json.dumps(document, ensure_ascii=False), encoding="utf-8"
+                )
+
+                with self.assertRaisesRegex(ValueError, "fingerprint"):
+                    production_tool.run_job(
+                        root,
+                        job_id=preview["job_id"],
+                        adapter_config=self.adapter_config(directory),
+                    )
+                receipt = json.loads(
+                    production_tool._confirmation_path(
+                        root, preview["job_id"]
+                    ).read_text(encoding="utf-8")
+                )
+                self.assertIsNone(receipt["consumed_at"])
+                audit = production_tool.audit_project(root)
+                self.assertEqual(audit["status"], "attention")
+                self.assertEqual(
+                    audit["problems"],
+                    [
+                        {
+                            "code": "invalid_job_record",
+                            "record": stored_path.name,
+                            "action": "repair_production_metadata",
+                        }
+                    ],
+                )
+
+    def test_metadata_parent_symlinks_cannot_escape_the_project(self) -> None:
+        def link_directory(link: Path, target: Path) -> None:
+            try:
+                link.symlink_to(target, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+
+        with self.subTest(directory="jobs"), tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            outside = Path(directory) / "outside-jobs"
+            outside.mkdir()
+            jobs = root / ".short-drama/production/jobs"
+            jobs.parent.mkdir(parents=True)
+            link_directory(jobs, outside)
+
+            with self.assertRaisesRegex(ValueError, "metadata directory"):
+                production_tool.prepare_job(root, self.write_job(root))
+            self.assertEqual(list(outside.iterdir()), [])
+
+        with self.subTest(directory="confirmations"), tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = production_tool.prepare_job(root, job)
+            outside = Path(directory) / "outside-confirmations"
+            outside.mkdir()
+            confirmations = root / ".short-drama/production/confirmations"
+            link_directory(confirmations, outside)
+
+            with self.assertRaisesRegex(ValueError, "metadata directory"):
+                production_tool.confirm_job(
+                    root,
+                    job_id=preview["job_id"],
+                    confirmation=preview["confirmation"],
+                )
+            self.assertEqual(list(outside.iterdir()), [])
+
+        with self.subTest(directory="runs"), tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            outside = Path(directory) / "outside-runs"
+            outside.mkdir()
+            runs = root / ".short-drama/production/runs"
+            link_directory(runs, outside)
+
+            with self.assertRaisesRegex(ValueError, "metadata directory"):
+                production_tool.run_job(
+                    root,
+                    job_id=preview["job_id"],
+                    adapter_config=self.adapter_config(directory),
+                )
+            receipt = json.loads(
+                production_tool._confirmation_path(root, preview["job_id"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertIsNone(receipt["consumed_at"])
+            self.assertEqual(list(outside.iterdir()), [])
+
     def test_changed_input_requires_prepare_and_confirmation_again(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
@@ -189,11 +296,12 @@ class ConfirmedProductionTests(unittest.TestCase):
                     adapter_config=self.adapter_config(directory),
                 )
 
-    def test_fixture_executes_image_video_and_tts_jobs(self) -> None:
+    def test_fixture_executes_every_supported_media_job(self) -> None:
         signatures = {
             "image": b"\x89PNG",
             "video": b"\x00\x00\x00\x18ftypisom",
             "tts": b"RIFF",
+            "music": b"RIFF",
         }
         for modality, signature in signatures.items():
             with self.subTest(modality=modality), tempfile.TemporaryDirectory() as directory:
@@ -231,10 +339,450 @@ class ConfirmedProductionTests(unittest.TestCase):
                 production_tool.job_status(root, job_id="EP001-SHOT001")["state"],
                 "failed",
             )
+            error = production_tool.job_status(
+                root, job_id="EP001-SHOT001"
+            )["latest_run"]["error"]
+            self.assertEqual(error["code"], "adapter_exit_7")
+            self.assertNotIn("message", error)
             with self.assertRaises(production_tool.ConfirmationRequiredError):
                 production_tool.run_job(
                     root, job_id="EP001-SHOT001", adapter_config=config
                 )
+
+    def test_structured_provider_failure_is_preserved_without_response_body(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            failure = Path(directory) / "safe_failure.py"
+            failure.write_text(
+                "import json, sys\n"
+                "json.dump({'error': {'provider': 'fixture', "
+                "'category': 'rate_limit', 'code': 'rate_limit_exceeded', "
+                "'http_status': 429, 'request_id': 'req_safe_123', "
+                "'retryable': True}}, sys.stdout)\n"
+                "print('provider secret body', file=sys.stderr)\n"
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            config = Path(directory) / "structured-adapters.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(failure)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id="EP001-SHOT001", adapter_config=config
+                )
+            latest = production_tool.job_status(
+                root, job_id="EP001-SHOT001"
+            )["latest_run"]
+            self.assertEqual(
+                latest["error"],
+                {
+                    "provider": "fixture",
+                    "category": "rate_limit",
+                    "code": "rate_limit_exceeded",
+                    "http_status": 429,
+                    "request_id": "req_safe_123",
+                    "retryable": True,
+                },
+            )
+            self.assertNotIn("secret", json.dumps(latest))
+
+    def test_audit_reconciles_retries_and_current_output_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root,
+                    job_id=preview["job_id"],
+                    adapter_config=self.adapter_config(directory, fail=True),
+                )
+
+            production_tool.confirm_job(
+                root,
+                job_id=preview["job_id"],
+                confirmation=preview["confirmation"],
+            )
+            production_tool.run_job(
+                root,
+                job_id=preview["job_id"],
+                adapter_config=self.adapter_config(directory),
+            )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "pass")
+            self.assertEqual(audit["quality_verdict"], "not_assessed")
+            self.assertEqual(audit["jobs"]["total"], 1)
+            self.assertEqual(audit["attempts"]["total"], 2)
+            self.assertEqual(audit["attempts"]["failed"], 1)
+            self.assertEqual(audit["attempts"]["succeeded"], 1)
+            self.assertEqual(audit["attempts"]["repeated_content"], 1)
+            self.assertEqual(audit["jobs"]["recovered"], 1)
+            self.assertEqual(audit["outputs"]["verified"], 1)
+            self.assertEqual(audit["problems"], [])
+
+            (root / preview["outputs"][0]).write_bytes(b"changed after production")
+            changed = production_tool.audit_project(root)
+            self.assertEqual(changed["status"], "attention")
+            self.assertEqual(changed["outputs"]["modified"], 1)
+            self.assertEqual(
+                [problem["code"] for problem in changed["problems"]],
+                ["output_digest_mismatch"],
+            )
+
+    def test_audit_routes_terminal_retryable_failure_without_claiming_quality(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            failure = Path(directory) / "retryable_failure.py"
+            failure.write_text(
+                "import json, sys\n"
+                "json.dump({'error': {'provider': 'fixture', "
+                "'category': 'rate_limit', 'code': 'rate_limit_exceeded', "
+                "'http_status': 429, 'retryable': True}}, sys.stdout)\n"
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            config = Path(directory) / "retryable-config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(failure)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id=preview["job_id"], adapter_config=config
+                )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["quality_verdict"], "not_assessed")
+            self.assertEqual(audit["jobs"]["terminal_failed"], 1)
+            self.assertEqual(audit["jobs"]["retryable_terminal_failed"], 1)
+            self.assertEqual(
+                audit["problems"],
+                [
+                    {
+                        "code": "terminal_retryable_failure",
+                        "job_id": preview["job_id"],
+                        "run_id": audit["problems"][0]["run_id"],
+                        "action": "inspect_then_reconfirm_retry",
+                    }
+                ],
+            )
+
+    def test_running_attempt_blocks_reconfirmation_and_stays_visible_to_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            stored = production_tool._read_job(root, preview["job_id"])
+            run_id = "run-still-active"
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": run_id,
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "running",
+                    "started_at": "2026-08-16T08:00:00Z",
+                    "finished_at": None,
+                    "outputs": [],
+                },
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "already running"):
+                production_tool.prepare_job(root, job)
+            with self.assertRaisesRegex(RuntimeError, "already running"):
+                production_tool.confirm_job(
+                    root,
+                    job_id=preview["job_id"],
+                    confirmation=preview["confirmation"],
+                )
+            with self.assertRaisesRegex(RuntimeError, "already running"):
+                production_tool.run_job(
+                    root,
+                    job_id=preview["job_id"],
+                    adapter_config=self.adapter_config(directory),
+                )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["jobs"]["running"], 1)
+            self.assertEqual(audit["attempts"]["running"], 1)
+            self.assertEqual(audit["jobs"]["terminal_failed"], 0)
+            self.assertEqual(
+                audit["problems"],
+                [
+                    {
+                        "code": "running_attempt",
+                        "job_id": preview["job_id"],
+                        "run_id": run_id,
+                        "action": "wait_or_investigate_running_attempt",
+                    }
+                ],
+            )
+
+    def test_audit_orders_terminal_state_and_recovery_by_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(root, self.write_job(root))
+            stored = production_tool._read_job(root, preview["job_id"])
+            target = root / preview["outputs"][0]
+            target.parent.mkdir(parents=True)
+            content = b"completed success"
+            target.write_bytes(content)
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": "run-slow-failure",
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "failed",
+                    "started_at": "2026-08-16T08:00:00Z",
+                    "finished_at": "2026-08-16T08:03:00Z",
+                    "outputs": [],
+                },
+            )
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": "run-fast-success",
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "succeeded",
+                    "started_at": "2026-08-16T08:01:00Z",
+                    "finished_at": "2026-08-16T08:02:00Z",
+                    "outputs": [
+                        {
+                            "path": preview["outputs"][0],
+                            "media_type": "image/png",
+                            "bytes": len(content),
+                            "sha256": production_tool.sha256_bytes(content),
+                        }
+                    ],
+                },
+            )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["jobs"]["recovered"], 0)
+            self.assertEqual(audit["jobs"]["terminal_failed"], 1)
+            self.assertEqual(audit["outputs"]["verified"], 1)
+            self.assertEqual(audit["problems"][0]["code"], "terminal_failure")
+            self.assertEqual(
+                production_tool.job_status(root, job_id=preview["job_id"])["state"],
+                "failed",
+            )
+
+    def test_audit_uses_latest_completed_successful_output_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(root, self.write_job(root))
+            stored = production_tool._read_job(root, preview["job_id"])
+            target = root / preview["outputs"][0]
+            target.parent.mkdir(parents=True)
+            early_content = b"completed first"
+            late_content = b"completed last"
+            target.write_bytes(late_content)
+            for run_id, started_at, finished_at, content in (
+                (
+                    "run-started-first",
+                    "2026-08-16T08:00:00Z",
+                    "2026-08-16T08:04:00Z",
+                    late_content,
+                ),
+                (
+                    "run-started-second",
+                    "2026-08-16T08:01:00Z",
+                    "2026-08-16T08:03:00Z",
+                    early_content,
+                ),
+            ):
+                production_tool._write_run(
+                    root,
+                    preview["job_id"],
+                    {
+                        "schema_version": "1.0",
+                        "run_id": run_id,
+                        "job_id": preview["job_id"],
+                        "fingerprint": stored["fingerprint"],
+                        "status": "succeeded",
+                        "started_at": started_at,
+                        "finished_at": finished_at,
+                        "outputs": [
+                            {
+                                "path": preview["outputs"][0],
+                                "media_type": "image/png",
+                                "bytes": len(content),
+                                "sha256": production_tool.sha256_bytes(content),
+                            }
+                        ],
+                    },
+                )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "pass")
+            self.assertEqual(audit["outputs"]["verified"], 1)
+            self.assertEqual(audit["outputs"]["modified"], 0)
+            self.assertEqual(audit["problems"], [])
+
+    def test_audit_rejects_a_success_claim_for_an_unconfirmed_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(root, self.write_job(root))
+            stored = production_tool._read_job(root, preview["job_id"])
+            unauthorized = "production/unconfirmed.png"
+            content = b"not a confirmed target"
+            target = root / unauthorized
+            target.parent.mkdir(parents=True)
+            target.write_bytes(content)
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": "run-invalid-output-claim",
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "succeeded",
+                    "started_at": "2026-08-16T08:00:00Z",
+                    "finished_at": "2026-08-16T08:01:00Z",
+                    "outputs": [
+                        {
+                            "path": unauthorized,
+                            "media_type": "image/png",
+                            "bytes": len(content),
+                            "sha256": production_tool.sha256_bytes(content),
+                        }
+                    ],
+                },
+            )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["outputs"]["claimed_current"], 0)
+            self.assertEqual(
+                audit["problems"],
+                [
+                    {
+                        "code": "invalid_succeeded_output_record",
+                        "job_id": preview["job_id"],
+                        "run_id": "run-invalid-output-claim",
+                        "action": "repair_production_metadata",
+                    }
+                ],
+            )
+
+    def test_adapter_reads_a_private_confirmed_input_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            config = self.adapter_config(directory)
+            original = (root / "输入/reference.png").read_bytes()
+            staged_output_root: Path | None = None
+
+            def inspect_snapshot(command, timeout, payload, cwd):
+                nonlocal staged_output_root
+                snapshot_root = Path(payload["project_root"])
+                staged_output_root = Path(payload["output_root"])
+                self.assertNotEqual(snapshot_root, root)
+                self.assertEqual(
+                    (snapshot_root / "输入/reference.png").read_bytes(), original
+                )
+                live = root / "输入/reference.png"
+                live.write_bytes(b"changed after confirmation consumption")
+                self.assertEqual(
+                    (snapshot_root / "输入/reference.png").read_bytes(), original
+                )
+                adapter_output = staged_output_root / "adapter-output.png"
+                adapter_output.write_bytes(b"fixture output")
+                return {
+                    "outputs": [
+                        {
+                            "target": payload["outputs"][0],
+                            "source": str(adapter_output),
+                        }
+                    ]
+                }
+
+            with mock.patch.object(
+                production_tool, "_run_adapter", side_effect=inspect_snapshot
+            ):
+                result = production_tool.run_job(
+                    root,
+                    job_id="EP001-SHOT001",
+                    adapter_config=config,
+                )
+            self.assertEqual(result["state"], "succeeded")
+            self.assertIsNotNone(staged_output_root)
+            self.assertFalse(staged_output_root.exists())
+
+    def test_output_created_during_provider_run_is_not_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            target = root / preview["outputs"][0]
+
+            def stage_then_race(command, timeout, payload, cwd):
+                source = Path(payload["output_root"]) / "adapter-output.png"
+                source.write_bytes(b"generated bytes")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"creator bytes during long provider run")
+                return {
+                    "outputs": [
+                        {"target": payload["outputs"][0], "source": str(source)}
+                    ]
+                }
+
+            with mock.patch.object(
+                production_tool, "_run_adapter", side_effect=stage_then_race
+            ), self.assertRaisesRegex(FileExistsError, "appeared"):
+                production_tool.run_job(
+                    root,
+                    job_id="EP001-SHOT001",
+                    adapter_config=self.adapter_config(directory),
+                )
+            self.assertEqual(
+                target.read_bytes(), b"creator bytes during long provider run"
+            )
+            self.assertEqual(
+                production_tool.job_status(root, job_id="EP001-SHOT001")["state"],
+                "failed",
+            )
 
     def test_existing_output_requires_explicit_overwrite_without_consuming(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -255,70 +803,6 @@ class ConfirmedProductionTests(unittest.TestCase):
                 production_tool.job_status(root, job_id="EP001-SHOT001")["state"],
                 "confirmed",
             )
-
-    def test_adapter_reads_an_immutable_confirmed_input_snapshot(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            job = self.write_job(root)
-            self.prepare_and_confirm(root, job)
-            original = (root / "剧集/EP001/prompts/current.md").read_bytes()
-
-            def inspect_snapshot(command, timeout, payload, cwd):
-                snapshot = Path(payload["project_root"])
-                self.assertNotEqual(snapshot, root)
-                (root / "剧集/EP001/prompts/current.md").write_bytes(
-                    b"CHANGED AFTER CHECK"
-                )
-                source = snapshot / "剧集/EP001/prompts/current.md"
-                self.assertEqual(source.read_bytes(), original)
-                output = Path(directory) / "snapshot-result.png"
-                output.write_bytes(source.read_bytes())
-                return {
-                    "outputs": [
-                        {"target": payload["outputs"][0], "source": str(output)}
-                    ]
-                }
-
-            with mock.patch.object(
-                production_tool, "_run_adapter", side_effect=inspect_snapshot
-            ):
-                result = production_tool.run_job(
-                    root,
-                    job_id="EP001-SHOT001",
-                    adapter_config=self.adapter_config(directory),
-                )
-            self.assertEqual(result["state"], "succeeded")
-            self.assertEqual(
-                (root / result["outputs"][0]["path"]).read_bytes(), original
-            )
-
-    def test_output_created_during_adapter_run_is_not_overwritten(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = self.make_project(directory)
-            job = self.write_job(root)
-            preview = self.prepare_and_confirm(root, job)
-            target = root / preview["outputs"][0]
-
-            def create_target_during_run(command, timeout, payload, cwd):
-                source = Path(directory) / "adapter-result.png"
-                source.write_bytes(b"generated")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(b"CONCURRENT FILE")
-                return {
-                    "outputs": [
-                        {"target": payload["outputs"][0], "source": str(source)}
-                    ]
-                }
-
-            with mock.patch.object(
-                production_tool, "_run_adapter", side_effect=create_target_during_run
-            ), self.assertRaisesRegex(FileExistsError, "appeared"):
-                production_tool.run_job(
-                    root,
-                    job_id="EP001-SHOT001",
-                    adapter_config=self.adapter_config(directory),
-                )
-            self.assertEqual(target.read_bytes(), b"CONCURRENT FILE")
 
     def test_job_rejects_secrets_wrong_extensions_and_unsafe_outputs(self) -> None:
         cases = (
@@ -415,6 +899,7 @@ class ConfirmedProductionTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
+                env={**os.environ, "PYTHONIOENCODING": "cp1252"},
             )
             self.assertEqual(executed.returncode, 0, executed.stderr)
             self.assertEqual(json.loads(executed.stdout)["state"], "succeeded")

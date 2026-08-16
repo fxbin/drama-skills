@@ -8,6 +8,15 @@ license: MIT
 
 本技能负责找到项目、显示当前状态并把工作交给正确的创作技能，不代写各阶段内容。
 
+## Quick Start
+
+先离线确认本技能被单独复制后仍能初始化、读取和保护项目路径：
+
+```bash
+python3 {技能目录}/scripts/selftest.py
+python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例短剧"
+```
+
 创作者可读内容使用 `short-drama.json#/language`；交给图片或视频生成器的提示词正文使用
 `#/format/prompt_language`。两者互不推断，详见
 [contract-and-ownership.md](references/contract-and-ownership.md#输出语言契约)。
@@ -35,7 +44,8 @@ license: MIT
 | 写人物、地点、道具和 Look Development 图片提示词 | `$short-drama-image-prompts` |
 | 做覆盖设计、镜头和冻结关键帧 | `$short-drama-storyboard` |
 | 写动作、表演、运镜、声音视频提示词 | `$short-drama-video-prompts` |
-| 按已确认规格实际生成图片、视频或 TTS | `$short-drama-produce` 先展示本次 job，得到明确确认后才执行 |
+| 写主题曲/配乐意图或校验时间线音乐规格 | `$short-drama-video-prompts`，歌词必须由创作者提供并接受 |
+| 按已确认规格实际生成图片、视频、TTS 或时间线音乐 | `$short-drama-produce` 先展示本次 job，得到明确确认后才执行 |
 | 定制作形态、视觉方向或 Look Development 路径 | `$short-drama` |
 | 校验、审稿或发修订请求 | `$short-drama-review` |
 | 打开创作台、看内容和进度 | `$short-drama dashboard` |

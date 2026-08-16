@@ -10,6 +10,28 @@ from tests.private_release_gate import load_private_terms
 SUITE = Path(__file__).resolve().parents[1]
 SHIPPED_SKILLS = SUITE / "skills"
 DASHBOARD_SERVER = SHIPPED_SKILLS / "short-drama/scripts/dashboard_server.py"
+PROVIDER_ADAPTER = SHIPPED_SKILLS / "short-drama-produce/scripts/provider_adapters.py"
+ALLOWED_PROVIDER_URLS = {
+    "skills/short-drama-produce/scripts/provider_adapters.py": {
+        "https://api.openai.com/v1",
+        "https://ark.cn-beijing.volces.com/api/v3",
+        "https://api.minimax.io/v1",
+    },
+    "skills/short-drama-produce/references/providers/seedance.md": {
+        "https://ark.cn-beijing.volces.com/api/v3",
+        "https://www.volcengine.com/docs/82379/1520757",
+    },
+    "skills/short-drama-produce/references/providers/gpt-image-2.md": {
+        "https://api.openai.com/v1",
+        "https://developers.openai.com/api/docs/models/gpt-image-2",
+        "https://developers.openai.com/api/reference/resources/images/methods/generate",
+        "https://developers.openai.com/api/reference/resources/images/methods/edit",
+    },
+    "skills/short-drama-produce/references/providers/minimax-music.md": {
+        "https://api.minimax.io/v1",
+        "https://platform.minimax.io/docs/api-reference/music-generation",
+    },
+}
 RELEASE_TEXT_SUFFIXES = {
     ".ass",
     ".css",
@@ -96,13 +118,22 @@ class ShippingBoundaryTests(unittest.TestCase):
         ]
         self.assertEqual(findings, [])
 
-    def test_shipped_tree_contains_no_urls(self) -> None:
+    def test_shipped_tree_contains_only_declared_provider_urls(self) -> None:
         url = re.compile(r"https?://[^\s)>\]}`\"']+", re.IGNORECASE)
         leaks: list[str] = []
+        seen: dict[str, set[str]] = {}
         for path in shipped_text_files():
+            relative = str(path.relative_to(SUITE))
             for found in url.findall(path.read_text(encoding="utf-8")):
-                leaks.append(f"{path.relative_to(SUITE)}: {found}")
+                seen.setdefault(relative, set()).add(found)
+                if found not in ALLOWED_PROVIDER_URLS.get(relative, set()):
+                    leaks.append(f"{relative}: {found}")
         self.assertEqual(leaks, [], "URLs shipped in skills tree:\n" + "\n".join(leaks))
+        self.assertEqual(
+            seen,
+            ALLOWED_PROVIDER_URLS,
+            "the explicit public-provider URL allowlist drifted",
+        )
 
     def test_shipping_tree_has_no_private_source_or_provider_task_vocabulary(
         self,
@@ -212,6 +243,7 @@ class ShippingBoundaryTests(unittest.TestCase):
             re.IGNORECASE,
         )
         findings: list[str] = []
+        outbound_scripts: set[Path] = set()
         for path in SHIPPED_SKILLS.rglob("*.py"):
             if "__pycache__" in path.parts:
                 continue
@@ -222,9 +254,16 @@ class ShippingBoundaryTests(unittest.TestCase):
                 continue
             text = path.read_text(encoding="utf-8")
             if forbidden_imports.search(text):
-                findings.append(f"{path.relative_to(SUITE)}: outbound/private import")
-            if runtime_lookup.search(text):
+                outbound_scripts.add(path)
+                if path != PROVIDER_ADAPTER:
+                    findings.append(f"{path.relative_to(SUITE)}: outbound/private import")
+            if runtime_lookup.search(text) and path != PROVIDER_ADAPTER:
                 findings.append(f"{path.relative_to(SUITE)}: runtime source lookup")
+        self.assertEqual(
+            outbound_scripts,
+            {PROVIDER_ADAPTER},
+            "only the explicit production provider adapter may import an outbound client",
+        )
         self.assertEqual(
             findings, [], "runtime boundary violations:\n" + "\n".join(findings)
         )
