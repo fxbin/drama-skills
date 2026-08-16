@@ -16,7 +16,7 @@ license: MIT
 
 从本技能目录读取 `suite-ref.json`，按其中相对 `core_manifest` 定位唯一同级主技能与
 套件清单；确认声明的 core、contract、recipe 和清单 hash 一致后再读写项目。
-随后执行 [阶段契约](references/stage-contract.md) 的运行时预检：先恢复事务、读取状态，
+随后按 [阶段契约](references/stage-contract.md) 验证安装、读取 `status` 与本任务的直接输入，
 再进入本阶段。该文件同时给出本阶段的所有权边界与规则表；本技能不读取其他技能的文件。
 
 ## 材料前提
@@ -64,7 +64,7 @@ python3 {技能目录}/scripts/novel_index.py verify \
 python3 {core 技能目录}/scripts/project_tool.py publish {项目根} \
   --owner short-drama-novel-analyze --artifact-id source-analysis:index \
   --output 项目开发/source-analysis/_index.json=项目开发/source-analysis/_work/_index.next.json \
-  --input 输入/{原文文件}=<索引中的 source.sha256>
+  --input 输入/{原文文件}
 ```
 
 脚本识别阿拉伯数字与中文数字章号（含 千 / 两，覆盖千章以上连载），**只认一种编号单位**

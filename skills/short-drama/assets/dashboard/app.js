@@ -229,6 +229,15 @@ function axisOnly(axis, allowed) {
 
 function creatorStatus(lifecycle, recovery = null) {
   if (!lifecycle || typeof lifecycle !== "object") return ["创作中", "neutral"];
+  const simple = lifecycle.artifact_state;
+  if (typeof simple === "string" || (simple && typeof simple === "object")) {
+    if (valueIs(simple, "revise")) return ["需要修改", "danger"];
+    if (valueIs(simple, "update_needed")) return ["需要更新", "warning"];
+    if (valueIs(simple, "needs_confirmation")) return ["待你确认", "warning"];
+    if (axisOnly(simple, ["approved"])) return ["可以导出", "success"];
+    if (valueIs(simple, "accepted") || valueIs(simple, "approved")) return ["已采用", "success"];
+    return ["创作中", "neutral"];
+  }
   if (
     valueIs(lifecycle.build_state, "failed") ||
     valueIs(lifecycle.build_state, "fail") ||
@@ -261,7 +270,7 @@ function creatorStatus(lifecycle, recovery = null) {
 }
 
 function projectRecovery(status) {
-  return { needed: Boolean(status?.recovery?.needed || status?.layout?.mode === "mixed") };
+  return { needed: Boolean(status?.layout?.mode === "mixed") };
 }
 
 function collectEpisodes(files) {

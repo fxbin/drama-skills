@@ -18,7 +18,7 @@ license: MIT
 
 从本技能目录读取 `suite-ref.json`，按其中相对 `core_manifest` 定位唯一同级主技能与
 套件清单；确认声明的 core、contract、recipe 和清单 hash 一致后再读写项目。
-随后执行 [阶段契约](references/stage-contract.md) 的运行时预检：先恢复事务、读取状态，再进入本阶段。
+随后按 [阶段契约](references/stage-contract.md) 验证安装、读取 `status` 与本任务的直接输入，再进入本阶段。
 该文件同时给出本阶段的所有权边界、需要从制作形态取得哪些输入，以及本阶段规则表；本技能不读取其他技能的文件。
 
 ## 按需读取资料
@@ -39,7 +39,7 @@ license: MIT
 [coverage-audition.md](references/coverage-audition.md)。
 涉及背影、裁切、遮挡、画外或延迟揭示时读
 [阶段契约](references/stage-contract.md) 的参考媒体与补拍一节。
-只有所有权或过期传播不清楚时，才读核心所有权契约。
+只有所有权或直接输入影响不清楚时，才读核心所有权契约。
 
 - 竖屏多人、单房对白、证据揭示、群体轴线或门内外视角：
   [blocking-playbooks.md](references/blocking-playbooks.md)
@@ -108,7 +108,7 @@ license: MIT
 
 需要的资产或状态缺失、含混时，向资产或编剧环节提出修订，不要猜绑定关系。
 若创作者要求从头到尾预览，只能针对唯一且不是 `unresolved` 的提案建立临时的原文落实、
-镜头和关键帧。候选 `ArtifactRef` 要标明 `authority: candidate`，不得写成已接受的绑定，
+镜头和关键帧。候选引用要明确标为待确认，不得写成已接受的绑定，
 也不得获得最终批准。
 
 ### 5. 设计能够制作的镜头

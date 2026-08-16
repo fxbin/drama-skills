@@ -605,10 +605,7 @@ class ProjectStore:
             ):
                 yield
         except Exception as exc:
-            if exc.__class__.__name__ in {
-                "StaleReadSetError",
-                "TransactionConflictError",
-            }:
+            if exc.__class__.__name__ == "ProjectConflictError":
                 raise DashboardError(HTTPStatus.CONFLICT, str(exc)) from exc
             if isinstance(exc, ValueError):
                 raise DashboardError(
@@ -648,18 +645,9 @@ class ProjectStore:
             self._pinned_project(project_id) as (directory_fd, _root),
             self._coordinated_edit(directory_fd, pure, expected_version),
         ):
-            # Two layers, each earning its place. `_write_lock` serializes this
-            # process's own threads, including the lock-directory setup that
-            # runs before any file lock can exist. `_coordinated_edit` then
-            # holds the project's transaction flock across the whole
-            # compare-and-replace, which is what excludes a second dashboard
-            # process and the publish/recover/accept/review commands. A third
-            # lock in the temp directory used to sit between them, keyed on
-            # `workspace / <project-hash> / path` — a path that names nothing on
-            # disk, so two dashboards over overlapping workspaces hashed the
-            # same file to different lock files and never actually excluded
-            # each other. Each parent directory is pinned so a concurrent
-            # symlink swap cannot redirect the replace outside the project.
+            # The in-process lock and the project's file lock keep the version
+            # check and atomic replace together. Pinned parent descriptors stop
+            # a concurrent symlink swap from redirecting the write.
             try:
                 with _open_parent_directory_at(directory_fd, pure) as (
                     parent_fd,

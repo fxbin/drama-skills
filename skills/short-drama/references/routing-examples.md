@@ -9,9 +9,9 @@
 | “这段对话拆成镜头” | storyboard | establish coverage and purpose before camera decoration |
 | “根据这些关键帧写视频提示词” | video-prompts | read shot boundary; do not rewrite it |
 | “人物上一镜拿杯子下一镜没了，检查一下” | review | cite continuity evidence; route fix to owner |
-| “检查这集有没有模板感/AI 味” | fresh review | 诊断模板感，只引用位置、损失和 owner，不改正文 |
+| “检查这集有没有模板感/AI 味” | review | 诊断模板感，只引用位置、损失和 owner，不改正文 |
 | “直接把这集去 AI 味并保留人物口吻” | write | 做定点修订与语义 diff，不自称独立审查通过 |
-| “先检查模板感，再按问题改掉并复查” | fresh review → write → fresh re-review | 冻结旧 hash；finding 路由给 owner；新 hash 由另一 fresh reviewer 复查 |
+| “先检查模板感，再按问题改掉并复查” | review → write → review | finding 路由给 owner；修改后重新读取当前版本，最好换未参与创作的 reviewer |
 | “继续” | router | resume the requested/most recent owner, not blindly run all stages |
 
 ## Ambiguous request
