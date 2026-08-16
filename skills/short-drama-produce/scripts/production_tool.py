@@ -37,6 +37,7 @@ PRODUCTION_ROOT = Path(".short-drama/production")
 JOB_SCHEMA = "1.0"
 JOB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 MAX_JOB_BYTES = 256 * 1024
+MAX_RUN_RECORD_BYTES = 256 * 1024
 MAX_ADAPTER_RESPONSE_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 512 * 1024 * 1024
 MAX_INPUT_BYTES = 50 * 1024 * 1024
@@ -768,14 +769,35 @@ def _copy_output(
 
 
 def _latest_run(root: Path, job_id: str) -> dict[str, Any] | None:
+    history = _read_run_history(root, job_id)
+    return history[-1] if history else None
+
+
+def _read_run_history(root: Path, job_id: str) -> list[dict[str, Any]]:
     directory = _run_directory(root, job_id)
-    if not directory.is_dir():
-        return None
-    paths = sorted(directory.glob("*.json"))
-    if not paths:
-        return None
-    value = json.loads(paths[-1].read_text(encoding="utf-8"))
-    return value if isinstance(value, dict) else None
+    if not directory.exists():
+        return []
+    details = directory.lstat()
+    if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
+        raise ValueError("production run history directory is unsafe")
+    history: list[dict[str, Any]] = []
+    for path in sorted(directory.glob("*.json")):
+        details = path.lstat()
+        if _is_link_or_reparse(details) or not stat.S_ISREG(details.st_mode):
+            raise ValueError("production run record is unsafe")
+        if details.st_size > MAX_RUN_RECORD_BYTES:
+            raise ValueError("production run record is too large")
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            not isinstance(document, dict)
+            or document.get("job_id") != job_id
+            or not isinstance(document.get("run_id"), str)
+            or document.get("status") not in {"running", "succeeded", "failed"}
+        ):
+            raise ValueError("production run record is invalid")
+        history.append(document)
+    history.sort(key=lambda run: (str(run.get("started_at", "")), str(run["run_id"])))
+    return history
 
 
 def _write_run(root: Path, job_id: str, run: Mapping[str, Any]) -> None:
@@ -907,6 +929,225 @@ def job_status(root: Path, *, job_id: str) -> dict[str, Any]:
     }
 
 
+def _hash_production_output(root: Path, relative: str) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with _open_project_input(root, relative) as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            size += len(chunk)
+            if size > MAX_OUTPUT_BYTES:
+                raise ValueError("production output exceeds the size limit")
+            digest.update(chunk)
+    return digest.hexdigest(), size
+
+
+def audit_project(root: Path) -> dict[str, Any]:
+    """Reconcile local attempt history and current output bytes, not media quality."""
+    root = find_project(root)
+    jobs_directory = root / PRODUCTION_ROOT / "jobs"
+    jobs: list[dict[str, Any]] = []
+    problems: list[dict[str, Any]] = []
+    if jobs_directory.exists():
+        details = jobs_directory.lstat()
+        if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
+            raise ValueError("production jobs directory is unsafe")
+        for path in sorted(jobs_directory.glob("*.json")):
+            try:
+                details = path.lstat()
+                if _is_link_or_reparse(details) or not stat.S_ISREG(details.st_mode):
+                    raise ValueError("stored job is unsafe")
+                if details.st_size > MAX_JOB_BYTES:
+                    raise ValueError("stored job is too large")
+                job = json.loads(path.read_text(encoding="utf-8"))
+                job_id = job.get("job_id") if isinstance(job, Mapping) else None
+                if (
+                    not isinstance(job, dict)
+                    or not isinstance(job_id, str)
+                    or JOB_ID_RE.fullmatch(job_id) is None
+                    or path.name != f"{_job_key(job_id)}.json"
+                ):
+                    raise ValueError("stored job is invalid")
+                jobs.append(job)
+            except (OSError, ValueError, json.JSONDecodeError):
+                problems.append(
+                    {
+                        "code": "invalid_job_record",
+                        "record": path.name,
+                        "action": "repair_production_metadata",
+                    }
+                )
+
+    attempts_total = 0
+    attempts_succeeded = 0
+    attempts_failed = 0
+    repeated_content = 0
+    recovered_jobs = 0
+    terminal_failed_jobs = 0
+    retryable_terminal_failed_jobs = 0
+    current_output_claims: dict[
+        str, tuple[tuple[str, str], str, int, str, str]
+    ] = {}
+
+    for job in jobs:
+        job_id = str(job["job_id"])
+        try:
+            history = _read_run_history(root, job_id)
+        except (OSError, ValueError, json.JSONDecodeError):
+            problems.append(
+                {
+                    "code": "invalid_run_history",
+                    "job_id": job_id,
+                    "action": "repair_production_metadata",
+                }
+            )
+            continue
+        attempts_total += len(history)
+        attempts_succeeded += sum(run["status"] == "succeeded" for run in history)
+        attempts_failed += sum(run["status"] == "failed" for run in history)
+        fingerprints = [
+            str(run.get("fingerprint"))
+            for run in history
+            if isinstance(run.get("fingerprint"), str)
+        ]
+        repeated_content += len(fingerprints) - len(set(fingerprints))
+        succeeded_indexes = [
+            index for index, run in enumerate(history) if run["status"] == "succeeded"
+        ]
+        failed_indexes = [
+            index for index, run in enumerate(history) if run["status"] == "failed"
+        ]
+        if succeeded_indexes and failed_indexes and min(failed_indexes) < max(succeeded_indexes):
+            recovered_jobs += 1
+        if history and history[-1]["status"] == "failed":
+            terminal_failed_jobs += 1
+            error = history[-1].get("error")
+            retryable = isinstance(error, Mapping) and error.get("retryable") is True
+            if retryable:
+                retryable_terminal_failed_jobs += 1
+            problems.append(
+                {
+                    "code": (
+                        "terminal_retryable_failure" if retryable else "terminal_failure"
+                    ),
+                    "job_id": job_id,
+                    "run_id": history[-1]["run_id"],
+                    "action": (
+                        "inspect_then_reconfirm_retry" if retryable else "inspect_failure"
+                    ),
+                }
+            )
+        for run in history:
+            if run["status"] != "succeeded" or not isinstance(run.get("outputs"), list):
+                continue
+            for output in run["outputs"]:
+                if not isinstance(output, Mapping):
+                    continue
+                output_path = output.get("path")
+                digest = output.get("sha256")
+                size = output.get("bytes")
+                if (
+                    isinstance(output_path, str)
+                    and isinstance(digest, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", digest)
+                    and isinstance(size, int)
+                    and not isinstance(size, bool)
+                    and size >= 0
+                ):
+                    run_id = str(run["run_id"])
+                    claim_order = (str(run.get("started_at", "")), run_id)
+                    claim = current_output_claims.get(output_path)
+                    if claim is None or claim_order > claim[0]:
+                        current_output_claims[output_path] = (
+                            claim_order,
+                            digest,
+                            size,
+                            job_id,
+                            run_id,
+                        )
+                else:
+                    problems.append(
+                        {
+                            "code": "invalid_succeeded_output_record",
+                            "job_id": job_id,
+                            "run_id": str(run["run_id"]),
+                            "action": "repair_production_metadata",
+                        }
+                    )
+
+        if not _inputs_current(root, job):
+            problems.append(
+                {
+                    "code": "job_inputs_changed",
+                    "job_id": job_id,
+                    "action": "prepare_and_confirm_again",
+                }
+            )
+
+    output_verified = 0
+    output_missing = 0
+    output_modified = 0
+    for relative, (
+        _claim_order,
+        expected_digest,
+        expected_size,
+        job_id,
+        run_id,
+    ) in sorted(current_output_claims.items()):
+        try:
+            safe_relative = _relative_path(relative, output=True)
+            digest, size = _hash_production_output(root, safe_relative)
+        except (FileNotFoundError, OSError, ValueError):
+            output_missing += 1
+            problems.append(
+                {
+                    "code": "output_missing_or_unsafe",
+                    "job_id": job_id,
+                    "run_id": run_id,
+                    "path": relative,
+                    "action": "restore_or_reproduce_output",
+                }
+            )
+            continue
+        if digest != expected_digest or size != expected_size:
+            output_modified += 1
+            problems.append(
+                {
+                    "code": "output_digest_mismatch",
+                    "job_id": job_id,
+                    "run_id": run_id,
+                    "path": relative,
+                    "action": "review_current_bytes_or_reproduce_output",
+                }
+            )
+        else:
+            output_verified += 1
+
+    return {
+        "status": "attention" if problems else "pass",
+        "scope": "operational_evidence_only",
+        "quality_verdict": "not_assessed",
+        "jobs": {
+            "total": len(jobs),
+            "recovered": recovered_jobs,
+            "terminal_failed": terminal_failed_jobs,
+            "retryable_terminal_failed": retryable_terminal_failed_jobs,
+        },
+        "attempts": {
+            "total": attempts_total,
+            "succeeded": attempts_succeeded,
+            "failed": attempts_failed,
+            "repeated_content": repeated_content,
+        },
+        "outputs": {
+            "claimed_current": len(current_output_claims),
+            "verified": output_verified,
+            "missing": output_missing,
+            "modified": output_modified,
+        },
+        "problems": problems,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run confirmed short-drama media jobs.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -924,6 +1165,10 @@ def build_parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status", help="Show one media job state.")
     status.add_argument("project")
     status.add_argument("--job-id", required=True)
+    audit = commands.add_parser(
+        "audit", help="Reconcile attempt history and current output bytes."
+    )
+    audit.add_argument("project")
     return parser
 
 
@@ -942,8 +1187,10 @@ def main(argv: list[str] | None = None) -> int:
                 job_id=args.job_id,
                 adapter_config=Path(args.adapter_config),
             )
-        else:
+        elif args.command == "status":
             result = job_status(Path(args.project), job_id=args.job_id)
+        else:
+            result = audit_project(Path(args.project))
         print(json.dumps(result, ensure_ascii=True, sort_keys=True))
         return 0
     except Exception as exc:

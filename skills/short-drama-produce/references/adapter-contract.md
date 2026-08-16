@@ -116,3 +116,16 @@ is replaced with a generic adapter exit code.
 A nonzero exit, timeout, malformed response or mismatched output marks the run failed. Because the adapter may have
 submitted paid work before failing locally, confirmation is consumed as soon as execution starts; retry only after a
 new creator confirmation.
+
+## Operational reconciliation
+
+`production_tool.py audit <project>` reads only local production metadata and the
+current output bytes. It reports terminal failures, retryable failures, recovered
+jobs, repeated content fingerprints, and missing or changed outputs. For paths
+written more than once, the latest successful claim is authoritative for this
+operational check.
+
+The audit deliberately returns `quality_verdict: not_assessed`. A provider success,
+retry recovery, file presence, size, or checksum proves execution/custody only; it
+does not prove identity, performance, continuity, lip-sync, mix, edit, or audience
+quality. Those claims require an authorized observation and a separate review.

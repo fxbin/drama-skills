@@ -294,6 +294,102 @@ class ConfirmedProductionTests(unittest.TestCase):
             )
             self.assertNotIn("secret", json.dumps(latest))
 
+    def test_audit_reconciles_retries_and_current_output_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root,
+                    job_id=preview["job_id"],
+                    adapter_config=self.adapter_config(directory, fail=True),
+                )
+
+            production_tool.confirm_job(
+                root,
+                job_id=preview["job_id"],
+                confirmation=preview["confirmation"],
+            )
+            production_tool.run_job(
+                root,
+                job_id=preview["job_id"],
+                adapter_config=self.adapter_config(directory),
+            )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "pass")
+            self.assertEqual(audit["quality_verdict"], "not_assessed")
+            self.assertEqual(audit["jobs"]["total"], 1)
+            self.assertEqual(audit["attempts"]["total"], 2)
+            self.assertEqual(audit["attempts"]["failed"], 1)
+            self.assertEqual(audit["attempts"]["succeeded"], 1)
+            self.assertEqual(audit["attempts"]["repeated_content"], 1)
+            self.assertEqual(audit["jobs"]["recovered"], 1)
+            self.assertEqual(audit["outputs"]["verified"], 1)
+            self.assertEqual(audit["problems"], [])
+
+            (root / preview["outputs"][0]).write_bytes(b"changed after production")
+            changed = production_tool.audit_project(root)
+            self.assertEqual(changed["status"], "attention")
+            self.assertEqual(changed["outputs"]["modified"], 1)
+            self.assertEqual(
+                [problem["code"] for problem in changed["problems"]],
+                ["output_digest_mismatch"],
+            )
+
+    def test_audit_routes_terminal_retryable_failure_without_claiming_quality(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            failure = Path(directory) / "retryable_failure.py"
+            failure.write_text(
+                "import json, sys\n"
+                "json.dump({'error': {'provider': 'fixture', "
+                "'category': 'rate_limit', 'code': 'rate_limit_exceeded', "
+                "'http_status': 429, 'retryable': True}}, sys.stdout)\n"
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            config = Path(directory) / "retryable-config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "adapters": {
+                            "fixture": {
+                                "command": [sys.executable, str(failure)],
+                                "timeout_seconds": 30,
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(production_tool.AdapterError):
+                production_tool.run_job(
+                    root, job_id=preview["job_id"], adapter_config=config
+                )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["quality_verdict"], "not_assessed")
+            self.assertEqual(audit["jobs"]["terminal_failed"], 1)
+            self.assertEqual(audit["jobs"]["retryable_terminal_failed"], 1)
+            self.assertEqual(
+                audit["problems"],
+                [
+                    {
+                        "code": "terminal_retryable_failure",
+                        "job_id": preview["job_id"],
+                        "run_id": audit["problems"][0]["run_id"],
+                        "action": "inspect_then_reconfirm_retry",
+                    }
+                ],
+            )
+
     def test_adapter_reads_a_private_confirmed_input_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
