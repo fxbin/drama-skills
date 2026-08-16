@@ -66,11 +66,16 @@ B 又读 C 不会让 A 自动过期，只有 A 下次实际重建时才读取当
 ... set-authority <project> --field /format/target_seconds_per_episode --decision-ref 创作者决策/decisions.jsonl#CD-LENGTH-001
 ```
 
-`--field` 只接受 `/creator_authority/*` 与 `/format/target_seconds_per_episode`。被引用的记录
-`status` 必须是 `accepted`，`target_locators` 必须含 `{"src":"short-drama","field":"<同一 field>"}`，
-命令写入它的 `accepted_value`。写到 `visual_direction`、`production_profile`、`delivery_surface`
-这类带 `status` 的块时，`accepted_value` 的键并入该块的 `choices`（该块没有 `choices` 就并入块
-本身），`status` 置为 `accepted`；集长目标写正数秒。下游读到的就是这里已 `accepted` 的值。
+`--field` 只接受 `/creator_authority/*` 与 `/format/target_seconds_per_episode`；
+`creator_authority/decisions_artifact` 是目录布局，由 `init` 定下。被引用的记录 `status`
+必须是 `accepted`，`target_locators` 必须含 `{"src":"short-drama","field":"<同一 field>"}`，
+命令写入它的 `accepted_value`，并只写进 manifest 已声明的槽位、保持该槽位原有的 JSON 类型。
+
+写到 `visual_direction`、`production_profile`、`delivery_surface` 这类带 `status` 的块时，
+`accepted_value` 的键并入该块的 `choices`（该块没有 `choices` 就并入块本身），`status` 置为
+`accepted`。直接写 `.../choices` 同样是并入，已记下的选择不会被这次写掉；写更深的单个选择
+（如 `.../choices/look_development`）会把它所在的块一并置为 `accepted`。集长目标写正数秒。
+下游读到的就是这里已 `accepted` 的值。
 
 ## 打包与复核
 
