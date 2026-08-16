@@ -50,7 +50,8 @@ python3 <本技能目录>/scripts/production_tool.py audit <project>
 
 `prepare` 只验证并预览，不生产。`confirm` 只保存与当前 job 指纹绑定的一次性确认。
 `run` 才启动 adapter。`audit` 只对账本地任务历史、失败后恢复、重复内容尝试和当前输出字节，
-不会调用供应商，也不把技术成功、文件存在或 hash 一致写成媒体质量结论。
+不会调用供应商，也不把技术成功、文件存在或 hash 一致写成媒体质量结论。同一 job 存在未决
+`running` attempt 时禁止重新 prepare、confirm 或 run；先等待完成或排查遗留 attempt。
 
 ## 输入选择
 
@@ -91,6 +92,7 @@ adapter 配置必须在项目外，只包含 argv 命令和超时；凭据由 ad
 成功后回报实际输出路径、媒体类型和运行状态；不要把“adapter 返回成功”写成质量结论。
 多任务或重试后先运行 `audit`：终态失败按 `retryable` 路由，重试仍须新的明确确认；输出缺失或
 hash/大小不再等于运行记录时，先复核当前字节或重新生产。`repeated_content` 只是成本与诊断信号，
-不能自动判定同文重试合理或不合理；随机失败可做有上限重试，重复内容缺陷则回到对应 prompt/spec owner。
+不能自动判定同文重试合理或不合理；`running_attempt` 是未决运营状态，audit 必须返回 attention。
+随机失败可做有上限重试，重复内容缺陷则回到对应 prompt/spec owner。
 如需质量复核，报告可把已有结果另行交给 `$short-drama-review`；不要在生产调用中自动启动复核。
 Dashboard 只负责展示这些文件和运行摘要，不提供 adapter 设置或生产按钮。

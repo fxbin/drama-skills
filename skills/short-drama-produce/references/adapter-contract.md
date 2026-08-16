@@ -115,15 +115,24 @@ is replaced with a generic adapter exit code.
 
 A nonzero exit, timeout, malformed response or mismatched output marks the run failed. Because the adapter may have
 submitted paid work before failing locally, confirmation is consumed as soon as execution starts; retry only after a
-new creator confirmation.
+new creator confirmation. A job with an unresolved `running` attempt cannot be prepared, confirmed, or run again;
+wait for its terminal record or investigate the interrupted attempt first.
 
 ## Operational reconciliation
 
 `production_tool.py audit <project>` reads only local production metadata and the
 current output bytes. It reports terminal failures, retryable failures, recovered
-jobs, repeated content fingerprints, and missing or changed outputs. For paths
-written more than once, the latest successful claim is authoritative for this
-operational check.
+jobs, unresolved running attempts, repeated content fingerprints, and missing or
+changed outputs. Terminal state, recovery, and repeated output claims are ordered
+by validated completion time rather than start time. For paths written more than
+once, the latest completed successful claim is authoritative for this operational
+check. Only attempts bound to the current stored job fingerprint can claim its
+current outputs; older fingerprints remain visible as `superseded` attempt history.
+A successful record must declare exactly the current job's output set and media
+types before any output claim is trusted. Jobs, confirmations, run records, and the
+production lock use pinned no-follow directories where directory FDs are available,
+and reparse/identity checks on the portable fallback. A linked parent chain fails
+closed instead of redirecting state outside the project.
 
 The audit deliberately returns `quality_verdict: not_assessed`. A provider success,
 retry recovery, file presence, size, or checksum proves execution/custody only; it

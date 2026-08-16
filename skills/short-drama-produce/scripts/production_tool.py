@@ -68,6 +68,8 @@ ALLOWED_JOB_KEYS = {
     "parameters",
     "overwrite",
 }
+STORED_EXECUTION_KEYS = ALLOWED_JOB_KEYS | {"inputs"}
+STORED_JOB_KEYS = STORED_EXECUTION_KEYS | {"fingerprint", "prepared_at"}
 SECRET_KEYS = {
     "authorization",
     "credential",
@@ -302,62 +304,292 @@ def _canonical(document: object) -> bytes:
     ).encode("utf-8")
 
 
-def _atomic_bytes(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("xb") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        if os.name != "nt":
-            descriptor = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-    finally:
+def _check_metadata_parts(parts: tuple[str, ...]) -> None:
+    if any(
+        not part
+        or part in {".", ".."}
+        or "/" in part
+        or "\\" in part
+        for part in parts
+    ):
+        raise ValueError("production metadata path is invalid")
+
+
+@contextlib.contextmanager
+def _metadata_directory(
+    root: Path, parts: tuple[str, ...], *, create: bool
+) -> Iterator[tuple[Path, int | None]]:
+    """Pin one metadata directory without following project-controlled parents."""
+    root = root.resolve()
+    _check_metadata_parts(parts)
+    all_parts = (".short-drama", "production", *parts)
+    directory = root.joinpath(*all_parts)
+    if os.name != "nt" and os.open in os.supports_dir_fd:
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory_fd = os.open(root, flags)
         try:
-            temporary.unlink()
+            try:
+                for part in all_parts:
+                    try:
+                        next_fd = os.open(
+                            part, flags | nofollow, dir_fd=directory_fd
+                        )
+                    except FileNotFoundError:
+                        if not create:
+                            raise
+                        try:
+                            os.mkdir(part, mode=0o700, dir_fd=directory_fd)
+                        except FileExistsError:
+                            pass
+                        next_fd = os.open(
+                            part, flags | nofollow, dir_fd=directory_fd
+                        )
+                    details = os.fstat(next_fd)
+                    if not stat.S_ISDIR(details.st_mode):
+                        os.close(next_fd)
+                        raise ValueError("production metadata directory is unsafe")
+                    os.close(directory_fd)
+                    directory_fd = next_fd
+            except FileNotFoundError:
+                raise
+            except OSError as exc:
+                raise ValueError("production metadata directory is unsafe") from exc
+            yield directory, directory_fd
+        finally:
+            os.close(directory_fd)
+        return
+
+    current = root
+    for part in all_parts:
+        current /= part
+        try:
+            details = current.lstat()
         except FileNotFoundError:
-            pass
+            if not create:
+                raise
+            try:
+                current.mkdir(mode=0o700)
+            except FileExistsError:
+                pass
+            details = current.lstat()
+        if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
+            raise ValueError("production metadata directory is unsafe")
+    if not current.resolve().is_relative_to(root):
+        raise ValueError("production metadata directory escapes the project")
+    yield current, None
 
 
-def _atomic_json(path: Path, document: Mapping[str, Any]) -> None:
-    _atomic_bytes(path, _canonical(document) + b"\n")
+def _metadata_atomic_json(
+    root: Path, directory_parts: tuple[str, ...], name: str, document: Mapping[str, Any]
+) -> None:
+    _check_metadata_parts((name,))
+    content = _canonical(document) + b"\n"
+    temporary_name = f".{name}.{uuid.uuid4().hex}.tmp"
+    with _metadata_directory(root, directory_parts, create=True) as (
+        directory,
+        directory_fd,
+    ):
+        if directory_fd is not None:
+            descriptor = -1
+            try:
+                descriptor = os.open(
+                    temporary_name,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                    dir_fd=directory_fd,
+                )
+                with os.fdopen(descriptor, "wb", closefd=True) as handle:
+                    descriptor = -1
+                    handle.write(content)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(
+                    temporary_name,
+                    name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                )
+                os.fsync(directory_fd)
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+                try:
+                    os.unlink(temporary_name, dir_fd=directory_fd)
+                except FileNotFoundError:
+                    pass
+            return
+
+        before = directory.stat(follow_symlinks=False)
+        temporary = directory / temporary_name
+        try:
+            with temporary.open("xb") as handle:
+                opened = os.fstat(handle.fileno())
+                if not stat.S_ISREG(opened.st_mode):
+                    raise ValueError("production metadata file is unsafe")
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            after = directory.lstat()
+            if (
+                _is_link_or_reparse(after)
+                or not stat.S_ISDIR(after.st_mode)
+                or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
+            ):
+                raise ValueError("production metadata directory changed")
+            os.replace(temporary, directory / name)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _metadata_read_json(
+    root: Path, directory_parts: tuple[str, ...], name: str, *, maximum: int
+) -> object:
+    _check_metadata_parts((name,))
+    with _metadata_directory(root, directory_parts, create=False) as (
+        directory,
+        directory_fd,
+    ):
+        if directory_fd is not None:
+            descriptor = os.open(
+                name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=directory_fd,
+            )
+            with os.fdopen(descriptor, "rb", closefd=True) as handle:
+                details = os.fstat(handle.fileno())
+                if not stat.S_ISREG(details.st_mode) or details.st_size > maximum:
+                    raise ValueError("production metadata file is unsafe")
+                raw = handle.read(maximum + 1)
+        else:
+            path = directory / name
+            before = path.lstat()
+            if (
+                _is_link_or_reparse(before)
+                or not stat.S_ISREG(before.st_mode)
+                or before.st_size > maximum
+            ):
+                raise ValueError("production metadata file is unsafe")
+            with path.open("rb") as handle:
+                opened = os.fstat(handle.fileno())
+                if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                    raise ValueError("production metadata file changed while opening")
+                raw = handle.read(maximum + 1)
+        if len(raw) > maximum:
+            raise ValueError("production metadata file is too large")
+        return json.loads(raw.decode("utf-8"))
+
+
+def _metadata_unlink(
+    root: Path, directory_parts: tuple[str, ...], name: str
+) -> None:
+    _check_metadata_parts((name,))
+    with _metadata_directory(root, directory_parts, create=False) as (
+        directory,
+        directory_fd,
+    ):
+        if directory_fd is not None:
+            os.unlink(name, dir_fd=directory_fd)
+        else:
+            path = directory / name
+            details = path.lstat()
+            if _is_link_or_reparse(details) or not stat.S_ISREG(details.st_mode):
+                raise ValueError("production metadata file is unsafe")
+            path.unlink()
+
+
+def _metadata_json_names(root: Path, directory_parts: tuple[str, ...]) -> list[str]:
+    try:
+        with _metadata_directory(root, directory_parts, create=False) as (
+            directory,
+            directory_fd,
+        ):
+            names = os.listdir(directory_fd if directory_fd is not None else directory)
+    except FileNotFoundError:
+        return []
+    return sorted(
+        name
+        for name in names
+        if isinstance(name, str)
+        and name.endswith(".json")
+        and "/" not in name
+        and "\\" not in name
+    )
 
 
 @contextlib.contextmanager
 def _project_lock(root: Path) -> Iterator[None]:
-    lock_path = root / ".short-drama/production.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+b") as handle:
-        if os.name == "nt":
-            import msvcrt
-
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b"0")
-                handle.flush()
-            handle.seek(0)
-            locking = getattr(msvcrt, "locking")
-            lock = getattr(msvcrt, "LK_LOCK")
-            unlock = getattr(msvcrt, "LK_UNLCK")
-            locking(handle.fileno(), lock, 1)
-            try:
-                yield
-            finally:
-                handle.seek(0)
-                locking(handle.fileno(), unlock, 1)
+    with _metadata_directory(root, (), create=True) as (directory, directory_fd):
+        if directory_fd is not None:
+            descriptor = os.open(
+                "lock",
+                os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=directory_fd,
+            )
+            details = os.fstat(descriptor)
+            if not stat.S_ISREG(details.st_mode):
+                os.close(descriptor)
+                raise ValueError("production lock is unsafe")
+            handle_context = os.fdopen(descriptor, "a+b", closefd=True)
         else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            lock_path = directory / "lock"
+            before: os.stat_result | None
             try:
-                yield
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                before = lock_path.lstat()
+            except FileNotFoundError:
+                before = None
+            else:
+                if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode):
+                    raise ValueError("production lock is unsafe")
+            handle_context = lock_path.open("a+b")
+            opened = os.fstat(handle_context.fileno())
+            after = lock_path.lstat()
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or _is_link_or_reparse(after)
+                or not stat.S_ISREG(after.st_mode)
+                or (opened.st_dev, opened.st_ino) != (after.st_dev, after.st_ino)
+                or (
+                    before is not None
+                    and (before.st_dev, before.st_ino)
+                    != (opened.st_dev, opened.st_ino)
+                )
+            ):
+                handle_context.close()
+                raise ValueError("production lock changed while opening")
+        with handle_context as handle:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"0")
+                    handle.flush()
+                handle.seek(0)
+                locking = getattr(msvcrt, "locking")
+                lock = getattr(msvcrt, "LK_LOCK")
+                unlock = getattr(msvcrt, "LK_UNLCK")
+                locking(handle.fileno(), lock, 1)
+                try:
+                    yield
+                finally:
+                    handle.seek(0)
+                    locking(handle.fileno(), unlock, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _job_key(job_id: str) -> str:
@@ -466,25 +698,100 @@ def prepare_job(root: Path, job_file: Path) -> dict[str, Any]:
     raw = json.loads(job_file.read_text(encoding="utf-8"))
     job = _normalize_job(root, raw)
     with _project_lock(root):
-        running = _latest_run(root, str(job["job_id"]))
-        if running and running.get("status") == "running":
+        if _active_run(root, str(job["job_id"])) is not None:
             raise RuntimeError("this job is already running")
-        _atomic_json(_job_path(root, str(job["job_id"])), job)
+        job_name = f"{_job_key(str(job['job_id']))}.json"
+        _metadata_atomic_json(root, ("jobs",), job_name, job)
         try:
-            _confirmation_path(root, str(job["job_id"])).unlink()
+            _metadata_unlink(root, ("confirmations",), job_name)
         except FileNotFoundError:
             pass
     return _preview(job)
 
 
+def _validate_stored_job(
+    root: Path, document: object, *, expected_job_id: str | None = None
+) -> dict[str, Any]:
+    root = root.resolve()
+    if not isinstance(document, dict) or set(document) != STORED_JOB_KEYS:
+        raise ValueError("stored job fields are invalid")
+    job_id = document.get("job_id")
+    if (
+        not isinstance(job_id, str)
+        or JOB_ID_RE.fullmatch(job_id) is None
+        or (expected_job_id is not None and job_id != expected_job_id)
+    ):
+        raise ValueError("stored job id is invalid")
+    if document.get("schema_version") != JOB_SCHEMA:
+        raise ValueError("stored job schema is invalid")
+    modality = document.get("modality")
+    if modality not in MEDIA_EXTENSIONS:
+        raise ValueError("stored job modality is invalid")
+    adapter = document.get("adapter")
+    if not isinstance(adapter, str) or JOB_ID_RE.fullmatch(adapter) is None:
+        raise ValueError("stored job adapter is invalid")
+    prompt = document.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 100_000:
+        raise ValueError("stored job prompt is invalid")
+    source = document.get("source")
+    if source is not None and _relative_path(source) != source:
+        raise ValueError("stored job source is invalid")
+    references = _string_list(
+        document.get("references"), label="stored references", limit=16
+    )
+    if any(_relative_path(reference) != reference for reference in references):
+        raise ValueError("stored job references are invalid")
+    outputs = _string_list(document.get("outputs"), label="stored outputs", limit=16)
+    if not outputs or len(outputs) != len(set(outputs)):
+        raise ValueError("stored job outputs are invalid")
+    for output in outputs:
+        if _relative_path(output, output=True) != output:
+            raise ValueError("stored job output is invalid")
+        if PurePosixPath(output).suffix.casefold() not in MEDIA_EXTENSIONS[str(modality)]:
+            raise ValueError("stored job output extension is invalid")
+        _project_file(root, output)
+    parameters = document.get("parameters")
+    if (
+        not isinstance(parameters, Mapping)
+        or _contains_secret_key(parameters)
+        or len(_canonical(parameters)) > 64 * 1024
+    ):
+        raise ValueError("stored job parameters are invalid")
+    if not isinstance(document.get("overwrite"), bool):
+        raise ValueError("stored job overwrite flag is invalid")
+    input_paths = ([source] if source is not None else []) + references
+    if len(input_paths) != len(set(input_paths)):
+        raise ValueError("stored job inputs are duplicated")
+    inputs = document.get("inputs")
+    if not isinstance(inputs, Mapping) or set(inputs) != set(input_paths):
+        raise ValueError("stored job input hashes are invalid")
+    if any(
+        not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        for digest in inputs.values()
+    ):
+        raise ValueError("stored job input hash is invalid")
+    fingerprint = document.get("fingerprint")
+    execution = {key: document[key] for key in STORED_EXECUTION_KEYS}
+    if (
+        not isinstance(fingerprint, str)
+        or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
+        or sha256_bytes(_canonical(execution)) != fingerprint
+    ):
+        raise ValueError("stored job fingerprint is invalid")
+    _parse_run_timestamp(document.get("prepared_at"), label="prepared_at")
+    return document
+
+
 def _read_job(root: Path, job_id: str) -> dict[str, Any]:
     if JOB_ID_RE.fullmatch(job_id) is None:
         raise ValueError("invalid job_id")
-    path = _job_path(root, job_id)
-    document = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or document.get("job_id") != job_id:
-        raise ValueError("stored job is invalid")
-    return document
+    document = _metadata_read_json(
+        root,
+        ("jobs",),
+        f"{_job_key(job_id)}.json",
+        maximum=MAX_JOB_BYTES,
+    )
+    return _validate_stored_job(root, document, expected_job_id=job_id)
 
 
 def _preview(job: Mapping[str, Any]) -> dict[str, Any]:
@@ -508,6 +815,8 @@ def _preview(job: Mapping[str, Any]) -> dict[str, Any]:
 def confirm_job(root: Path, *, job_id: str, confirmation: str) -> dict[str, Any]:
     root = find_project(root)
     with _project_lock(root):
+        if _active_run(root, job_id) is not None:
+            raise RuntimeError("this job is already running")
         job = _read_job(root, job_id)
         expected = _preview(job)["confirmation"]
         if confirmation != expected:
@@ -520,7 +829,9 @@ def confirm_job(root: Path, *, job_id: str, confirmation: str) -> dict[str, Any]
             "consumed_at": None,
             "run_id": None,
         }
-        _atomic_json(_confirmation_path(root, job_id), receipt)
+        _metadata_atomic_json(
+            root, ("confirmations",), f"{_job_key(job_id)}.json", receipt
+        )
     return {"job_id": job_id, "state": "confirmed"}
 
 
@@ -773,35 +1084,85 @@ def _latest_run(root: Path, job_id: str) -> dict[str, Any] | None:
     return history[-1] if history else None
 
 
+def _parse_run_timestamp(value: object, *, label: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"production run {label} is invalid")
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(f"production run {label} is invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"production run {label} is invalid")
+    return parsed.astimezone(timezone.utc)
+
+
+def _completed_run_order(run: Mapping[str, Any]) -> tuple[datetime, str]:
+    return (
+        _parse_run_timestamp(run.get("finished_at"), label="finished_at"),
+        str(run["run_id"]),
+    )
+
+
 def _read_run_history(root: Path, job_id: str) -> list[dict[str, Any]]:
-    directory = _run_directory(root, job_id)
-    if not directory.exists():
-        return []
-    details = directory.lstat()
-    if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
-        raise ValueError("production run history directory is unsafe")
+    directory_parts = ("runs", _job_key(job_id))
     history: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("*.json")):
-        details = path.lstat()
-        if _is_link_or_reparse(details) or not stat.S_ISREG(details.st_mode):
-            raise ValueError("production run record is unsafe")
-        if details.st_size > MAX_RUN_RECORD_BYTES:
-            raise ValueError("production run record is too large")
-        document = json.loads(path.read_text(encoding="utf-8"))
+    for name in _metadata_json_names(root, directory_parts):
+        document = _metadata_read_json(
+            root, directory_parts, name, maximum=MAX_RUN_RECORD_BYTES
+        )
         if (
             not isinstance(document, dict)
             or document.get("job_id") != job_id
             or not isinstance(document.get("run_id"), str)
             or document.get("status") not in {"running", "succeeded", "failed"}
+            or not isinstance(document.get("fingerprint"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", str(document.get("fingerprint"))) is None
         ):
             raise ValueError("production run record is invalid")
+        started_at = _parse_run_timestamp(
+            document.get("started_at"), label="started_at"
+        )
+        finished_at = document.get("finished_at")
+        if document["status"] == "running":
+            if finished_at is not None:
+                raise ValueError("running production run has finished_at")
+        else:
+            completed_at = _parse_run_timestamp(finished_at, label="finished_at")
+            if completed_at < started_at:
+                raise ValueError("production run finished before it started")
         history.append(document)
-    history.sort(key=lambda run: (str(run.get("started_at", "")), str(run["run_id"])))
+    # Completed runs are ordered by completion because that is when their
+    # terminal state and output claim become authoritative. Any unresolved
+    # running attempt sorts last so status cannot hide it behind a later start.
+    history.sort(
+        key=lambda run: (
+            run["status"] == "running",
+            (
+                _parse_run_timestamp(run.get("started_at"), label="started_at")
+                if run["status"] == "running"
+                else _completed_run_order(run)[0]
+            ),
+            str(run["run_id"]),
+        )
+    )
     return history
 
 
+def _active_run(root: Path, job_id: str) -> dict[str, Any] | None:
+    running = [
+        run for run in _read_run_history(root, job_id) if run["status"] == "running"
+    ]
+    return running[-1] if running else None
+
+
 def _write_run(root: Path, job_id: str, run: Mapping[str, Any]) -> None:
-    _atomic_json(_run_directory(root, job_id) / f"{run['run_id']}.json", run)
+    _metadata_atomic_json(
+        root,
+        ("runs", _job_key(job_id)),
+        f"{run['run_id']}.json",
+        run,
+    )
 
 
 def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
@@ -813,11 +1174,17 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
         snapshot_root.mkdir()
         output_root.mkdir()
         with _project_lock(root):
+            if _active_run(root, job_id) is not None:
+                raise RuntimeError("this job is already running")
             job = _read_job(root, job_id)
             command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
-            receipt_path = _confirmation_path(root, job_id)
             try:
-                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                receipt = _metadata_read_json(
+                    root,
+                    ("confirmations",),
+                    f"{_job_key(job_id)}.json",
+                    maximum=MAX_RUN_RECORD_BYTES,
+                )
             except FileNotFoundError as exc:
                 raise ConfirmationRequiredError("job needs explicit confirmation") from exc
             if (
@@ -836,7 +1203,12 @@ def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
             run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
             receipt["consumed_at"] = utc_now()
             receipt["run_id"] = run_id
-            _atomic_json(receipt_path, receipt)
+            _metadata_atomic_json(
+                root,
+                ("confirmations",),
+                f"{_job_key(job_id)}.json",
+                receipt,
+            )
             run = {
                 "schema_version": JOB_SCHEMA,
                 "run_id": run_id,
@@ -908,7 +1280,12 @@ def job_status(root: Path, *, job_id: str) -> dict[str, Any]:
         state = "needs_reconfirmation"
     else:
         try:
-            receipt = json.loads(_confirmation_path(root, job_id).read_text(encoding="utf-8"))
+            receipt = _metadata_read_json(
+                root,
+                ("confirmations",),
+                f"{_job_key(job_id)}.json",
+                maximum=MAX_RUN_RECORD_BYTES,
+            )
         except FileNotFoundError:
             receipt = None
         if latest and latest.get("status") == "running":
@@ -941,51 +1318,82 @@ def _hash_production_output(root: Path, relative: str) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
+def _validated_succeeded_outputs(
+    job: Mapping[str, Any], run: Mapping[str, Any]
+) -> list[tuple[str, str, int]]:
+    expected = job.get("outputs")
+    entries = run.get("outputs")
+    if (
+        not isinstance(expected, list)
+        or not isinstance(entries, list)
+        or len(entries) != len(expected)
+    ):
+        raise ValueError("succeeded outputs do not match the current job")
+    validated: list[tuple[str, str, int]] = []
+    for expected_path, output in zip(expected, entries, strict=True):
+        if not isinstance(output, Mapping) or set(output) != {
+            "path",
+            "media_type",
+            "bytes",
+            "sha256",
+        }:
+            raise ValueError("succeeded output record fields are invalid")
+        output_path = output.get("path")
+        digest = output.get("sha256")
+        size = output.get("bytes")
+        media_type = output.get("media_type")
+        if (
+            not isinstance(expected_path, str)
+            or output_path != expected_path
+            or not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size < 0
+            or media_type
+            != MEDIA_TYPES.get(PurePosixPath(expected_path).suffix.casefold())
+        ):
+            raise ValueError("succeeded output record is invalid")
+        validated.append((output_path, digest, size))
+    return validated
+
+
 def audit_project(root: Path) -> dict[str, Any]:
     """Reconcile local attempt history and current output bytes, not media quality."""
     root = find_project(root)
-    jobs_directory = root / PRODUCTION_ROOT / "jobs"
     jobs: list[dict[str, Any]] = []
     problems: list[dict[str, Any]] = []
-    if jobs_directory.exists():
-        details = jobs_directory.lstat()
-        if _is_link_or_reparse(details) or not stat.S_ISDIR(details.st_mode):
-            raise ValueError("production jobs directory is unsafe")
-        for path in sorted(jobs_directory.glob("*.json")):
-            try:
-                details = path.lstat()
-                if _is_link_or_reparse(details) or not stat.S_ISREG(details.st_mode):
-                    raise ValueError("stored job is unsafe")
-                if details.st_size > MAX_JOB_BYTES:
-                    raise ValueError("stored job is too large")
-                job = json.loads(path.read_text(encoding="utf-8"))
-                job_id = job.get("job_id") if isinstance(job, Mapping) else None
-                if (
-                    not isinstance(job, dict)
-                    or not isinstance(job_id, str)
-                    or JOB_ID_RE.fullmatch(job_id) is None
-                    or path.name != f"{_job_key(job_id)}.json"
-                ):
-                    raise ValueError("stored job is invalid")
-                jobs.append(job)
-            except (OSError, ValueError, json.JSONDecodeError):
-                problems.append(
-                    {
-                        "code": "invalid_job_record",
-                        "record": path.name,
-                        "action": "repair_production_metadata",
-                    }
-                )
+    for name in _metadata_json_names(root, ("jobs",)):
+        try:
+            document = _metadata_read_json(
+                root, ("jobs",), name, maximum=MAX_JOB_BYTES
+            )
+            job = _validate_stored_job(root, document)
+            job_id = job["job_id"]
+            if not isinstance(job_id, str) or name != f"{_job_key(job_id)}.json":
+                raise ValueError("stored job is invalid")
+            jobs.append(job)
+        except (OSError, ValueError, json.JSONDecodeError):
+            problems.append(
+                {
+                    "code": "invalid_job_record",
+                    "record": name,
+                    "action": "repair_production_metadata",
+                }
+            )
 
     attempts_total = 0
     attempts_succeeded = 0
     attempts_failed = 0
+    attempts_running = 0
+    attempts_superseded = 0
     repeated_content = 0
     recovered_jobs = 0
+    running_jobs = 0
     terminal_failed_jobs = 0
     retryable_terminal_failed_jobs = 0
     current_output_claims: dict[
-        str, tuple[tuple[str, str], str, int, str, str]
+        str, tuple[tuple[datetime, str], str, int, str, str]
     ] = {}
 
     for job in jobs:
@@ -1002,8 +1410,28 @@ def audit_project(root: Path) -> dict[str, Any]:
             )
             continue
         attempts_total += len(history)
-        attempts_succeeded += sum(run["status"] == "succeeded" for run in history)
-        attempts_failed += sum(run["status"] == "failed" for run in history)
+        completed = [run for run in history if run["status"] != "running"]
+        running = [run for run in history if run["status"] == "running"]
+        current = [
+            run for run in history if run["fingerprint"] == job["fingerprint"]
+        ]
+        current_completed = [run for run in current if run["status"] != "running"]
+        current_running = [run for run in current if run["status"] == "running"]
+        attempts_succeeded += sum(run["status"] == "succeeded" for run in completed)
+        attempts_failed += sum(run["status"] == "failed" for run in completed)
+        attempts_running += len(running)
+        attempts_superseded += len(history) - len(current)
+        if running:
+            running_jobs += 1
+            for run in running:
+                problems.append(
+                    {
+                        "code": "running_attempt",
+                        "job_id": job_id,
+                        "run_id": str(run["run_id"]),
+                        "action": "wait_or_investigate_running_attempt",
+                    }
+                )
         fingerprints = [
             str(run.get("fingerprint"))
             for run in history
@@ -1011,16 +1439,24 @@ def audit_project(root: Path) -> dict[str, Any]:
         ]
         repeated_content += len(fingerprints) - len(set(fingerprints))
         succeeded_indexes = [
-            index for index, run in enumerate(history) if run["status"] == "succeeded"
+            index
+            for index, run in enumerate(current_completed)
+            if run["status"] == "succeeded"
         ]
         failed_indexes = [
-            index for index, run in enumerate(history) if run["status"] == "failed"
+            index
+            for index, run in enumerate(current_completed)
+            if run["status"] == "failed"
         ]
         if succeeded_indexes and failed_indexes and min(failed_indexes) < max(succeeded_indexes):
             recovered_jobs += 1
-        if history and history[-1]["status"] == "failed":
+        if (
+            not current_running
+            and current_completed
+            and current_completed[-1]["status"] == "failed"
+        ):
             terminal_failed_jobs += 1
-            error = history[-1].get("error")
+            error = current_completed[-1].get("error")
             retryable = isinstance(error, Mapping) and error.get("retryable") is True
             if retryable:
                 retryable_terminal_failed_jobs += 1
@@ -1030,48 +1466,38 @@ def audit_project(root: Path) -> dict[str, Any]:
                         "terminal_retryable_failure" if retryable else "terminal_failure"
                     ),
                     "job_id": job_id,
-                    "run_id": history[-1]["run_id"],
+                    "run_id": current_completed[-1]["run_id"],
                     "action": (
                         "inspect_then_reconfirm_retry" if retryable else "inspect_failure"
                     ),
                 }
             )
-        for run in history:
-            if run["status"] != "succeeded" or not isinstance(run.get("outputs"), list):
+        for run in current:
+            if run["status"] != "succeeded":
                 continue
-            for output in run["outputs"]:
-                if not isinstance(output, Mapping):
-                    continue
-                output_path = output.get("path")
-                digest = output.get("sha256")
-                size = output.get("bytes")
-                if (
-                    isinstance(output_path, str)
-                    and isinstance(digest, str)
-                    and re.fullmatch(r"[0-9a-f]{64}", digest)
-                    and isinstance(size, int)
-                    and not isinstance(size, bool)
-                    and size >= 0
-                ):
-                    run_id = str(run["run_id"])
-                    claim_order = (str(run.get("started_at", "")), run_id)
-                    claim = current_output_claims.get(output_path)
-                    if claim is None or claim_order > claim[0]:
-                        current_output_claims[output_path] = (
-                            claim_order,
-                            digest,
-                            size,
-                            job_id,
-                            run_id,
-                        )
-                else:
-                    problems.append(
-                        {
-                            "code": "invalid_succeeded_output_record",
-                            "job_id": job_id,
-                            "run_id": str(run["run_id"]),
-                            "action": "repair_production_metadata",
-                        }
+            try:
+                outputs = _validated_succeeded_outputs(job, run)
+            except ValueError:
+                problems.append(
+                    {
+                        "code": "invalid_succeeded_output_record",
+                        "job_id": job_id,
+                        "run_id": str(run["run_id"]),
+                        "action": "repair_production_metadata",
+                    }
+                )
+                continue
+            for output_path, digest, size in outputs:
+                run_id = str(run["run_id"])
+                claim_order = _completed_run_order(run)
+                claim = current_output_claims.get(output_path)
+                if claim is None or claim_order > claim[0]:
+                    current_output_claims[output_path] = (
+                        claim_order,
+                        digest,
+                        size,
+                        job_id,
+                        run_id,
                     )
 
         if not _inputs_current(root, job):
@@ -1128,6 +1554,7 @@ def audit_project(root: Path) -> dict[str, Any]:
         "quality_verdict": "not_assessed",
         "jobs": {
             "total": len(jobs),
+            "running": running_jobs,
             "recovered": recovered_jobs,
             "terminal_failed": terminal_failed_jobs,
             "retryable_terminal_failed": retryable_terminal_failed_jobs,
@@ -1136,6 +1563,8 @@ def audit_project(root: Path) -> dict[str, Any]:
             "total": attempts_total,
             "succeeded": attempts_succeeded,
             "failed": attempts_failed,
+            "running": attempts_running,
+            "superseded": attempts_superseded,
             "repeated_content": repeated_content,
         },
         "outputs": {

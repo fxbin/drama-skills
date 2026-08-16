@@ -170,6 +170,112 @@ class ConfirmedProductionTests(unittest.TestCase):
                     adapter_config=self.adapter_config(directory),
                 )
 
+    def test_stored_job_tampering_cannot_reuse_an_old_confirmation(self) -> None:
+        mutations = {
+            "prompt": lambda document: document.update(prompt="未确认的新提示词"),
+            "output": lambda document: document.update(
+                outputs=["production/unconfirmed.png"]
+            ),
+            "parameters": lambda document: document.update(parameters={"count": 9}),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(field=label), tempfile.TemporaryDirectory() as directory:
+                root = self.make_project(directory)
+                job = self.write_job(root)
+                preview = self.prepare_and_confirm(root, job)
+                stored_path = production_tool._job_path(root, preview["job_id"])
+                document = json.loads(stored_path.read_text(encoding="utf-8"))
+                original_fingerprint = document["fingerprint"]
+                mutate(document)
+                self.assertEqual(document["fingerprint"], original_fingerprint)
+                stored_path.write_text(
+                    json.dumps(document, ensure_ascii=False), encoding="utf-8"
+                )
+
+                with self.assertRaisesRegex(ValueError, "fingerprint"):
+                    production_tool.run_job(
+                        root,
+                        job_id=preview["job_id"],
+                        adapter_config=self.adapter_config(directory),
+                    )
+                receipt = json.loads(
+                    production_tool._confirmation_path(
+                        root, preview["job_id"]
+                    ).read_text(encoding="utf-8")
+                )
+                self.assertIsNone(receipt["consumed_at"])
+                audit = production_tool.audit_project(root)
+                self.assertEqual(audit["status"], "attention")
+                self.assertEqual(
+                    audit["problems"],
+                    [
+                        {
+                            "code": "invalid_job_record",
+                            "record": stored_path.name,
+                            "action": "repair_production_metadata",
+                        }
+                    ],
+                )
+
+    def test_metadata_parent_symlinks_cannot_escape_the_project(self) -> None:
+        def link_directory(link: Path, target: Path) -> None:
+            try:
+                link.symlink_to(target, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+
+        with self.subTest(directory="jobs"), tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            outside = Path(directory) / "outside-jobs"
+            outside.mkdir()
+            jobs = root / ".short-drama/production/jobs"
+            jobs.parent.mkdir(parents=True)
+            link_directory(jobs, outside)
+
+            with self.assertRaisesRegex(ValueError, "metadata directory"):
+                production_tool.prepare_job(root, self.write_job(root))
+            self.assertEqual(list(outside.iterdir()), [])
+
+        with self.subTest(directory="confirmations"), tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = production_tool.prepare_job(root, job)
+            outside = Path(directory) / "outside-confirmations"
+            outside.mkdir()
+            confirmations = root / ".short-drama/production/confirmations"
+            link_directory(confirmations, outside)
+
+            with self.assertRaisesRegex(ValueError, "metadata directory"):
+                production_tool.confirm_job(
+                    root,
+                    job_id=preview["job_id"],
+                    confirmation=preview["confirmation"],
+                )
+            self.assertEqual(list(outside.iterdir()), [])
+
+        with self.subTest(directory="runs"), tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            outside = Path(directory) / "outside-runs"
+            outside.mkdir()
+            runs = root / ".short-drama/production/runs"
+            link_directory(runs, outside)
+
+            with self.assertRaisesRegex(ValueError, "metadata directory"):
+                production_tool.run_job(
+                    root,
+                    job_id=preview["job_id"],
+                    adapter_config=self.adapter_config(directory),
+                )
+            receipt = json.loads(
+                production_tool._confirmation_path(root, preview["job_id"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertIsNone(receipt["consumed_at"])
+            self.assertEqual(list(outside.iterdir()), [])
+
     def test_changed_input_requires_prepare_and_confirmation_again(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
@@ -386,6 +492,215 @@ class ConfirmedProductionTests(unittest.TestCase):
                         "job_id": preview["job_id"],
                         "run_id": audit["problems"][0]["run_id"],
                         "action": "inspect_then_reconfirm_retry",
+                    }
+                ],
+            )
+
+    def test_running_attempt_blocks_reconfirmation_and_stays_visible_to_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            stored = production_tool._read_job(root, preview["job_id"])
+            run_id = "run-still-active"
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": run_id,
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "running",
+                    "started_at": "2026-08-16T08:00:00Z",
+                    "finished_at": None,
+                    "outputs": [],
+                },
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "already running"):
+                production_tool.prepare_job(root, job)
+            with self.assertRaisesRegex(RuntimeError, "already running"):
+                production_tool.confirm_job(
+                    root,
+                    job_id=preview["job_id"],
+                    confirmation=preview["confirmation"],
+                )
+            with self.assertRaisesRegex(RuntimeError, "already running"):
+                production_tool.run_job(
+                    root,
+                    job_id=preview["job_id"],
+                    adapter_config=self.adapter_config(directory),
+                )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["jobs"]["running"], 1)
+            self.assertEqual(audit["attempts"]["running"], 1)
+            self.assertEqual(audit["jobs"]["terminal_failed"], 0)
+            self.assertEqual(
+                audit["problems"],
+                [
+                    {
+                        "code": "running_attempt",
+                        "job_id": preview["job_id"],
+                        "run_id": run_id,
+                        "action": "wait_or_investigate_running_attempt",
+                    }
+                ],
+            )
+
+    def test_audit_orders_terminal_state_and_recovery_by_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(root, self.write_job(root))
+            stored = production_tool._read_job(root, preview["job_id"])
+            target = root / preview["outputs"][0]
+            target.parent.mkdir(parents=True)
+            content = b"completed success"
+            target.write_bytes(content)
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": "run-slow-failure",
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "failed",
+                    "started_at": "2026-08-16T08:00:00Z",
+                    "finished_at": "2026-08-16T08:03:00Z",
+                    "outputs": [],
+                },
+            )
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": "run-fast-success",
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "succeeded",
+                    "started_at": "2026-08-16T08:01:00Z",
+                    "finished_at": "2026-08-16T08:02:00Z",
+                    "outputs": [
+                        {
+                            "path": preview["outputs"][0],
+                            "media_type": "image/png",
+                            "bytes": len(content),
+                            "sha256": production_tool.sha256_bytes(content),
+                        }
+                    ],
+                },
+            )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["jobs"]["recovered"], 0)
+            self.assertEqual(audit["jobs"]["terminal_failed"], 1)
+            self.assertEqual(audit["outputs"]["verified"], 1)
+            self.assertEqual(audit["problems"][0]["code"], "terminal_failure")
+            self.assertEqual(
+                production_tool.job_status(root, job_id=preview["job_id"])["state"],
+                "failed",
+            )
+
+    def test_audit_uses_latest_completed_successful_output_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(root, self.write_job(root))
+            stored = production_tool._read_job(root, preview["job_id"])
+            target = root / preview["outputs"][0]
+            target.parent.mkdir(parents=True)
+            early_content = b"completed first"
+            late_content = b"completed last"
+            target.write_bytes(late_content)
+            for run_id, started_at, finished_at, content in (
+                (
+                    "run-started-first",
+                    "2026-08-16T08:00:00Z",
+                    "2026-08-16T08:04:00Z",
+                    late_content,
+                ),
+                (
+                    "run-started-second",
+                    "2026-08-16T08:01:00Z",
+                    "2026-08-16T08:03:00Z",
+                    early_content,
+                ),
+            ):
+                production_tool._write_run(
+                    root,
+                    preview["job_id"],
+                    {
+                        "schema_version": "1.0",
+                        "run_id": run_id,
+                        "job_id": preview["job_id"],
+                        "fingerprint": stored["fingerprint"],
+                        "status": "succeeded",
+                        "started_at": started_at,
+                        "finished_at": finished_at,
+                        "outputs": [
+                            {
+                                "path": preview["outputs"][0],
+                                "media_type": "image/png",
+                                "bytes": len(content),
+                                "sha256": production_tool.sha256_bytes(content),
+                            }
+                        ],
+                    },
+                )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "pass")
+            self.assertEqual(audit["outputs"]["verified"], 1)
+            self.assertEqual(audit["outputs"]["modified"], 0)
+            self.assertEqual(audit["problems"], [])
+
+    def test_audit_rejects_a_success_claim_for_an_unconfirmed_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(root, self.write_job(root))
+            stored = production_tool._read_job(root, preview["job_id"])
+            unauthorized = "production/unconfirmed.png"
+            content = b"not a confirmed target"
+            target = root / unauthorized
+            target.parent.mkdir(parents=True)
+            target.write_bytes(content)
+            production_tool._write_run(
+                root,
+                preview["job_id"],
+                {
+                    "schema_version": "1.0",
+                    "run_id": "run-invalid-output-claim",
+                    "job_id": preview["job_id"],
+                    "fingerprint": stored["fingerprint"],
+                    "status": "succeeded",
+                    "started_at": "2026-08-16T08:00:00Z",
+                    "finished_at": "2026-08-16T08:01:00Z",
+                    "outputs": [
+                        {
+                            "path": unauthorized,
+                            "media_type": "image/png",
+                            "bytes": len(content),
+                            "sha256": production_tool.sha256_bytes(content),
+                        }
+                    ],
+                },
+            )
+
+            audit = production_tool.audit_project(root)
+            self.assertEqual(audit["status"], "attention")
+            self.assertEqual(audit["outputs"]["claimed_current"], 0)
+            self.assertEqual(
+                audit["problems"],
+                [
+                    {
+                        "code": "invalid_succeeded_output_record",
+                        "job_id": preview["job_id"],
+                        "run_id": "run-invalid-output-claim",
+                        "action": "repair_production_metadata",
                     }
                 ],
             )
