@@ -245,6 +245,22 @@ class SimpleLifecycleTests(unittest.TestCase):
     def test_publish_rejects_path_aliases_and_unsafe_episode_ids(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
+            for relative in (
+                "剧集/EP001/storyboard /shots.jsonl",
+                "剧集/EP001/storyboard./shots.jsonl",
+                "剧集/EP001/CON.json",
+                "剧集/EP001/notes\nextra.md",
+                "剧集/EP001/a:b.json",
+            ):
+                with self.subTest(relative=relative):
+                    with self.assertRaisesRegex(ValueError, "unsafe project-relative path"):
+                        project_tool.publish_candidate(
+                            root,
+                            owner="short-drama-write",
+                            artifact_id="nonportable",
+                            outputs={relative: "x"},
+                        )
+
             with self.assertRaises(project_tool.NonPortablePathError):
                 project_tool.publish_candidate(
                     root,
@@ -255,6 +271,19 @@ class SimpleLifecycleTests(unittest.TestCase):
                         "剧集/EP001/NOTES.md": "b",
                     },
                 )
+
+            composed = "项目开发/caf\N{LATIN SMALL LETTER E WITH ACUTE}.md"
+            decomposed = "项目开发/cafe\N{COMBINING ACUTE ACCENT}.md"
+            with self.assertRaisesRegex(
+                project_tool.NonPortablePathError, "portable aliases"
+            ):
+                project_tool.publish_candidate(
+                    root,
+                    owner="independent-development-skill",
+                    artifact_id="unicode-aliases",
+                    outputs={composed: "a", decomposed: "b"},
+                )
+
             with self.assertRaisesRegex(ValueError, "EP001-style"):
                 project_tool.publish_candidate(
                     root,
