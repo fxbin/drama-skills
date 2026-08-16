@@ -334,8 +334,8 @@ def validate_records(
         purpose = record.get("purpose")
         if purpose not in PURPOSES:
             raise ValidationError(f"{label}: invalid purpose {purpose!r}")
-        if record.get("status") != "candidate":
-            raise ValidationError(f"{label}: specs must remain candidate until creator acceptance")
+        if record.get("status") not in {"candidate", "accepted"}:
+            raise ValidationError(f"{label}: status must be candidate or accepted")
         leaked = sorted(vendor_field_paths(record))
         if leaked:
             raise ValidationError(f"{label}: provider execution fields are forbidden: {', '.join(leaked)}")

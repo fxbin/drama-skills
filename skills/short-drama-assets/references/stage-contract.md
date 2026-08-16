@@ -58,6 +58,14 @@
 （`accepted` / `candidate`），它属于这一条引用，不属于快照。指向整份产物或产物级字段时
 省略 `record_id`。
 
+创作者的接受记录发布在 `创作者决策/` 下，一条决定一个文件或一份 `.jsonl` 里的一行，
+每条至少写 `decision_id`（`CD-` 前缀）、`decision_kind` 和 `status`。资产记录的
+`creator_acceptance.decision_ref` 先把那份决策文件写进本文件的 `sources`，再按快照键引用它：
+
+```json
+{"status":"accepted","decision_ref":{"src":"cd-char-001","record_id":"CD-CHAR-001"}}
+```
+
 `assets/*.example.jsonl` 是模板目录，每条记录各有自己的 `destination`。把一条记录复制进
 它的目标文件时，把这条记录用到的 `sources` 条目一并写进那个文件的声明行。
 

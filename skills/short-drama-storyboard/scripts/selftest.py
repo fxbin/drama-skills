@@ -7,7 +7,11 @@ import copy
 import sys
 from typing import Any
 
-from storyboard_check import check_episode_duration, check_keyframe_boundaries
+from storyboard_check import (
+    check_boundary_entries,
+    check_episode_duration,
+    check_keyframe_boundaries,
+)
 
 MINIMUM_PYTHON = (3, 10)
 if sys.version_info < MINIMUM_PYTHON:
@@ -28,6 +32,15 @@ SHOT: dict[str, Any] = {
     "duration_seconds": 5,
     "start_boundary": "closed door",
     "end_boundary": "open door",
+}
+BOUNDED_SHOT: dict[str, Any] = {
+    "shot_id": "SHOT-002",
+    "duration_seconds": 5,
+    "start_boundary": {
+        "positions": ["站在柜台东侧（与上一镜相同）"],
+        "facing": ["面向门口"],
+    },
+    "end_boundary": {"positions": ["退到门内一步"], "facing": ["面向柜台"]},
 }
 SHOTS_SOURCE: dict[str, Any] = {
     "owner": "short-drama-storyboard",
@@ -112,7 +125,19 @@ def main() -> int:
         "a reference binding no snapshot was not detected",
     )
 
-    print("9 self-tests passed")
+    # A boundary entry that only says "same as before" reads as written but tells
+    # the next stage nothing; an absolute fact that mentions the previous shot in
+    # passing is fine and must not be flagged.
+    require(check_boundary_entries([BOUNDED_SHOT]) == [], "absolute boundary entries")
+    relative = copy.deepcopy(BOUNDED_SHOT)
+    relative["end_boundary"]["positions"] = ["（位置不变）"]
+    require(
+        "SHT05_BOUNDARY_ENTRY_IS_A_BACK_REFERENCE"
+        in codes(check_boundary_entries([relative])),
+        "a boundary entry that only points back was not detected",
+    )
+
+    print("11 self-tests passed")
     return 0
 
 

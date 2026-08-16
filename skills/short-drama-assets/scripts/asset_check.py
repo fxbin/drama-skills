@@ -187,7 +187,13 @@ def validate_acceptance(
         raise ValidationError(f"{label}: invalid creator_acceptance status")
     decision_ref = value.get("decision_ref")
     if value["status"] == "accepted" or decision_ref is not None:
-        validate_ref(decision_ref, sources, f"{label}.decision_ref")
+        resolved = validate_ref(decision_ref, sources, f"{label}.decision_ref")
+        # A decision_ref pointing at a block or an asset record binds acceptance to
+        # something that never recorded a creator decision.
+        if not str(resolved.record_id).startswith("CD-"):
+            raise ValidationError(
+                f"{label}.decision_ref: record_id must be a creator decision starting with CD-"
+            )
 
 
 def validate_records(characters: RecordFile, looks: RecordFile) -> dict[str, Any]:

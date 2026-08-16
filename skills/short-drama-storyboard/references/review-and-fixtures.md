@@ -9,7 +9,7 @@
 ## 这份目录只收什么
 
 本文只登记**不需要读懂戏就能判定**的分镜缺陷：时长账目的算术、关键帧声明的边界是否
-与它绑定的字段一致、每条引用是否解析得到一个上游快照。它们由
+与它绑定的字段一致、边界条目有没有写成常见的回指说法、每条引用是否解析得到一个上游快照。它们由
 [storyboard_check.py](../scripts/storyboard_check.py) 执行，`enforcer` 一律是 `validator`。
 脚本读引用时先取文件的 `sources` 声明，再按每条引用的 `src` 取回 `owner`、`artifact`
 和 `hash`。
@@ -26,6 +26,7 @@
 | REF_HAS_NO_UPSTREAM_BINDING | structural_invariant | validator | error | storyboard | 引用既没有 `src`，也没有完整的 `owner`/`artifact`/`hash` |
 | REF_IS_NOT_AN_OBJECT | structural_invariant | validator | error | storyboard | 引用位置上不是一个对象 |
 | SOURCE_ENTRY_IS_INCOMPLETE | structural_invariant | validator | error | storyboard | `sources` 条目缺少 `owner`、`artifact` 或 `hash` |
+| SHT05_BOUNDARY_ENTRY_IS_A_BACK_REFERENCE | structural_invariant | validator | error | storyboard | 边界条目整条是「同上」「位置不变」这类回指，没有写出绝对事实 |
 | SHT16_RECORD_MISSING | structural_invariant | validator | error | storyboard | 覆盖记录没有 `episode_duration` |
 | SHT16_RECORD_INCOMPLETE | structural_invariant | validator | error | storyboard | `episode_duration` 缺少 `counted_shot_ids` 或 `unresolved_durations` |
 | SHT16_SHOT_LEFT_THE_TOTAL | structural_invariant | validator | error | storyboard | 覆盖列出的镜头既不计入总和也没被挂起 |
