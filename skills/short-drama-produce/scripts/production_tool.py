@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Iterator, Mapping
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, BinaryIO
 
 MINIMUM_PYTHON = (3, 10)
 if sys.version_info < MINIMUM_PYTHON:
@@ -38,6 +38,8 @@ JOB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 MAX_JOB_BYTES = 256 * 1024
 MAX_ADAPTER_RESPONSE_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 512 * 1024 * 1024
+MAX_INPUT_BYTES = 50 * 1024 * 1024
+MAX_TOTAL_INPUT_BYTES = 200 * 1024 * 1024
 MAX_TIMEOUT_SECONDS = 3600
 ALLOWED_JOB_KEYS = {
     "schema_version",
@@ -120,9 +122,19 @@ def _relative_path(value: object, *, output: bool = False) -> str:
     if pure.parts[0].casefold() == ".short-drama" or pure.name.casefold() == PROJECT_FILE:
         raise ValueError(f"operational project path is not allowed: {value}")
     if output:
-        folded = {part.casefold() for part in pure.parts}
-        if "production" not in folded and "制作成果" not in pure.parts:
-            raise ValueError("media outputs must live below a production/制作成果 directory")
+        parts = pure.parts
+        top_level_production = len(parts) >= 2 and parts[0].casefold() == "production"
+        episode_production = (
+            len(parts) >= 4
+            and parts[0] in {"剧集", "episodes"}
+            and re.fullmatch(r"EP\d{3,}", parts[1], re.IGNORECASE) is not None
+            and parts[2] in {"制作成果", "production"}
+        )
+        if not top_level_production and not episode_production:
+            raise ValueError(
+                "media outputs must use top-level production/ or "
+                "剧集|episodes/<EP>/制作成果|production/"
+            )
     return pure.as_posix()
 
 
@@ -142,15 +154,122 @@ def _project_file(root: Path, relative: str, *, create_parent: bool = False) -> 
     return target
 
 
-def _hash_project_file(root: Path, relative: str) -> str:
-    path = _project_file(root, relative)
-    if not path.is_file():
-        raise FileNotFoundError(f"job input is missing: {relative}")
-    digest = hashlib.sha256()
+def _is_link_or_reparse(details: os.stat_result) -> bool:
+    attributes = getattr(details, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return stat.S_ISLNK(details.st_mode) or bool(attributes & reparse_flag)
+
+
+@contextlib.contextmanager
+def _open_project_input(root: Path, relative: str) -> Iterator[BinaryIO]:
+    """Open one regular project input without following path components on POSIX."""
+    parts = PurePosixPath(relative).parts
+    if not parts:
+        raise ValueError("job input path is empty")
+    if os.name != "nt" and os.open in os.supports_dir_fd:
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory_fd = os.open(root, directory_flags)
+        file_fd: int | None = None
+        try:
+            for part in parts[:-1]:
+                next_fd = os.open(
+                    part,
+                    directory_flags | nofollow,
+                    dir_fd=directory_fd,
+                )
+                os.close(directory_fd)
+                directory_fd = next_fd
+            file_fd = os.open(
+                parts[-1], os.O_RDONLY | nofollow, dir_fd=directory_fd
+            )
+            details = os.fstat(file_fd)
+            if not stat.S_ISREG(details.st_mode):
+                raise ValueError(f"job input is not a regular file: {relative}")
+            with os.fdopen(file_fd, "rb", closefd=True) as handle:
+                file_fd = None
+                yield handle
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"job input is missing: {relative}") from exc
+        except OSError as exc:
+            raise ValueError(f"unsafe job input path: {relative}") from exc
+        finally:
+            if file_fd is not None:
+                os.close(file_fd)
+            os.close(directory_fd)
+        return
+
+    path = root
+    for part in parts:
+        path /= part
+        try:
+            details = path.lstat()
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"job input is missing: {relative}") from exc
+        if _is_link_or_reparse(details):
+            raise ValueError(f"unsafe job input path: {relative}")
+    if not path.resolve().is_relative_to(root):
+        raise ValueError(f"job input escapes project root: {relative}")
+    before = path.stat(follow_symlinks=False)
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError(f"job input is not a regular file: {relative}")
     with path.open("rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise ValueError(f"job input changed while opening: {relative}")
+        yield handle
+
+
+def _hash_project_file(root: Path, relative: str) -> str:
+    digest = hashlib.sha256()
+    size = 0
+    with _open_project_input(root, relative) as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            size += len(chunk)
+            if size > MAX_INPUT_BYTES:
+                raise ValueError(f"job input exceeds the size limit: {relative}")
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _snapshot_inputs(
+    root: Path, job: Mapping[str, Any], snapshot_root: Path
+) -> None:
+    inputs = job.get("inputs")
+    if not isinstance(inputs, Mapping):
+        raise ConfirmationRequiredError("stored job inputs are invalid")
+    total = 0
+    for relative_value, expected_value in inputs.items():
+        relative = _relative_path(relative_value)
+        if not isinstance(expected_value, str) or re.fullmatch(
+            r"[0-9a-f]{64}", expected_value
+        ) is None:
+            raise ConfirmationRequiredError("stored job input hash is invalid")
+        target = snapshot_root.joinpath(*PurePosixPath(relative).parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with _open_project_input(root, relative) as incoming, target.open(
+                "xb"
+            ) as outgoing:
+                for chunk in iter(lambda: incoming.read(1024 * 1024), b""):
+                    size += len(chunk)
+                    total += len(chunk)
+                    if size > MAX_INPUT_BYTES or total > MAX_TOTAL_INPUT_BYTES:
+                        raise ConfirmationRequiredError(
+                            "job inputs exceed the production size limit"
+                        )
+                    digest.update(chunk)
+                    outgoing.write(chunk)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            raise ConfirmationRequiredError(
+                "job inputs changed; prepare and confirm again"
+            ) from exc
+        if digest.hexdigest() != expected_value:
+            raise ConfirmationRequiredError(
+                "job inputs changed; prepare and confirm again"
+            )
 
 
 def _canonical(document: object) -> bytes:
@@ -468,13 +587,31 @@ def _validate_adapter_outputs(job: Mapping[str, Any], response: Mapping[str, Any
     return result
 
 
-def _copy_output(source: Path, target: Path) -> tuple[str, int]:
+def _copy_output(source: Path, target: Path, *, overwrite: bool) -> tuple[str, int]:
     temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     target.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     size = 0
     try:
-        with source.open("rb") as incoming, temporary.open("xb") as outgoing:
+        try:
+            before = source.lstat()
+        except OSError as exc:
+            raise AdapterError(
+                "adapter output file is missing; confirmation was consumed"
+            ) from exc
+        if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode):
+            raise AdapterError("adapter output file is unsafe; confirmation was consumed")
+        descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+        ):
+            os.close(descriptor)
+            raise AdapterError("adapter output changed while opening; confirmation was consumed")
+        with os.fdopen(descriptor, "rb", closefd=True) as incoming, temporary.open(
+            "xb"
+        ) as outgoing:
             for chunk in iter(lambda: incoming.read(1024 * 1024), b""):
                 size += len(chunk)
                 if size > MAX_OUTPUT_BYTES:
@@ -483,7 +620,16 @@ def _copy_output(source: Path, target: Path) -> tuple[str, int]:
                 outgoing.write(chunk)
             outgoing.flush()
             os.fsync(outgoing.fileno())
-        os.replace(temporary, target)
+        if overwrite:
+            os.replace(temporary, target)
+        else:
+            try:
+                os.link(temporary, target, follow_symlinks=False)
+            except FileExistsError as exc:
+                raise FileExistsError(
+                    f"output appeared while production was running: {target.name}"
+                ) from exc
+            temporary.unlink()
     finally:
         try:
             temporary.unlink()
@@ -509,75 +655,78 @@ def _write_run(root: Path, job_id: str, run: Mapping[str, Any]) -> None:
 
 def run_job(root: Path, *, job_id: str, adapter_config: Path) -> dict[str, Any]:
     root = find_project(root)
-    with _project_lock(root):
-        job = _read_job(root, job_id)
-        if not _inputs_current(root, job):
-            raise ConfirmationRequiredError("job inputs changed; prepare and confirm again")
-        command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
-        receipt_path = _confirmation_path(root, job_id)
-        try:
-            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-        except FileNotFoundError as exc:
-            raise ConfirmationRequiredError("job needs explicit confirmation") from exc
-        if (
-            not isinstance(receipt, dict)
-            or receipt.get("fingerprint") != job.get("fingerprint")
-            or receipt.get("consumed_at") is not None
-        ):
-            raise ConfirmationRequiredError("job needs a new explicit confirmation")
-        for output in job["outputs"]:
-            target = _project_file(root, output)
-            if target.exists() and not job["overwrite"]:
-                raise FileExistsError(f"output exists and overwrite is false: {output}")
-        run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
-        receipt["consumed_at"] = utc_now()
-        receipt["run_id"] = run_id
-        _atomic_json(receipt_path, receipt)
-        run = {
-            "schema_version": JOB_SCHEMA,
-            "run_id": run_id,
-            "job_id": job_id,
-            "fingerprint": job["fingerprint"],
-            "modality": job["modality"],
-            "adapter": job["adapter"],
-            "status": "running",
-            "started_at": utc_now(),
-            "finished_at": None,
-            "outputs": [],
-        }
-        _write_run(root, job_id, run)
+    with tempfile.TemporaryDirectory(prefix="short-drama-inputs-") as directory:
+        snapshot_root = Path(directory)
+        with _project_lock(root):
+            job = _read_job(root, job_id)
+            command, timeout = _load_adapter(adapter_config, str(job["adapter"]), root)
+            receipt_path = _confirmation_path(root, job_id)
+            try:
+                receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            except FileNotFoundError as exc:
+                raise ConfirmationRequiredError("job needs explicit confirmation") from exc
+            if (
+                not isinstance(receipt, dict)
+                or receipt.get("fingerprint") != job.get("fingerprint")
+                or receipt.get("consumed_at") is not None
+            ):
+                raise ConfirmationRequiredError("job needs a new explicit confirmation")
+            for output in job["outputs"]:
+                target = _project_file(root, output)
+                if target.exists() and not job["overwrite"]:
+                    raise FileExistsError(f"output exists and overwrite is false: {output}")
+            _snapshot_inputs(root, job, snapshot_root)
+            run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
+            receipt["consumed_at"] = utc_now()
+            receipt["run_id"] = run_id
+            _atomic_json(receipt_path, receipt)
+            run = {
+                "schema_version": JOB_SCHEMA,
+                "run_id": run_id,
+                "job_id": job_id,
+                "fingerprint": job["fingerprint"],
+                "modality": job["modality"],
+                "adapter": job["adapter"],
+                "status": "running",
+                "started_at": utc_now(),
+                "finished_at": None,
+                "outputs": [],
+            }
+            _write_run(root, job_id, run)
 
-    payload = {key: job[key] for key in ALLOWED_JOB_KEYS if key in job}
-    payload.update({"run_id": run_id, "project_root": str(root)})
-    try:
-        response = _run_adapter(command, timeout, payload, root)
-        adapter_outputs = _validate_adapter_outputs(job, response)
-        written: list[dict[str, Any]] = []
-        with _project_lock(root):
-            for target_name, source in adapter_outputs:
-                target = _project_file(root, target_name, create_parent=True)
-                digest, size = _copy_output(source, target)
-                written.append(
-                    {
-                        "path": target_name,
-                        "media_type": MEDIA_TYPES[PurePosixPath(target_name).suffix.casefold()],
-                        "bytes": size,
-                        "sha256": digest,
-                    }
-                )
-            run["status"] = "succeeded"
-            run["finished_at"] = utc_now()
-            run["outputs"] = written
-            provider_job_id = response.get("provider_job_id")
-            if isinstance(provider_job_id, str) and len(provider_job_id) <= 200:
-                run["provider_job_id"] = provider_job_id
-            _write_run(root, job_id, run)
-    except Exception:
-        with _project_lock(root):
-            run["status"] = "failed"
-            run["finished_at"] = utc_now()
-            _write_run(root, job_id, run)
-        raise
+        payload = {key: job[key] for key in ALLOWED_JOB_KEYS if key in job}
+        payload.update({"run_id": run_id, "project_root": str(snapshot_root)})
+        try:
+            response = _run_adapter(command, timeout, payload, root)
+            adapter_outputs = _validate_adapter_outputs(job, response)
+            written: list[dict[str, Any]] = []
+            with _project_lock(root):
+                for target_name, source in adapter_outputs:
+                    target = _project_file(root, target_name, create_parent=True)
+                    digest, size = _copy_output(
+                        source, target, overwrite=bool(job["overwrite"])
+                    )
+                    written.append(
+                        {
+                            "path": target_name,
+                            "media_type": MEDIA_TYPES[PurePosixPath(target_name).suffix.casefold()],
+                            "bytes": size,
+                            "sha256": digest,
+                        }
+                    )
+                run["status"] = "succeeded"
+                run["finished_at"] = utc_now()
+                run["outputs"] = written
+                provider_job_id = response.get("provider_job_id")
+                if isinstance(provider_job_id, str) and len(provider_job_id) <= 200:
+                    run["provider_job_id"] = provider_job_id
+                _write_run(root, job_id, run)
+        except Exception:
+            with _project_lock(root):
+                run["status"] = "failed"
+                run["finished_at"] = utc_now()
+                _write_run(root, job_id, run)
+            raise
     return {
         "job_id": job_id,
         "run_id": run_id,

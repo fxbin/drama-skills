@@ -20,7 +20,10 @@
 - `modality`: `image`, `video`, or `tts`.
 - `source`: optional current project text/spec that owns the prompt.
 - `references`: zero to sixteen current project files actually sent to production.
-- `outputs`: one to sixteen unique project paths under a `production` or `制作成果` directory; extensions must match the modality.
+- `outputs`: one to sixteen unique paths rooted at top-level `production/` or
+  `剧集|episodes/<EP>/制作成果|production/`; extensions must match the modality.
+  A nested directory merely named `production` does not grant write access to
+  protected input or delivery trees.
 - `parameters`: provider-neutral public settings only. Secret-like keys are rejected.
 - `overwrite`: must be explicitly true to replace an existing result.
 
@@ -50,7 +53,9 @@ let the adapter read its environment or operating-system credential store.
 The adapter receives the confirmed job plus:
 
 - `run_id`: unique attempt ID;
-- `project_root`: local absolute project root, so the adapter can resolve source/reference paths.
+- `project_root`: local absolute path to a private run snapshot containing only
+  the exact confirmed source/reference bytes. It is not the live project and is
+  removed after the attempt.
 
 It may translate provider-neutral parameters into its chosen SDK/API. The suite deliberately does not prescribe a
 provider, model name, polling protocol, or upload mechanism.

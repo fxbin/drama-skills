@@ -1,5 +1,6 @@
 import importlib.util
 import json
+from unittest import mock
 import subprocess
 import sys
 import tempfile
@@ -255,11 +256,77 @@ class ConfirmedProductionTests(unittest.TestCase):
                 "confirmed",
             )
 
+    def test_adapter_reads_an_immutable_confirmed_input_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            self.prepare_and_confirm(root, job)
+            original = (root / "剧集/EP001/prompts/current.md").read_bytes()
+
+            def inspect_snapshot(command, timeout, payload, cwd):
+                snapshot = Path(payload["project_root"])
+                self.assertNotEqual(snapshot, root)
+                (root / "剧集/EP001/prompts/current.md").write_bytes(
+                    b"CHANGED AFTER CHECK"
+                )
+                source = snapshot / "剧集/EP001/prompts/current.md"
+                self.assertEqual(source.read_bytes(), original)
+                output = Path(directory) / "snapshot-result.png"
+                output.write_bytes(source.read_bytes())
+                return {
+                    "outputs": [
+                        {"target": payload["outputs"][0], "source": str(output)}
+                    ]
+                }
+
+            with mock.patch.object(
+                production_tool, "_run_adapter", side_effect=inspect_snapshot
+            ):
+                result = production_tool.run_job(
+                    root,
+                    job_id="EP001-SHOT001",
+                    adapter_config=self.adapter_config(directory),
+                )
+            self.assertEqual(result["state"], "succeeded")
+            self.assertEqual(
+                (root / result["outputs"][0]["path"]).read_bytes(), original
+            )
+
+    def test_output_created_during_adapter_run_is_not_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_job(root)
+            preview = self.prepare_and_confirm(root, job)
+            target = root / preview["outputs"][0]
+
+            def create_target_during_run(command, timeout, payload, cwd):
+                source = Path(directory) / "adapter-result.png"
+                source.write_bytes(b"generated")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"CONCURRENT FILE")
+                return {
+                    "outputs": [
+                        {"target": payload["outputs"][0], "source": str(source)}
+                    ]
+                }
+
+            with mock.patch.object(
+                production_tool, "_run_adapter", side_effect=create_target_during_run
+            ), self.assertRaisesRegex(FileExistsError, "appeared"):
+                production_tool.run_job(
+                    root,
+                    job_id="EP001-SHOT001",
+                    adapter_config=self.adapter_config(directory),
+                )
+            self.assertEqual(target.read_bytes(), b"CONCURRENT FILE")
+
     def test_job_rejects_secrets_wrong_extensions_and_unsafe_outputs(self) -> None:
         cases = (
             ({"api_key": "not-allowed"}, None, "credentials"),
             ({}, "剧集/EP001/制作成果/image/result.mp4", "extension"),
             ({}, "剧集/EP001/result.png", "production"),
+            ({}, "输入/production/stolen.png", "production"),
+            ({}, "交付/production/result.png", "production"),
             ({}, "../result.png", "unsafe"),
         )
         for parameters, output, message in cases:
