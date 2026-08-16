@@ -51,7 +51,7 @@ import sys
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path, PurePosixPath
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, TextIO
 
 # ---------------------------------------------------------------------------
 # REFERENCE RESOLVER -- reference implementation.
@@ -186,6 +186,29 @@ class LoadedFile(NamedTuple):
     fmt: FileFormat
     records: list[Any]
     original_bytes: bytes
+
+
+def emit(line: str, *, stream: TextIO | None = None) -> None:
+    """Print a line that may name a path like ``剧集/EP001/…``.
+
+    A Windows console defaults to a legacy codepage that cannot encode those
+    names, and the findings worth reporting are exactly the ones carrying a
+    project path.
+    """
+    target = stream if stream is not None else sys.stdout
+    try:
+        print(line, file=target)
+        return
+    except UnicodeEncodeError:
+        pass
+    buffer = getattr(target, "buffer", None)
+    if buffer is None:
+        encoding = getattr(target, "encoding", "ascii") or "ascii"
+        print(line.encode(encoding, "backslashreplace").decode(encoding), file=target)
+        return
+    target.flush()
+    buffer.write(f"{line}\n".encode())
+    buffer.flush()
 
 
 def sha256_bytes(payload: bytes) -> str:
@@ -498,7 +521,7 @@ def build_order(files: dict[str, LoadedFile]) -> list[str]:
         if not ready:
             # A cycle: break it in name order so the run stays deterministic.
             ready = [pending[0]]
-            print(f"warning: reference cycle involving {pending[0]}", file=sys.stderr)
+            emit(f"warning: reference cycle involving {pending[0]}", stream=sys.stderr)
         for name in ready:
             order.append(name)
             done.add(name)
@@ -555,7 +578,7 @@ def migrate(root: Path) -> int:
             changed += 1
             remap[(relative, sha256_bytes(loaded.original_bytes))] = sha256_bytes(payload)
 
-    print(f"rewrote {changed} of {len(files)} data files under {root}")
+    emit(f"rewrote {changed} of {len(files)} data files under {root}")
     return 0
 
 
@@ -614,11 +637,11 @@ def check(root: Path) -> int:
                 findings.append(Finding(relative, "SOURCE_HASH_IS_STALE", detail))
 
     if not findings:
-        print(f"every reference in {len(files)} data files under {root} resolves to a current snapshot")
+        emit(f"every reference in {len(files)} data files under {root} resolves to a current snapshot")
         return 0
     for report in findings:
-        print(f"{report.path}: {report.code}: {report.detail}")
-    print(f"\n{len(findings)} finding(s)", file=sys.stderr)
+        emit(f"{report.path}: {report.code}: {report.detail}")
+    emit(f"\n{len(findings)} finding(s)", stream=sys.stderr)
     return 1
 
 
@@ -668,7 +691,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root: Path = args.project
     if not root.is_dir():
-        print(f"error: {root} is not a directory", file=sys.stderr)
+        emit(f"error: {root} is not a directory", stream=sys.stderr)
         return 2
     return check(root) if args.check else migrate(root)
 

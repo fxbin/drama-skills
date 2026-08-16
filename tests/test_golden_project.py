@@ -1,5 +1,6 @@
 import hashlib
 import importlib.util
+import io
 import json
 import re
 import shutil
@@ -454,6 +455,20 @@ class GoldenProjectTests(unittest.TestCase):
                 {finding["code"] for finding in result["findings"]},
             )
             self.assertEqual(compact_refs.check(broken), 1)
+
+    def test_findings_print_on_a_console_that_cannot_encode_project_paths(self) -> None:
+        """Windows CI caught this: reporting a finding crashed instead of reporting it.
+
+        Every path worth naming in a finding contains characters like 剧集, and a
+        Windows console defaults to cp1252, so `print` raised UnicodeEncodeError
+        from inside the reporting loop — the tool died on exactly the trees it
+        existed to diagnose.
+        """
+        stream = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+        compact_refs.emit("剧集/EP001/storyboard/keyframes.jsonl: REF_SRC_IS_NOT_DECLARED", stream=stream)
+        stream.flush()
+        written = stream.buffer.getvalue().decode("utf-8")  # type: ignore[attr-defined]
+        self.assertIn("剧集/EP001/storyboard/keyframes.jsonl", written)
 
     def test_approved_review_is_bound_to_creator_accepted_hashes_and_text_policy(self) -> None:
         acceptance_path = GOLDEN / "创作者决策/golden-production-acceptance.jsonl"
