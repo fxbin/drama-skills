@@ -77,7 +77,11 @@ def main() -> int:
     record["creator_acceptance"] = {"status": "approved", "decision_ref": None}
     expect_failure(invalid, looks, "invalid creator_acceptance status")
 
-    print("8 self-tests passed")
+    misbound, record = edited(characters, 0)
+    record["creator_acceptance"]["decision_ref"]["record_id"] = "SC001-A01"
+    expect_failure(misbound, looks, "must be a creator decision starting with CD-")
+
+    print("9 self-tests passed")
     return 0
 
 

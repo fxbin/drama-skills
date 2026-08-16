@@ -8,6 +8,7 @@ python3 <core>/scripts/project_tool.py status <project>
 python3 <core>/scripts/project_tool.py publish <project> --owner short-drama-write --artifact-id EP001:script --output 剧集/EP001/screenplay.md=_work/screenplay.next.md --input 项目开发/episode-map.jsonl
 python3 <core>/scripts/project_tool.py accept <project> --artifact-id EP001:script --decision accepted [--note <note>]
 python3 <core>/scripts/project_tool.py review <project> --artifact-id EP001:script --verdict approve [--reviewer <label>] [--note <note>]
+python3 <core>/scripts/project_tool.py set-authority <project> --field /creator_authority/production_profile --decision-ref 创作者决策/decisions.jsonl#CD-PROFILE-001
 python3 <core>/scripts/project_tool.py package <project> --episode EP001 --include 剧集/EP001/screenplay.md [--omit <path>=<reason>]
 python3 <core>/scripts/project_tool.py verify <project> --episode EP001
 ```
@@ -23,8 +24,8 @@ output 路径只能有一个 owner。
 B 又读 C 不会让 A 自动过期，只有 A 下次实际重建时才读取当前 B。
 
 默认只允许发布到标准阶段目录。`输入/**`、`.short-drama/**`、`交付/**` 和任何
-`short-drama.json` 都不可作为 publish 目标。分集目录使用 `EP001` 形式。未登记的临时路径
-必须显式加 `--allow-unregistered-path`。
+`short-drama.json` 都不可作为 publish 目标；`short-drama.json` 用 `set-authority` 写。分集目录
+使用 `EP001` 形式。未登记的临时路径必须显式加 `--allow-unregistered-path`。
 
 发布逐个文件原子完成：进程中断最多留下未被采用的临时文件，已完成的每个目标都是完整文件。
 再次运行同一条发布命令即可继续。
@@ -52,6 +53,22 @@ B 又读 C 不会让 A 自动过期，只有 A 下次实际重建时才读取当
 
 重新 `publish` 会清除该 artifact 的旧接受与复核。`status` 在读取时检查当前输出和直接输入，
 只报告 `update_needed`，不修改状态文件，也不传播或保存“下游闭包”。
+
+## 写回创作者权威
+
+创作者定下制作形态、视觉方向、播放面或集长目标后，先把这条决定作为一条创作者决策记录
+发布到 `创作者决策/` 并 `accept`，再写回 `short-drama.json`：
+
+```text
+... set-authority <project> --field /creator_authority/delivery_surface --decision-ref 创作者决策/decisions.jsonl#CD-SURFACE-001
+... set-authority <project> --field /format/target_seconds_per_episode --decision-ref 创作者决策/decisions.jsonl#CD-LENGTH-001
+```
+
+`--field` 只接受 `/creator_authority/*` 与 `/format/target_seconds_per_episode`。被引用的记录
+`status` 必须是 `accepted`，`target_locators` 必须含 `{"src":"short-drama","field":"<同一 field>"}`，
+命令写入它的 `accepted_value`。写到 `visual_direction`、`production_profile`、`delivery_surface`
+这类带 `status` 的块时，`accepted_value` 的键并入该块的 `choices`（该块没有 `choices` 就并入块
+本身），`status` 置为 `accepted`；集长目标写正数秒。下游读到的就是这里已 `accepted` 的值。
 
 ## 打包与复核
 

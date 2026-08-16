@@ -98,6 +98,9 @@ PROTECTED_PUBLISH_ROOTS = {
     for name in (CANONICAL_ROOTS[role], LEGACY_ROOTS[role])
 } | {".short-drama": "operational state cannot be a publication target"}
 
+AUTHORITY_ROOT_TOKEN = "creator_authority"
+EPISODE_LENGTH_POINTER = "/format/target_seconds_per_episode"
+
 class ProjectConflictError(RuntimeError):
     """A file changed while a guarded operation was in progress."""
 
@@ -1112,6 +1115,123 @@ def record_review(
         _save_state(root, state, action="reviewed")
     return {"artifact_id": artifact_id, "verdict": verdict, "state": _artifact_state(root, record)}
 
+
+def _authority_tokens(field: str) -> list[str]:
+    if not field.startswith("/"):
+        raise ValueError(f"--field must be a JSON pointer starting with /: {field}")
+    tokens = [
+        token.replace("~1", "/").replace("~0", "~") for token in field[1:].split("/")
+    ]
+    if any(not token for token in tokens):
+        raise ValueError(f"--field has an empty pointer segment: {field}")
+    if field != EPISODE_LENGTH_POINTER and (
+        tokens[0] != AUTHORITY_ROOT_TOKEN or len(tokens) < 2
+    ):
+        raise ValueError(
+            f"set-authority writes /{AUTHORITY_ROOT_TOKEN}/* and {EPISODE_LENGTH_POINTER} only"
+        )
+    return tokens
+
+
+def _accepted_decision_value(
+    root: Path,
+    state: Mapping[str, Any],
+    *,
+    decision_path: str,
+    decision_id: str,
+    field: str,
+) -> Any:
+    relative = _relative_path(decision_path)
+    if _root_role(PurePosixPath(relative).parts[0]) != "creator-decisions":
+        expected = CANONICAL_ROOTS["creator-decisions"]
+        raise ValueError(f"creator decisions live in {expected}/: {relative}")
+    try:
+        _, record = _artifact_for_path(state, relative)
+    except PackageBlockedError as exc:
+        raise ValueError(f"creator decision file is not a published artifact: {relative}") from exc
+    if _artifact_state(root, record) not in {"accepted", "approved"}:
+        raise ValueError(f"creator decision file is not accepted and current: {relative}")
+    text = _project_path(root, relative).read_text(encoding="utf-8")
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        decision = json.loads(line)
+        if not isinstance(decision, Mapping) or decision.get("decision_id") != decision_id:
+            continue
+        if decision.get("status") != "accepted":
+            raise ValueError(f"{decision_id} is not an accepted creator decision")
+        locators = decision.get("target_locators")
+        if not isinstance(locators, list) or not any(
+            isinstance(locator, Mapping)
+            and locator.get("src") == "short-drama"
+            and locator.get("field") == field
+            for locator in locators
+        ):
+            raise ValueError(f"{decision_id} does not target {field}")
+        if "accepted_value" not in decision:
+            raise ValueError(f"{decision_id} carries no accepted_value at {relative}:{number}")
+        return decision["accepted_value"]
+    raise KeyError(f"unknown creator decision: {decision_id}")
+
+
+def _write_authority_value(project: dict[str, Any], tokens: list[str], value: Any) -> Any:
+    cursor: Any = project
+    for token in tokens[:-1]:
+        cursor = cursor.get(token) if isinstance(cursor, dict) else None
+        if not isinstance(cursor, dict):
+            raise ValueError(f"project manifest has no object at /{'/'.join(tokens[:-1])}")
+    leaf = tokens[-1]
+    current = cursor.get(leaf)
+    if not (isinstance(current, dict) and "status" in current):
+        cursor[leaf] = value
+        return value
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(f"/{'/'.join(tokens)} needs a non-empty object accepted_value")
+    if "status" in value:
+        raise ValueError("accepted_value must not carry its own status")
+    block = dict(current)
+    choices = block.get("choices")
+    if isinstance(choices, Mapping):
+        block["choices"] = {**choices, **value}
+    else:
+        block.update(value)
+    block["status"] = "accepted"
+    cursor[leaf] = block
+    return block
+
+
+def set_creator_authority(
+    root: Path,
+    *,
+    field: str,
+    decision_path: str,
+    decision_id: str,
+) -> dict[str, Any]:
+    tokens = _authority_tokens(field)
+    root = find_project(root)
+    with _project_lock(root):
+        state = _read_state(root)
+        value = _accepted_decision_value(
+            root,
+            state,
+            decision_path=decision_path,
+            decision_id=decision_id,
+            field=field,
+        )
+        if field == EPISODE_LENGTH_POINTER and not (
+            isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+        ):
+            raise ValueError("target_seconds_per_episode must be a positive number of seconds")
+        project_path = root / PROJECT_FILE
+        project = json.loads(project_path.read_text(encoding="utf-8"))
+        if not isinstance(project, dict):
+            raise ValueError("project manifest must be an object")
+        written = _write_authority_value(project, tokens, value)
+        atomic_json(project_path, project)
+        _save_state(root, state, action="authority_set")
+    return {"field": field, "decision_id": decision_id, "value": written}
+
+
 def _artifact_for_path(state: Mapping[str, Any], relative: str) -> tuple[str, Mapping[str, Any]]:
     found: list[tuple[str, Mapping[str, Any]]] = []
     artifacts = state.get("artifacts", {})
@@ -1526,6 +1646,13 @@ def _parse_output_bindings(root: Path, values: Iterable[str]) -> dict[str, bytes
     return outputs
 
 
+def _parse_decision_ref(value: str) -> tuple[str, str]:
+    path, separator, decision_id = value.rpartition("#")
+    if not separator or not path.strip() or not decision_id.strip():
+        raise ValueError("--decision-ref uses 创作者决策/<file>.jsonl#<decision-id>")
+    return path.strip(), decision_id.strip()
+
+
 def _parse_omissions(values: Iterable[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for value in values:
@@ -1579,6 +1706,22 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--reviewer", default="")
     review.add_argument("--note", default="")
 
+    authority = commands.add_parser(
+        "set-authority", help="Write an accepted creator decision into project authority."
+    )
+    authority.add_argument("path")
+    authority.add_argument(
+        "--field",
+        required=True,
+        help=f"JSON pointer under /{AUTHORITY_ROOT_TOKEN}/ or {EPISODE_LENGTH_POINTER}.",
+    )
+    authority.add_argument(
+        "--decision-ref",
+        required=True,
+        dest="decision_ref",
+        help="Bind 创作者决策/<file>.jsonl#<decision-id>.",
+    )
+
     package = commands.add_parser("package", help="Package approved text/JSON artifacts.")
     package.add_argument("path")
     package.add_argument("--episode", required=True)
@@ -1631,6 +1774,14 @@ def main(argv: list[str] | None = None) -> int:
                 verdict=args.verdict,
                 reviewer=args.reviewer,
                 note=args.note,
+            )
+        elif args.command == "set-authority":
+            decision_path, decision_id = _parse_decision_ref(args.decision_ref)
+            result = set_creator_authority(
+                Path(args.path),
+                field=args.field,
+                decision_path=decision_path,
+                decision_id=decision_id,
             )
         elif args.command == "package":
             result = build_delivery_package(

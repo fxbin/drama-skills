@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Check the two storyboard invariants that are pure bookkeeping.
+"""Check the storyboard invariants that are pure bookkeeping.
 
-`SHT-16` is arithmetic over shot durations and `SHT-17` is a structural claim
-about which boundary a keyframe freezes. Neither needs a reading of the drama,
-so leaving both to a reviewer spends judgment on work a script does exactly.
-Everything requiring judgment stays in the reference documents.
+`SHT-16` is arithmetic over shot durations, `SHT-17` is a structural claim about
+which boundary a keyframe freezes, and a boundary entry that only points back at
+an earlier shot states no fact at all. None of these needs a reading of the
+drama, so leaving them to a reviewer spends judgment on work a script does
+exactly. Everything requiring judgment stays in the reference documents.
 
 The script reads accepted creator files and writes nothing.
 """
@@ -124,6 +125,18 @@ def resolve_ref(
 SCHEMA_VERSION = "1.0.0"
 BOUNDARY_FIELD = {"start": "/start_boundary", "end": "/end_boundary"}
 PLACEHOLDER = re.compile(r"^<.*>$")
+
+# A boundary entry is read on its own by whoever owns the next stage, so an
+# entry whose whole content points back at another shot leaves that field empty
+# in practice. Only a wholly referential entry is a defect: "站在柜台东侧（与上一
+# 镜相同）" still says where the character is.
+BACK_REFERENCE = re.compile(
+    r"^(同上一?镜?|同前一?镜?|同上镜|与上一?镜相同|照旧"
+    r"|(位置|朝向|目光|手部|状态|持物)?(保持)?不变|无变化"
+    r"|same as (above|before|previous( shot)?)|unchanged|no change)$",
+    re.IGNORECASE,
+)
+BACK_REFERENCE_TRIM = " \t　。，、；：（）()【】〔〕「」『』\"'·-—~…!！?？"
 
 
 class CheckError(ValueError):
@@ -438,6 +451,35 @@ def check_keyframe_boundaries(
     return findings
 
 
+def check_boundary_entries(shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """SHT-05: every boundary entry states a fact readable without the last shot."""
+
+    findings: list[dict[str, Any]] = []
+    for shot in shots:
+        shot_id = shot.get("shot_id")
+        for boundary in ("start_boundary", "end_boundary"):
+            fields = shot.get(boundary)
+            if not isinstance(fields, dict):
+                continue
+            for name, entries in sorted(fields.items()):
+                if not isinstance(entries, list):
+                    continue
+                for index, entry in enumerate(entries):
+                    if not isinstance(entry, str) or _is_template(entry):
+                        continue
+                    if BACK_REFERENCE.match(entry.strip(BACK_REFERENCE_TRIM)):
+                        findings.append(
+                            _finding(
+                                "SHT05_BOUNDARY_ENTRY_IS_A_BACK_REFERENCE",
+                                "a boundary entry points back instead of stating the fact",
+                                shot_id=shot_id,
+                                location=f"/{boundary}/{name}/{index}",
+                                entry=entry,
+                            )
+                        )
+    return findings
+
+
 def _declared_target(project: Path | None) -> float | None:
     if project is None:
         return None
@@ -463,6 +505,7 @@ def check(
         raise CheckError("coverage must be a JSON object")
     _, shots = _load_jsonl(shots_path)
     findings = check_episode_duration(coverage, shots, _declared_target(project_path))
+    findings.extend(check_boundary_entries(shots))
     keyframes: list[dict[str, Any]] | None = None
     if keyframes_path is not None:
         keyframe_sources, keyframes = _load_jsonl(keyframes_path)

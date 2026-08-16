@@ -639,6 +639,77 @@ class SimpleLifecycleTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIsInstance(json.loads(result.stdout), dict)
 
+    def test_set_authority_writes_only_through_an_accepted_decision(self) -> None:
+        decisions = [
+            {
+                "decision_id": "CD-PROFILE-001",
+                "status": "accepted",
+                "accepted_value": {"form": "live_action"},
+                "target_locators": [
+                    {"src": "short-drama", "field": "/creator_authority/production_profile"}
+                ],
+            },
+            {
+                "decision_id": "CD-LENGTH-001",
+                "status": "proposed",
+                "accepted_value": 95,
+                "target_locators": [
+                    {"src": "short-drama", "field": "/format/target_seconds_per_episode"}
+                ],
+            },
+        ]
+        relative = "创作者决策/decisions.jsonl"
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            source = root / "decisions.draft.jsonl"
+            source.write_text(
+                "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in decisions),
+                encoding="utf-8",
+            )
+            set_profile = dict(
+                field="/creator_authority/production_profile",
+                decision_path=relative,
+                decision_id="CD-PROFILE-001",
+            )
+            with self.assertRaisesRegex(ValueError, "published"):
+                project_tool.set_creator_authority(root, **set_profile)
+
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama",
+                artifact_id="project:decisions",
+                outputs={relative: source.read_bytes()},
+            )
+            with self.assertRaisesRegex(ValueError, "accepted and current"):
+                project_tool.set_creator_authority(root, **set_profile)
+
+            project_tool.record_creator_acceptance(
+                root, artifact_id="project:decisions", decision="accepted"
+            )
+            project_tool.set_creator_authority(root, **set_profile)
+            authority = json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                authority["creator_authority"]["production_profile"],
+                {"status": "accepted", "choices": {"form": "live_action"}},
+            )
+
+            with self.assertRaisesRegex(ValueError, "not an accepted creator decision"):
+                project_tool.set_creator_authority(
+                    root,
+                    field="/format/target_seconds_per_episode",
+                    decision_path=relative,
+                    decision_id="CD-LENGTH-001",
+                )
+            with self.assertRaisesRegex(ValueError, "creator_authority"):
+                project_tool.set_creator_authority(
+                    root, field="/title", decision_path=relative, decision_id="CD-PROFILE-001"
+                )
+            self.assertIsNone(
+                json.loads((root / "short-drama.json").read_text(encoding="utf-8"))["format"][
+                    "target_seconds_per_episode"
+                ]
+            )
+
     def test_project_discovery_and_languages_remain_stable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
