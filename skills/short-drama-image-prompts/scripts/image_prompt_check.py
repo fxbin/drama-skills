@@ -334,8 +334,7 @@ def validate_records(
         purpose = record.get("purpose")
         if purpose not in PURPOSES:
             raise ValidationError(f"{label}: invalid purpose {purpose!r}")
-        status = record.get("status")
-        if status is not None and status not in {"candidate", "accepted"}:
+        if record.get("status") not in {"candidate", "accepted"}:
             raise ValidationError(f"{label}: status must be candidate or accepted")
         leaked = sorted(vendor_field_paths(record))
         if leaked:

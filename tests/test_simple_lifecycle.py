@@ -710,6 +710,85 @@ class SimpleLifecycleTests(unittest.TestCase):
                 ]
             )
 
+    def test_set_authority_defects_found_by_review(self) -> None:
+        """One case per defect an independent review reproduced.
+
+        Each of these wrote a value the creator never approved, or a manifest
+        another reader rejects, while the whole suite stayed green.
+        """
+        relative = "创作者决策/decisions.jsonl"
+        records = [
+            # A retracted decision, and the revision that retracted it.
+            {"decision_id": "CD-S1", "status": "accepted", "accepted_value": 180,
+             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
+            {"decision_id": "CD-S2", "status": "accepted", "supersedes_decision_id": "CD-S1",
+             "accepted_value": 90,
+             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
+            # Append-only revision reusing one id: the later line is the decision.
+            {"decision_id": "CD-R", "status": "accepted", "accepted_value": 60,
+             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
+            {"decision_id": "CD-R", "status": "accepted", "accepted_value": 45,
+             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
+            # A choice written deeper than the block that gates it.
+            {"decision_id": "CD-LOOK", "status": "accepted", "accepted_value": "水墨",
+             "target_locators": [{"src": "short-drama",
+                                  "field": "/creator_authority/visual_direction/choices/look_development"}]},
+            # Infinity parses in Python and serialises back out, but is not JSON.
+            {"decision_id": "CD-INF", "status": "accepted", "accepted_value": float("inf"),
+             "target_locators": [{"src": "short-drama", "field": "/format/target_seconds_per_episode"}]},
+            {"decision_id": "CD-NEW", "status": "accepted", "accepted_value": "x",
+             "target_locators": [{"src": "short-drama", "field": "/creator_authority/新造字段"}]},
+            {"decision_id": "CD-TYPE", "status": "accepted", "accepted_value": "一句话",
+             "target_locators": [{"src": "short-drama", "field": "/creator_authority/constraints"}]},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            source = root / "decisions.draft.jsonl"
+            source.write_text(
+                "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            project_tool.publish_candidate(
+                root, owner="short-drama", artifact_id="project:decisions",
+                outputs={relative: source.read_bytes()},
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="project:decisions", decision="accepted"
+            )
+
+            def apply(field: str, decision_id: str) -> None:
+                project_tool.set_creator_authority(
+                    root, field=field, decision_path=relative, decision_id=decision_id
+                )
+
+            def manifest() -> dict:
+                return json.loads((root / "short-drama.json").read_text(encoding="utf-8"))
+
+            with self.assertRaisesRegex(ValueError, "superseded"):
+                apply("/format/target_seconds_per_episode", "CD-S1")
+            with self.assertRaisesRegex(ValueError, "not JSON compliant"):
+                apply("/format/target_seconds_per_episode", "CD-INF")
+            with self.assertRaisesRegex(ValueError, "declares no"):
+                apply("/creator_authority/新造字段", "CD-NEW")
+            with self.assertRaisesRegex(ValueError, "accepted_value is str"):
+                apply("/creator_authority/constraints", "CD-TYPE")
+
+            apply("/format/target_seconds_per_episode", "CD-R")
+            self.assertEqual(manifest()["format"]["target_seconds_per_episode"], 45)
+
+            apply("/creator_authority/visual_direction/choices/look_development", "CD-LOOK")
+            direction = manifest()["creator_authority"]["visual_direction"]
+            self.assertEqual(direction["choices"]["look_development"], "水墨")
+            self.assertEqual(direction["status"], "accepted")
+
+            state = json.loads(
+                (root / ".short-drama/state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                state["authority"]["/format/target_seconds_per_episode"]["decision"],
+                f"{relative}#CD-R",
+            )
+
     def test_project_discovery_and_languages_remain_stable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)

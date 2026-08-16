@@ -459,9 +459,14 @@ def check_boundary_entries(shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
         shot_id = shot.get("shot_id")
         for boundary in ("start_boundary", "end_boundary"):
             fields = shot.get(boundary)
+            if isinstance(fields, str):
+                # A boundary written as one string carries the same defect.
+                fields = {boundary: [fields]}
             if not isinstance(fields, dict):
                 continue
             for name, entries in sorted(fields.items()):
+                if isinstance(entries, str):
+                    entries = [entries]
                 if not isinstance(entries, list):
                     continue
                 for index, entry in enumerate(entries):

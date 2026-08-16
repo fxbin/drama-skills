@@ -24,7 +24,8 @@ output 路径只能有一个 owner。
 B 又读 C 不会让 A 自动过期，只有 A 下次实际重建时才读取当前 B。
 
 默认只允许发布到标准阶段目录。`输入/**`、`.short-drama/**`、`交付/**` 和任何
-`short-drama.json` 都不可作为 publish 目标；`short-drama.json` 用 `set-authority` 写。分集目录
+`short-drama.json` 都不可作为 publish 目标；`short-drama.json` 里的 `creator_authority/*` 与
+`format/target_seconds_per_episode` 用 `set-authority` 写，其余字段在 `init` 时定下。分集目录
 使用 `EP001` 形式。未登记的临时路径必须显式加 `--allow-unregistered-path`。
 
 发布逐个文件原子完成：进程中断最多留下未被采用的临时文件，已完成的每个目标都是完整文件。

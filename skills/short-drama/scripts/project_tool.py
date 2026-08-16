@@ -163,8 +163,11 @@ def _atomic_bytes(path: Path, content: bytes) -> None:
 
 
 def atomic_json(path: Path, document: Mapping[str, Any]) -> None:
+    # allow_nan=False: Python reads and writes bare Infinity/NaN, but they are not
+    # JSON. Writing one produces a manifest that every other reader rejects.
     encoded = (
-        json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
+        + "\n"
     ).encode("utf-8")
     _atomic_bytes(path, encoded)
 
@@ -481,6 +484,12 @@ def _normalize_state(document: Mapping[str, Any]) -> dict[str, Any]:
     mode = document.get("project_layout_mode", "auto")
     if mode not in {"auto", "canonical", "legacy"}:
         mode = "auto"
+    bindings_raw = document.get("authority")
+    bindings = {
+        str(field): dict(binding)
+        for field, binding in (bindings_raw.items() if isinstance(bindings_raw, Mapping) else [])
+        if isinstance(field, str) and isinstance(binding, Mapping)
+    }
     return {
         "schema_version": STATE_SCHEMA,
         "project_id": document.get("project_id"),
@@ -488,6 +497,7 @@ def _normalize_state(document: Mapping[str, Any]) -> dict[str, Any]:
         "updated_at": document.get("updated_at"),
         "last_action": document.get("last_action") or "loaded",
         "artifacts": artifacts,
+        "authority": bindings,
     }
 
 
@@ -1152,38 +1162,78 @@ def _accepted_decision_value(
     if _artifact_state(root, record) not in {"accepted", "approved"}:
         raise ValueError(f"creator decision file is not accepted and current: {relative}")
     text = _project_path(root, relative).read_text(encoding="utf-8")
+    latest: tuple[int, Mapping[str, Any]] | None = None
+    superseded_by: str | None = None
     for number, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
-        decision = json.loads(line)
-        if not isinstance(decision, Mapping) or decision.get("decision_id") != decision_id:
+        try:
+            decision = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{relative}:{number} is not a creator decision record: {exc}") from exc
+        if not isinstance(decision, Mapping):
             continue
-        if decision.get("status") != "accepted":
-            raise ValueError(f"{decision_id} is not an accepted creator decision")
-        locators = decision.get("target_locators")
-        if not isinstance(locators, list) or not any(
-            isinstance(locator, Mapping)
-            and locator.get("src") == "short-drama"
-            and locator.get("field") == field
-            for locator in locators
+        # The file is append-only, so a revision arrives as a later line. Read the
+        # whole file before deciding: the first match may already be retracted.
+        if decision.get("decision_id") == decision_id:
+            latest = (number, decision)
+        elif (
+            decision.get("supersedes_decision_id") == decision_id
+            and decision.get("status") == "accepted"
         ):
-            raise ValueError(f"{decision_id} does not target {field}")
-        if "accepted_value" not in decision:
-            raise ValueError(f"{decision_id} carries no accepted_value at {relative}:{number}")
-        return decision["accepted_value"]
-    raise KeyError(f"unknown creator decision: {decision_id}")
+            superseded_by = str(decision.get("decision_id"))
+    if latest is None:
+        raise KeyError(f"unknown creator decision: {decision_id}")
+    if superseded_by is not None:
+        raise ValueError(f"{decision_id} was superseded by {superseded_by}")
+    number, decision = latest
+    if decision.get("status") != "accepted":
+        raise ValueError(f"{decision_id} is not an accepted creator decision")
+    locators = decision.get("target_locators")
+    if not isinstance(locators, list) or not any(
+        isinstance(locator, Mapping)
+        and locator.get("src") == "short-drama"
+        and locator.get("field") == field
+        for locator in locators
+    ):
+        raise ValueError(f"{decision_id} does not target {field}")
+    if "accepted_value" not in decision:
+        raise ValueError(f"{decision_id} carries no accepted_value at {relative}:{number}")
+    return decision["accepted_value"]
 
 
 def _write_authority_value(project: dict[str, Any], tokens: list[str], value: Any) -> Any:
     cursor: Any = project
+    blocks: list[dict[str, Any]] = []
+    walked: list[str] = []
     for token in tokens[:-1]:
+        parent = cursor
         cursor = cursor.get(token) if isinstance(cursor, dict) else None
         if not isinstance(cursor, dict):
-            raise ValueError(f"project manifest has no object at /{'/'.join(tokens[:-1])}")
+            walked.append(token)
+            raise ValueError(f"project manifest has no object at /{'/'.join(walked)}")
+        walked.append(token)
+        del parent
+        if "status" in cursor:
+            blocks.append(cursor)
     leaf = tokens[-1]
+    if leaf not in cursor:
+        # The manifest shape is declared by the project template. A decision may
+        # fill a declared slot; inventing one would put a field downstream cannot
+        # know to read.
+        raise ValueError(f"project manifest declares no /{'/'.join([*walked, leaf])}")
     current = cursor.get(leaf)
     if not (isinstance(current, dict) and "status" in current):
+        if current is not None and not isinstance(value, type(current)):
+            raise ValueError(
+                f"/{'/'.join([*walked, leaf])} is {type(current).__name__}; "
+                f"accepted_value is {type(value).__name__}"
+            )
         cursor[leaf] = value
+        # Writing one choice inside an authority block accepts that block: a
+        # downstream stage gates on the block's status before reading the choice.
+        for block in blocks:
+            block["status"] = "accepted"
         return value
     if not isinstance(value, Mapping) or not value:
         raise ValueError(f"/{'/'.join(tokens)} needs a non-empty object accepted_value")
@@ -1228,6 +1278,16 @@ def set_creator_authority(
             raise ValueError("project manifest must be an object")
         written = _write_authority_value(project, tokens, value)
         atomic_json(project_path, project)
+        # Record which decision produced the value, so a later reader can tell a
+        # bound write from a hand edit and see what a re-bind replaced.
+        bindings = state.get("authority")
+        if not isinstance(bindings, dict):
+            bindings = {}
+            state["authority"] = bindings
+        bindings[field] = {
+            "decision": f"{_relative_path(decision_path)}#{decision_id}",
+            "set_at": utc_now(),
+        }
         _save_state(root, state, action="authority_set")
     return {"field": field, "decision_id": decision_id, "value": written}
 
