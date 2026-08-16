@@ -26,7 +26,7 @@ python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例�
 1. 使用用户给出的路径，或从当前目录向上寻找最近的 `short-drama.json`。
 2. 运行 `status`，只读完成当前任务所需的直接输入，不批量加载整个项目。
 3. 按用户眼下要完成的工作路由；未安装的阶段技能只影响对应路由，不阻断其他工作。
-4. 不强迫补走完整流水线；明确的单阶段任务可以直接交给独立安装的对应技能。
+4. 明确的单阶段任务直接交给独立安装的对应技能，按创作者要的那一步做。
 
 统一预检见 [runtime-preflight.md](references/runtime-preflight.md)，创作入口见
 [creator-workflow.md](references/creator-workflow.md)，所有权见
@@ -56,9 +56,9 @@ python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例�
 ## 有界续跑
 
 全链预览或“继续”每轮只授权一个 owner 的一个有界工作单元。写作、资产、图片提示词、分镜和
-视频提示词按各自 `Bounded execution` 的批次工作；完成当前批次后报告已覆盖范围、剩余范围与
-下一步，并把控制权交还创作者。不得在同一轮自动进入下一阶段、审查或生产；审查和生产都需要
-各自明确的后续请求，其中生产还必须展示准确 job 并取得确认。
+视频提示词按各自「每轮的工作单元」分批工作；完成当前批次后报告已覆盖范围、剩余范围与
+下一步，并把控制权交还创作者。下一阶段、审查和生产各自需要明确的后续请求；生产还要先展示
+准确 job 并取得确认。
 
 审查尽量交给没有参与该版本创作的 reviewer，以减少自证偏差；运行环境不支持隔离上下文时，
 如实标注为自检即可。CLI 只记录 verdict、reviewer 标签和备注，不收集或伪造上下文证明。
@@ -89,7 +89,7 @@ Dashboard 是项目内容的轻量展示与有限文本编辑层，核心能力�
 
 4. 回报脚本打印的完整回环地址与停止方式，并保持进程运行。
 
-Dashboard 不扫描 workspace 外部，不保存密钥，不连接生产 adapter，也不承担工作流编排。它按项目
+Dashboard 只读取 workspace 内的文件；密钥、生产 adapter 与工作流编排都在它之外。它按项目
 和剧集展示正文、结构化卡片以及已有图片/音频/视频；保存只表示保存文件，不代表创作者确认。
 每次启动使用独立本机会话，项目 API 只接受该会话。参数与安全边界见
 [lifecycle-commands.md](references/lifecycle-commands.md#dashboard-启动)。
@@ -108,8 +108,8 @@ Dashboard 不扫描 workspace 外部，不保存密钥，不连接生产 adapter
 | `package` | 打包当前已确认且复核通过的文本/JSON |
 | `verify` | 用交付校验和检查打包结果是否被改动 |
 
-完整示例见 [lifecycle-commands.md](references/lifecycle-commands.md)。没有恢复命令、传播图、
-记录选择器或用户填写的 hash 参数；单文件发布用临时文件与原子替换完成。
+完整示例见 [lifecycle-commands.md](references/lifecycle-commands.md)。单文件发布用临时文件与
+原子替换完成。
 
 ## 状态与修订
 

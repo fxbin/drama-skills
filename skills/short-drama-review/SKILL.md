@@ -65,12 +65,11 @@ python3 {技能目录}/scripts/selftest.py
 只有审查问题涉及“模板感、重复手法或 AI 味”时才读
 [anti-template-repair.md](references/anti-template-repair.md)，用其诊断、修订示范与误报反例。
 
-## Bounded execution
+## 每轮的工作单元
 
-Each invocation performs `one bounded review pass` over the explicitly selected artifacts or contiguous range.
-Record the verdict and owner-routed findings, report reviewed and remaining scope, then return control. In the same
-pass, `do not edit owner artifacts or start a re-review loop`. A revision and any later re-review are separate,
-explicit work units.
+一轮审查一批明确选定的产物或一段连续范围：记录 verdict 与按 owner 路由的 findings，
+报告已审范围和剩余范围，然后交还控制权。产物由各自的 owner 修改；修订与之后的复审
+各自是独立的工作单元，由创作者明确请求时开始。
 
 ## 工作流
 

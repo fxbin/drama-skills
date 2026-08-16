@@ -56,12 +56,16 @@ python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shot
   `（情绪）` 怎样同源投影到本镜表演状态与下游 `delivery`：
   [screenplay-to-keyframe-example.md](references/screenplay-to-keyframe-example.md)
 
-## Bounded execution
+## 每轮的工作单元
 
-- One work unit covers `one scene or contiguous shot range`; a whole-episode request is split at those boundaries.
-- Validate and persist only that unit, then report its `included scope`, `remaining scope`, unresolved coverage and next useful range.
-- After the report, `return control` to the creator; do not continue into another range, video prompts or production in the same turn.
-- Unless the current request is explicitly a review request, do not invoke `$short-drama-review` automatically.
+一轮处理一个场次或一段连续镜头范围。整集请求按这些边界拆成若干轮，每轮：
+
+1. 只读这个范围的直接输入，做它的覆盖与镜头设计，跑本地结构检查；
+2. 落盘这个范围，其余范围保持原样；
+3. 报告已覆盖范围、剩余范围、未决 coverage 和下一个值得做的范围；
+4. 交还控制权，等创作者的下一次请求。
+
+视频提示词、生产和审查各自是独立的工作单元，由创作者明确请求时开始。
 
 ## 工作流
 
