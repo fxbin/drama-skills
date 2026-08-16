@@ -19,15 +19,21 @@ class RecordShapeTests(unittest.TestCase):
     """The shipped example must stay a legal record, since it is what a run copies."""
 
     def test_example_carries_a_reference_first_voice_direction(self) -> None:
-        direction = json.loads(
-            (ASSETS / "assets/character-look.example.jsonl")
+        records = [
+            json.loads(line)
+            for line in (ASSETS / "assets/character-look.example.jsonl")
             .read_text(encoding="utf-8")
-            .splitlines()[0]
-        )["voice_direction"]
+            .splitlines()
+            if line.strip()
+        ]
+        sources = records[0]["sources"]
+        record = next(row for row in records if "voice_direction" in row)
+        direction = record["voice_direction"]
 
         reference = direction["reference"]
         # Timbre rides on a recording, and the recording stays in creator inputs.
-        self.assertTrue(reference["artifact_ref"]["artifact"].startswith("输入/"))
+        artifact = sources[reference["artifact_ref"]["src"]]["artifact"]
+        self.assertTrue(artifact.startswith("输入/"))
         self.assertIn(reference["admission_status"], {"creator_described", "audibly_inspected", "unverified"})
         self.assertTrue(reference["may_control"])
         # Present in every recording, belonging to none of them.

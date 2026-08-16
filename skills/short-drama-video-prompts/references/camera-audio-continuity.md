@@ -98,7 +98,8 @@ pan 同时微调焦点、handheld 带自然呼吸、dolly 配合轻微 tilt 未�
 
 ### 精确引用
 
-Motion spec 存 dialogue/VO/SFX/audio 的 artifact/hash/field refs；copyable prompt 可呈现 exact accepted line 或引用标记，取决于交付需要，但不得改字、增删、交换说话人或把对白改 VO。
+Motion spec 存 dialogue/VO/SFX/audio 的引用：`src` 指向文件头 `sources` 声明的那个快照，
+再加记录与字段；copyable prompt 可呈现 exact accepted line 或引用标记，取决于交付需要，但不得改字、增删、交换说话人或把对白改 VO。
 
 同一句 accepted dialogue 跨镜延续时，把相邻提示词串读，说明它在本镜是开始、画外延续、
 被打断还是到此结束；不得在前镜声称已经说完，后镜又让同一句继续。没有逐字原句时只保留
@@ -212,7 +213,7 @@ Resolvable ref/显式否定可结构检查；delivery 是否语义背离则要 r
 
 ```markdown
 - **请求 owner**：`storyboard | write | assets`
-- **source evidence**：artifact/hash/field
+- **source evidence**：src + 记录/字段，以及该 `sources` 条目的 artifact/hash
 - **当前边界**：精确值
 - **motion 需要**：期望变化与原因
 - **影响**：purpose/feasibility/continuity

@@ -79,7 +79,7 @@
 | VID-06 | structural_invariant | Locked and moving camera instructions cannot govern the same interval without an explicit transition. |
 | VID-07 | taste_option | Camera may be locked or moving; audio/lip-sync detail follows the chosen production profile. |
 | VID-08 | reviewed_invariant | Structured motion names this shot's exact subjects, actions, contacts, and results rather than reusable placeholders; when a performance path is present, it names only the actors and visible changes this shot actually carries. |
-| VID-09 | structural_invariant | Next-start is an existing canonical ref or an explicit provisional locator, never an invented record/hash. |
+| VID-09 | structural_invariant | Next-start is an existing canonical ref whose `src` resolves through the file's `sources` declaration, or an explicit provisional locator; never an invented record, source key, or hash. |
 | VID-10 | craft_default | Resolve one accepted production profile for the current delivery scope; local variants may coexist when their range and precedence are explicit, without overriding source coverage or exact-readable obligations. |
 | VID-11 | reviewed_invariant | A selective transform names its trigger, exact target scope, end geometry/state, and preserve set so non-target people, props, text surfaces, and spatial anchors do not change with it. |
 | VID-12 | reviewed_invariant | A pickup/alternate names stable master/supplement motion IDs and maps each source requirement to a field or disposition; motion may request replacement, but only a downstream independent verdict can bind fixed hashes and approve it. |

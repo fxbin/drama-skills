@@ -30,27 +30,49 @@ def fail(records: list[dict], marker: str) -> None:
 def main() -> int:
     records = load_jsonl(SKILL_ROOT / "examples/minimal-music-specs.jsonl")
     require(validate_records(records)["music_specs"] == 1, "valid fixture count")
+    header, spec = records[0], records[1]
+    require(spec["source_refs"][0]["src"] == "screenplay", "fixture uses a source key")
 
-    duplicate = [records[0], copy.deepcopy(records[0])]
+    # A file that was written before sources declarations existed still carries
+    # the snapshot on every reference, and still validates.
+    expanded = copy.deepcopy(spec)
+    expanded["source_refs"] = [
+        {**header["sources"]["screenplay"], "record_id": "EP001-SC001"}
+    ]
+    require(validate_records([expanded])["music_specs"] == 1, "inline snapshot accepted")
+
+    undeclared = copy.deepcopy(spec)
+    undeclared["source_refs"] = [{"src": "screenplai", "record_id": "EP001-SC001"}]
+    fail([header, undeclared], "REF_SRC_IS_NOT_DECLARED")
+
+    unbound = copy.deepcopy(spec)
+    unbound["source_refs"] = [{"record_id": "EP001-SC001"}]
+    fail([header, unbound], "REF_HAS_NO_UPSTREAM_BINDING")
+
+    duplicate = [header, spec, copy.deepcopy(spec)]
     fail(duplicate, "duplicate music_id")
 
-    leaked = copy.deepcopy(records)
-    leaked[0]["model"] = "example"
+    leaked = [header, copy.deepcopy(spec)]
+    leaked[1]["model"] = "example"
     fail(leaked, "provider execution fields")
 
-    song_without_lyrics = copy.deepcopy(records)
-    song_without_lyrics[0]["mode"] = "song"
+    song_without_lyrics = [header, copy.deepcopy(spec)]
+    song_without_lyrics[1]["mode"] = "song"
     fail(song_without_lyrics, "lyrics")
 
-    invalid_scope = copy.deepcopy(records)
-    invalid_scope[0]["scope"]["end_seconds"] = 0
+    invalid_scope = [header, copy.deepcopy(spec)]
+    invalid_scope[1]["scope"]["end_seconds"] = 0
     fail(invalid_scope, "0 <= start < end")
 
-    unsupported = copy.deepcopy(records)
-    unsupported[0]["token"] = "not provider-neutral"
+    unsupported = [header, copy.deepcopy(spec)]
+    unsupported[1]["token"] = "not provider-neutral"
     fail(unsupported, "unsupported fields")
 
-    print("6 self-tests passed")
+    stale_source = [copy.deepcopy(header), spec]
+    stale_source[0]["sources"]["screenplay"]["hash"] = "not-a-sha256"
+    fail(stale_source, "lowercase sha256")
+
+    print("10 self-tests passed")
     return 0
 
 

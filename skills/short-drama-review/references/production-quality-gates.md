@@ -79,8 +79,8 @@
 
 ### 6. 版本和执行状态冒充内容权威
 
-同一集、镜头或提示词可能保留多个历史版本。审查前先沿 owner、artifact、accepted hash
-和 record ID 解析**当前权威版本**；文件更新时间、编号大小、默认展示项或最近一次执行状态
+同一集、镜头或提示词可能保留多个历史版本。审查前先沿 `sources` 声明的 owner、artifact、
+accepted hash 与引用的 record ID 解析**当前权威版本**；文件更新时间、编号大小、默认展示项或最近一次执行状态
 只能帮助定位候选，不能替代 creator acceptance。下游引用旧版本时，即使内容看似合理也要
 先报告 stale binding，而不是把旧稿重新解释成现行要求。
 

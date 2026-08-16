@@ -32,8 +32,9 @@ python3 {技能目录}/scripts/review_check.py \
 python3 {技能目录}/scripts/selftest.py
 ```
 
-校验器检查 REV-02 所需字段、证据引用、阻断项数量和 verdict 一致性；它不代替语义审查，也不
-要求独立 reviewer provenance。输入路径不存在于当前目录时，会相对本技能目录解析。
+校验器检查 REV-02 所需字段、证据引用（经文件的 `sources` 声明解析）、阻断项数量和 verdict
+一致性；它不代替语义审查，也不要求独立 reviewer provenance。输入路径不存在于当前目录时，
+会相对本技能目录解析。
 
 ## 选择审查范围
 
@@ -135,6 +136,28 @@ CLI 的 `review` 记录 verdict、reviewer 标签和备注；详细 finding 文�
 从 [finding-template.jsonl](assets/finding-template.jsonl) 建立审查问题，从
 [verdict-template.json](assets/verdict-template.json) 建立审查结论。问题目录提供编号、类别、
 默认检查方式、严重程度和负责人；审查问题记录本次目标的证据和状态。
+
+### 写上游引用
+
+每个文件先声明本次引用到的上游快照，每条引用再指名快照和记录。
+
+findings.jsonl 首行是声明记录：
+
+```json
+{"record_type":"sources","schema_version":"1.0.0","sources":{"screenplay":{"owner":"short-drama-write","artifact":"剧集/EP001/screenplay.md","hash":"<sha256>"}}}
+```
+
+verdict.json 用顶层 `sources` 对象声明同样的内容。键取产物文件名，短、小写，
+文件内唯一且稳定；同一产物的两个快照用后缀区分。
+
+引用写成：
+
+```json
+{"src": "screenplay", "record_id": "EP001-SC001"}
+```
+
+指向整个产物或产物内某个字段时只写 `{"src": "screenplay"}`，需要时加 `field`；
+`authority`、`role`、`value_seconds` 记在各自的引用上。
 
 - `fatal`：不安全或非公开内容被交付、交付包损坏、缺少授权；
 - `error`：阻断当前检查的结构或内容错误；

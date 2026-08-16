@@ -80,8 +80,9 @@ python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shot
 - `nonvisual_context`：仅供理解、无需直接呈现的内容。
 
 对白、动作、画面文字、画外音或关键音效还没有着落时，不要先追求漂亮镜头。
-发布原文落实表时，`shot_refs` 必须逐条指向准确的镜头文件、已发布的 `hash` 和
-`record_id`。裸 `shot_id` 只可表示同一镜头文件内的关系，不能证明审的是哪一版。
+发布原文落实表时，先在文件的 `sources` 里为每个上游快照声明一次 `owner`、`artifact`
+和 `hash`，再让每条 `shot_refs` 用 `src` 指向该声明并写上 `record_id`。裸 `shot_id`
+只可表示同一镜头文件内的关系，不能证明审的是哪一版。
 
 ### 2. 关键场次先比较整场导演选择（可选）
 
@@ -174,7 +175,8 @@ python3 <skill-dir>/scripts/storyboard_check.py 剧集/EP001/storyboard/coverage
 
 它只做算术和结构比对：本集时长总和是否等于各镜头 `duration_seconds` 之和、覆盖列出的
 镜头有没有既不计入也不挂起、每张关键帧是否声明了 `boundary_role` 并绑定对应边界字段、
-同一镜头的同一端有没有两张关键帧。有 `--project` 且项目声明了每集目标时长时，还会核对
+同一镜头的同一端有没有两张关键帧、每条引用的 `src` 能否在本文件 `sources` 里解析到一个
+上游快照。有 `--project` 且项目声明了每集目标时长时，还会核对
 带符号差值。**差值不是缺陷**，脚本只检查它算得对不对。
 
 脚本报错时先修产物再继续；它不评价镜头好坏，也不决定该拆多少镜。需要逐条查诊断码

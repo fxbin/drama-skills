@@ -71,9 +71,9 @@ function iconElement(name, className = "icon") {
 }
 
 const INTERNAL_KEY_PARTS = [
-  "hash", "sha", "path", "ref", "owner", "schema", "artifact", "authority",
-  "lifecycle", "manifest", "checksum", "evidence", "transaction", "snapshot",
-  "candidate", "reviewer", "verdict",
+  "hash", "sha", "path", "ref", "src", "sources", "owner", "schema", "artifact",
+  "authority", "lifecycle", "manifest", "checksum", "evidence", "transaction",
+  "snapshot", "candidate", "reviewer", "verdict",
 ];
 
 const INTERNAL_INLINE_VALUE_PATTERNS = [
@@ -715,6 +715,19 @@ function readJsonLines(content) {
   });
 }
 
+// A .jsonl file declares the upstream snapshots it references on a header
+// record. That record is bookkeeping rather than one of the creator's items, so
+// it stays out of the preview and out of the item numbering: "第 1 项" must be
+// the first thing the creator actually wrote.
+function isSourcesHeader(record) {
+  return Boolean(record) && typeof record === "object" && !Array.isArray(record) &&
+    record.record_type === "sources";
+}
+
+function previewRecords(content) {
+  return readJsonLines(content).filter((row) => !isSourcesHeader(row.record));
+}
+
 function validateStructuredText(path, content) {
   if (/\.json$/i.test(path)) JSON.parse(content);
   else if (/\.jsonl$/i.test(path)) parseJsonLines(content);
@@ -801,7 +814,7 @@ function renderPreview() {
     if (/\.md$/i.test(path)) preview.append(renderMarkdown(content));
     else if (/\.json$/i.test(path)) preview.append(structuredCard(JSON.parse(content), null));
     else if (/\.jsonl$/i.test(path)) {
-      preview.append(...readJsonLines(content).map((row, index) => (
+      preview.append(...previewRecords(content).map((row, index) => (
         row.error
           ? element("div", "preview-warning", `第 ${row.line} 项内容还不完整，暂时无法展示。`)
           : structuredCard(row.record, index)
@@ -1111,6 +1124,7 @@ if (typeof module !== "undefined" && module.exports) {
     friendlyKey,
     mediaKind,
     orderedForReading,
+    previewRecords,
     projectOverviewModel,
     readJsonLines,
     renderMarkdown,

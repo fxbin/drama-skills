@@ -7,6 +7,24 @@
 的新增或收紧记为 **变更**（可能阻断既有产物），`craft_default` 与 `taste_option` 记为
 **新增**（可被创作者覆盖）。
 
+## [未发布]
+
+### 变更
+
+- **上游引用改为紧凑写法（修复 #39）**。同一份上游快照被一个文件反复引用时，在 `sources` 里
+  声明一次：`.json` 用顶层 `"sources"` 字段，`.jsonl` 用首行 `{"record_type": "sources", ...}`
+  记录，`screenplay-index.jsonl` 折进已有的 `screenplay_index_meta` 首记录。单条引用写成
+  `{"src": "shots", "record_id": "SHOT-EP001-01"}`，按需带 `field`、`authority`、
+  `value_seconds`；`authority` 仍属于单条引用，同一快照可以同时被 `accepted` 和 `candidate`
+  引用。只被引用一两次的快照直接写在引用里——声明本身也占篇幅。
+  各 Skill 的校验器同时接受这两种写法，已有项目不需要改写；`src` 指向未声明的键会报
+  `REF_SRC_IS_NOT_DECLARED`。
+  Golden Sample 的 `剧集/` 目录由 926,123 字节降到 706,286 字节（-23.7%）；单集分镜里
+  需要逐字誊写的 64 位 sha256，`shots.jsonl` 从 69 个降到 8 个，`keyframes.jsonl`
+  从 119 个降到 27 个。
+- **新增 `tools/compact_refs.py`**。按依赖顺序改写一个项目的引用写法，只在文件确实变短时改写；
+  `--check` 核对每条引用都能解析、且绑定的 hash 等于被引用文件的当前字节。
+
 ## [0.4.0] - 2026-08-16
 
 v0.4.0 把十个 Skill 拆成可独立安装、可离线自证的单元：删除套件级 hash 清单、sibling pin

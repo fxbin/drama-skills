@@ -99,12 +99,19 @@ class ScreenplayIndexTests(unittest.TestCase):
                 selected = source_bytes[row["byte_start"] : row["byte_end"]]
                 self.assertEqual(hashlib.sha256(selected).hexdigest(), row["content_sha256"])
             meta = read_jsonl(second)[0]
+            # The index declares its screenplay once and every reference names
+            # it by key. A rerun over the same bytes is the same snapshot, so
+            # the previous source resolves to that one declaration too.
+            self.assertEqual(meta["source_ref"], {"src": "screenplay"})
+            self.assertEqual(meta["previous_source_ref"], {"src": "screenplay"})
             self.assertEqual(
-                meta["source_ref"],
+                meta["sources"],
                 {
-                    "owner": "short-drama-write",
-                    "artifact": "第一集 剧本.md",
-                    "hash": hashlib.sha256(source_bytes).hexdigest(),
+                    "screenplay": {
+                        "owner": "short-drama-write",
+                        "artifact": "第一集 剧本.md",
+                        "hash": hashlib.sha256(source_bytes).hexdigest(),
+                    }
                 },
             )
             self.assertNotIn("source_sha256", meta)

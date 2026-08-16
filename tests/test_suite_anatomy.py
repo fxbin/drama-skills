@@ -21,21 +21,111 @@ EXPECTED_SKILLS = {
 }
 
 
+REF_TRIPLE = {"owner", "artifact", "hash"}
+FENCED_RECORD = re.compile(r"```jsonl?\n(\{.*?\})\n```", re.S)
+
+# A ``*.fragment.json`` is pasted into a host record, so its ``src`` keys are
+# declared by the host file rather than by the fragment itself.
+FRAGMENT_SUFFIX = ".fragment.json"
+
+
 def local_markdown_targets(markdown: Path) -> list[str]:
     pattern = re.compile(r"\[[^]]+\]\(([^)#]+)(?:#[^)]+)?\)")
     return [target for target in pattern.findall(markdown.read_text(encoding="utf-8")) if "://" not in target]
 
 
+def shipped_records(path: Path) -> list[Any]:
+    """Every JSON document a shipped file carries.
+
+    One document per ``.json`` file, one per ``.jsonl`` line, one per fenced
+    record in a Markdown template.
+    """
+    text = path.read_text(encoding="utf-8")
+    if path.suffix == ".jsonl":
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+    if path.suffix == ".json":
+        return [json.loads(text)]
+    return [json.loads(block) for block in FENCED_RECORD.findall(text)]
+
+
+def declared_sources(records: list[Any]) -> dict[str, Any]:
+    """The upstream snapshots a file declares, gathered from all of its records."""
+    sources: dict[str, Any] = {}
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            if isinstance(node.get("sources"), dict):
+                sources.update(node["sources"])
+            for child in node.values():
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    for record in records:
+        walk(record)
+    return sources
+
+
+def expand_refs(node: Any, sources: dict[str, Any]) -> Any:
+    """Replace every compact reference with the snapshot its file declares.
+
+    Assertions downstream then read ``owner``/``artifact``/``hash`` off any
+    reference without caring which form the file was written in, and a ``src``
+    naming nothing stays compact so the shape check can report it.
+    """
+    if isinstance(node, list):
+        return [expand_refs(item, sources) for item in node]
+    if not isinstance(node, dict):
+        return node
+    rest = {key: expand_refs(value, sources) for key, value in node.items() if key != "src"}
+    src = node.get("src")
+    if isinstance(src, str):
+        entry = sources.get(src)
+        if isinstance(entry, dict) and REF_TRIPLE.issubset(entry):
+            return {key: entry[key] for key in ("owner", "artifact", "hash")} | rest
+        return dict(node)
+    return rest
+
+
+def resolved_records(path: Path) -> list[Any]:
+    """A shipped file's records with every reference resolved to its snapshot."""
+    records = shipped_records(path)
+    sources = declared_sources(records)
+    return [expand_refs(record, sources) for record in records]
+
+
+def record_with(path: Path, key: str) -> dict[str, Any]:
+    """The one resolved record in ``path`` that carries ``key``.
+
+    Selecting by content rather than by line number keeps these assertions
+    stable when a file gains or loses a leading declaration record.
+    """
+    for record in resolved_records(path):
+        if isinstance(record, dict) and key in record:
+            return record
+    raise AssertionError(f"{path}: no record carries {key!r}")
+
+
+def is_declaration(record: Any) -> bool:
+    """True for a record that only declares upstream snapshots."""
+    return isinstance(record, dict) and set(record) <= {
+        "record_type",
+        "schema_version",
+        "sources",
+    }
+
+
 def fenced_json(path: Path) -> dict[str, Any]:
-    match = re.search(
-        r"```json\n(\{.*?\})\n```", path.read_text(encoding="utf-8"), re.S
-    )
-    if match is None:
-        raise AssertionError(f"{path}: missing fenced JSON object")
-    document = json.loads(match.group(1))
-    if not isinstance(document, dict):
-        raise AssertionError(f"{path}: fenced JSON must be an object")
-    return document
+    """The first fenced record of a Markdown template, references resolved.
+
+    A template opens with its ``sources`` declaration; the record the callers
+    want is the first fenced block after it.
+    """
+    for record in resolved_records(path):
+        if isinstance(record, dict) and not is_declaration(record):
+            return record
+    raise AssertionError(f"{path}: missing fenced JSON object")
 
 
 def resolve_json_pointer(document: object, pointer: str) -> object:
@@ -106,11 +196,26 @@ class SuiteAnatomyTests(unittest.TestCase):
                 json.loads(path.read_text(encoding="utf-8"))
 
     def test_structured_artifact_refs_use_one_canonical_shape(self) -> None:
-        """Cross-layer stale propagation needs one parseable pointer contract."""
+        """Cross-layer stale propagation needs one parseable pointer contract.
+
+        A reference either names a snapshot its own file declares under
+        ``sources``, or inlines ``owner``/``artifact``/``hash``. Records are
+        resolved before the check, so a ``src`` that no declaration covers
+        arrives here still compact and fails.
+        """
 
         legacy_keys = {"artifact_hash", "field_pointer", "accepted_snapshot_hash"}
 
-        def check(document: object, path: Path, cursor: str = "") -> None:
+        def check(document: object, path: Path, declares: bool, cursor: str = "") -> None:
+            def canonical(reference: object) -> bool:
+                if not isinstance(reference, dict):
+                    return False
+                # A fragment is pasted into a host record, so it carries a key
+                # the host declares rather than a declaration of its own.
+                if not declares and isinstance(reference.get("src"), str):
+                    return True
+                return REF_TRIPLE.issubset(reference)
+
             if isinstance(document, dict):
                 self.assertFalse(
                     legacy_keys.intersection(document),
@@ -126,55 +231,36 @@ class SuiteAnatomyTests(unittest.TestCase):
                         for reference in references:
                             self.assertIsInstance(reference, dict, f"{path}:{cursor}/{key}")
                             self.assertTrue(
-                                {"owner", "artifact", "hash"}.issubset(reference),
+                                canonical(reference),
                                 f"{path}:{cursor}/{key} is not a canonical ArtifactRef",
                             )
                     if key == "boundary_refs":
                         self.assertIsInstance(value, dict, f"{path}:{cursor}/{key}")
                         for reference in value.values():
                             self.assertTrue(
-                                isinstance(reference, dict)
-                                and {"owner", "artifact", "hash"}.issubset(reference),
+                                canonical(reference),
                                 f"{path}:{cursor}/{key} contains a noncanonical ref",
                             )
-                    check(value, path, f"{cursor}/{key}")
+                    check(value, path, declares, f"{cursor}/{key}")
             elif isinstance(document, list):
                 for index, value in enumerate(document):
-                    check(value, path, f"{cursor}/{index}")
+                    check(value, path, declares, f"{cursor}/{index}")
 
-        for path in (SUITE / "skills").rglob("*"):
-            if not path.is_file() or path.suffix not in {".json", ".jsonl"}:
-                continue
-            if path.suffix == ".jsonl":
-                documents = [
-                    json.loads(line)
-                    for line in path.read_text(encoding="utf-8").splitlines()
-                    if line.strip()
-                ]
-            else:
-                documents = [json.loads(path.read_text(encoding="utf-8"))]
-            for document in documents:
-                check(document, path)
-
-        for path in sorted((SUITE / "skills").glob("*/assets/*.md")):
-            for raw_document in re.findall(
-                r"```json\n(\{.*?\})\n```",
-                path.read_text(encoding="utf-8"),
-                re.S,
-            ):
-                check(json.loads(raw_document), path)
+        shipped = [
+            path
+            for path in (SUITE / "skills").rglob("*")
+            if path.is_file() and path.suffix in {".json", ".jsonl"}
+        ]
+        shipped += sorted((SUITE / "skills").glob("*/assets/*.md"))
+        for path in shipped:
+            declares = not path.name.endswith(FRAGMENT_SUFFIX)
+            for document in resolved_records(path):
+                check(document, path, declares)
 
     def test_cross_template_json_pointers_resolve(self) -> None:
-        project = json.loads(
-            (CORE / "assets/project-template/short-drama.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        shot = json.loads(
-            (
-                SUITE
-                / "skills/short-drama-storyboard/assets/shot-template.jsonl"
-            ).read_text(encoding="utf-8")
+        project = resolved_records(CORE / "assets/project-template/short-drama.json")[0]
+        shot = record_with(
+            SUITE / "skills/short-drama-storyboard/assets/shot-template.jsonl", "shot_id"
         )
         documents = {
             "delivery_container": fenced_json(
@@ -186,18 +272,13 @@ class SuiteAnatomyTests(unittest.TestCase):
                 / "skills/short-drama-video-prompts/assets/motion-spec.jsonl.md"
             ),
             "shot": shot,
-            "keyframe": json.loads(
-                (
-                    SUITE
-                    / "skills/short-drama-storyboard/assets/keyframe-template.jsonl"
-                ).read_text(encoding="utf-8")
+            "keyframe": record_with(
+                SUITE / "skills/short-drama-storyboard/assets/keyframe-template.jsonl",
+                "keyframe_id",
             ),
-            "coverage": json.loads(
-                (
-                    SUITE
-                    / "skills/short-drama-storyboard/assets/coverage-template.json"
-                ).read_text(encoding="utf-8")
-            ),
+            "coverage": resolved_records(
+                SUITE / "skills/short-drama-storyboard/assets/coverage-template.json"
+            )[0],
         }
         targets = {
             "short-drama.json": project,
@@ -206,21 +287,14 @@ class SuiteAnatomyTests(unittest.TestCase):
         for path in sorted(
             (SUITE / "skills/short-drama-assets/assets").glob("*.jsonl")
         ):
-            for line in path.read_text(encoding="utf-8").splitlines():
-                example = json.loads(line)
+            for example in resolved_records(path):
                 destination = example.get("destination")
                 if isinstance(destination, str):
                     targets.setdefault(destination, example)
 
         for path in sorted((SUITE / "skills").glob("*/assets/*.md")):
-            for index, raw_document in enumerate(
-                re.findall(
-                    r"```json\n(\{.*?\})\n```",
-                    path.read_text(encoding="utf-8"),
-                    re.S,
-                )
-            ):
-                documents.setdefault(f"{path.relative_to(SUITE)}:{index}", json.loads(raw_document))
+            for index, document in enumerate(resolved_records(path)):
+                documents.setdefault(f"{path.relative_to(SUITE)}:{index}", document)
 
         expected_refs = [
             (
@@ -365,8 +439,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         templates = SUITE / "skills/short-drama-assets/assets"
         edges: set[tuple[str, str]] = set()
         for path in templates.glob("*.jsonl"):
-            for line in path.read_text(encoding="utf-8").splitlines():
-                document = json.loads(line)
+            for document in resolved_records(path):
                 source = document.get("destination")
                 if not isinstance(source, str):
                     continue
@@ -419,16 +492,13 @@ class SuiteAnatomyTests(unittest.TestCase):
             "skills/short-drama-storyboard/assets/keyframe-template.jsonl",
         ):
             path = SUITE / relative
-            templates.append((path, json.loads(path.read_text(encoding="utf-8"))))
+            templates.append((path, record_with(path, "status")))
         for relative in (
             "skills/short-drama-image-prompts/assets/image-prompt-spec.jsonl.md",
             "skills/short-drama-video-prompts/assets/motion-spec.jsonl.md",
         ):
             path = SUITE / relative
-            match = re.search(r"```json\n(\{.*?\})\n```", path.read_text(encoding="utf-8"), re.S)
-            if match is None:
-                self.fail(f"{path}: missing fenced JSON template")
-            templates.append((path, json.loads(match.group(1))))
+            templates.append((path, fenced_json(path)))
 
         candidate_ref_owners = {
             "coverage-template.json": {"short-drama-storyboard"},
@@ -476,19 +546,16 @@ class SuiteAnatomyTests(unittest.TestCase):
         )
 
     def test_review_templates_bind_evidence_targets_and_verdict_snapshot(self) -> None:
-        finding = json.loads(
-            (SUITE / "skills/short-drama-review/assets/finding-template.jsonl")
-            .read_text(encoding="utf-8")
-            .strip()
+        finding = record_with(
+            SUITE / "skills/short-drama-review/assets/finding-template.jsonl", "target_ref"
         )
         self.assertGreaterEqual(len(finding["evidence_refs"]), 2)
-        self.assertTrue({"owner", "artifact", "hash"}.issubset(finding["target_ref"]))
-        verdict = json.loads(
-            (SUITE / "skills/short-drama-review/assets/verdict-template.json")
-            .read_text(encoding="utf-8")
-        )
+        self.assertTrue(REF_TRIPLE.issubset(finding["target_ref"]))
+        verdict = resolved_records(
+            SUITE / "skills/short-drama-review/assets/verdict-template.json"
+        )[0]
         self.assertTrue(verdict["reviewed_artifacts"])
-        self.assertTrue({"owner", "artifact", "hash"}.issubset(verdict["findings_ref"]))
+        self.assertTrue(REF_TRIPLE.issubset(verdict["findings_ref"]))
         self.assertEqual(verdict["open_blocker_count"], 0)
         self.assertEqual(verdict["review_method"], "uninvolved_reviewer | self_check")
         self.assertIsInstance(verdict["reviewer"], str)
@@ -496,34 +563,26 @@ class SuiteAnatomyTests(unittest.TestCase):
         self.assertEqual(verdict["verdict"], "PROVISIONAL")
 
     def test_template_field_refs_resolve_to_owned_example_fields(self) -> None:
-        keyframe = json.loads(
-            (SUITE / "skills/short-drama-storyboard/assets/keyframe-template.jsonl")
-            .read_text(encoding="utf-8")
-            .strip()
+        keyframe = record_with(
+            SUITE / "skills/short-drama-storyboard/assets/keyframe-template.jsonl",
+            "light_projection",
         )
-        view = json.loads(
-            (SUITE / "skills/short-drama-assets/assets/location-view.example.jsonl")
-            .read_text(encoding="utf-8")
-            .splitlines()[1]
+        view = record_with(
+            SUITE / "skills/short-drama-assets/assets/location-view.example.jsonl",
+            "state_differences",
         )
         light_ref = keyframe["light_projection"]["source_ref"]
         self.assertEqual(light_ref["artifact"], "设定集/location-views.jsonl")
         self.assertEqual(light_ref["field"], "/state_differences/light")
         self.assertIn("light", view["state_differences"])
 
-        image_template = (
-            SUITE
-            / "skills/short-drama-image-prompts/assets/image-prompt-spec.jsonl.md"
-        ).read_text(encoding="utf-8")
-        match = re.search(r"```json\n(\{.*?\})\n```", image_template, re.S)
-        if match is None:
-            self.fail("image prompt template is missing fenced JSON")
-        image_spec = json.loads(match.group(1))
+        image_spec = fenced_json(
+            SUITE / "skills/short-drama-image-prompts/assets/image-prompt-spec.jsonl.md"
+        )
         policy_ref = image_spec["text_handling"]["source_policy_ref"]
-        prop = json.loads(
-            (SUITE / "skills/short-drama-assets/assets/prop-state.example.jsonl")
-            .read_text(encoding="utf-8")
-            .splitlines()[0]
+        prop = record_with(
+            SUITE / "skills/short-drama-assets/assets/prop-state.example.jsonl",
+            "text_policy",
         )
         self.assertEqual(policy_ref["artifact"], "设定集/props.jsonl")
         self.assertEqual(policy_ref["field"], "/text_policy")

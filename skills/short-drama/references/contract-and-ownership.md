@@ -44,21 +44,29 @@ come from accepted story/asset facts, not from either description-language setti
 Use stable IDs such as `EP001`, `SC001`, `BLK-...`, `CHAR-...`, `LOOK-...`, `LOC-...`, `PROP-...`,
 `SHOT-...`, `KEY-...` and `MOTION-...`. Display names may change without changing identity.
 
-For ordinary cross-artifact references, store only what a creator or validator needs:
+For cross-artifact references, a file declares each upstream snapshot once, and every reference names that
+declaration plus the record it points at.
+
+A `.jsonl` file declares them on its first line:
 
 ```json
-{
-  "owner": "short-drama-write",
-  "artifact": "剧集/EP001/screenplay-index.jsonl",
-  "record_id": "BLK-EP001-SC001-A01",
-  "field": "/text"
-}
+{"record_type":"sources","schema_version":"1.0.0","sources":{"screenplay-index":{"owner":"short-drama-write","artifact":"剧集/EP001/screenplay-index.jsonl","hash":"<sha256>"}}}
 ```
 
-`owner` and project-relative `artifact` identify authority. `record_id` and `field` are optional selectors. Do not
-copy whole authoritative values into consumers, and do not create self-references. Exact hashes remain appropriate
-inside deterministic source indexes, media observation records and delivery checksums; they are not user-supplied
-lifecycle evidence and do not drive transitive invalidation.
+A `.json` file uses a top-level `"sources"` object with the same entries. A reference is then:
+
+```json
+{"src": "screenplay-index", "record_id": "BLK-EP001-SC001-A01", "field": "/text"}
+```
+
+`sources` keys are short, lowercase and derived from the artifact filename; each is unique and stable inside its
+file, and one artifact is declared under one key. `owner` and the project-relative `artifact` identify authority.
+`record_id` and `field` are optional selectors, and a reference pointing at a whole artifact keeps `src` alone.
+`authority` (`accepted` or `candidate`) belongs to the individual reference, because one snapshot can be read at
+different authority levels by different references. Do not copy whole authoritative values into consumers, and do
+not create self-references. The `hash` in a `sources` entry names the snapshot the file was written against; like
+the hashes inside deterministic source indexes, media observation records and delivery checksums, it is not
+user-supplied lifecycle evidence and does not drive transitive invalidation.
 
 ## Rule classes
 

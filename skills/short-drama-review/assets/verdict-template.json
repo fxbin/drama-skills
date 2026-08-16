@@ -1,19 +1,27 @@
 {
+  "sources": {
+    "screenplay": {
+      "owner": "short-drama-write",
+      "artifact": "剧集/EP001/screenplay.md",
+      "hash": "<sha256>"
+    },
+    "findings": {
+      "owner": "short-drama-review",
+      "artifact": "审查/findings.jsonl",
+      "hash": "<sha256>"
+    }
+  },
   "review_id": "REVIEW-EXAMPLE",
   "scope": [
     "story_script"
   ],
   "reviewed_artifacts": [
     {
-      "owner": "short-drama-write",
-      "artifact": "剧集/EP001/screenplay.md",
-      "hash": "<sha256>"
+      "src": "screenplay"
     }
   ],
   "findings_ref": {
-    "owner": "short-drama-review",
-    "artifact": "审查/findings.jsonl",
-    "hash": "<sha256>"
+    "src": "findings"
   },
   "review_method": "uninvolved_reviewer | self_check",
   "reviewer": "<honest reviewer label>",

@@ -13,7 +13,10 @@
 
 - [ ] 每个 production-relevant screenplay block 有 occurrence 或明确
   `no_asset_change` disposition。
-- [ ] occurrence 指向 accepted screenplay/index 的 artifact、hash、field、block、scene。
+- [ ] 每个文件首行的 `sources` 声明了它用到的全部上游快照，记录里的 `src` 都能解析到
+  其中一条。
+- [ ] occurrence 的 `source_ref` 指向 accepted screenplay/index 快照，并给出 field、
+  block、scene。
 - [ ] source pointer、derived visible facts、asset reconciliation、continuity pointer 的
   数据角色没有混写。
 - [ ] 每个 occurrence 的 decision 恰为 `reuse` / `new_variant` / `new_asset` /
@@ -42,8 +45,8 @@
 - [ ] occurrence 的 production disposition 合理：提及不被误当出镜，关键操作物不被
   降成普通布景。
 
-Reviewer finding 应含 artifact/hash、evidence、impact、required fix、owner、severity、
-status；不能只说“资产不够细”或“看起来 AI”。
+Reviewer finding 应含被引用记录（`src` 与 `record_id`）、evidence、impact、required fix、
+owner、severity、status；不能只说“资产不够细”或“看起来 AI”。
 
 ## C. Craft 默认（可覆盖，不单独阻断）
 
