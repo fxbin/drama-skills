@@ -926,7 +926,7 @@ def main() -> int:
     if args.provider is None:
         parser.error("provider is required unless --selftest is used")
     try:
-        job = json.load(sys.stdin)
+        job = json.load(sys.stdin.buffer)
         if not isinstance(job, Mapping):
             raise ValueError("adapter input must be an object")
         runners = {"seedance": _run_seedance, "gpt-image-2": _run_openai, "minimax-music": _run_minimax}
@@ -936,7 +936,7 @@ def main() -> int:
         }
         if provider_job_id:
             response["provider_job_id"] = provider_job_id
-        json.dump(response, sys.stdout, ensure_ascii=False)
+        json.dump(response, sys.stdout, ensure_ascii=True)
         return 0
     except AdapterFailure as exc:
         # Provider bodies and credentials are intentionally never reflected.

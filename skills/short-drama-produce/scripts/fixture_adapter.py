@@ -28,7 +28,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fail", action="store_true")
     args = parser.parse_args()
-    job = json.load(sys.stdin)
+    job = json.load(sys.stdin.buffer)
     if args.fail:
         return 7
     directory_raw = job.get("output_root")

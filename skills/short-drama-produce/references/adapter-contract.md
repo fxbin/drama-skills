@@ -49,7 +49,9 @@ let the adapter read its environment or operating-system credential store.
 
 ## Adapter stdin
 
-The adapter receives the confirmed job plus:
+The adapter receives one UTF-8 JSON document as raw stdin bytes. Read the
+binary stream (for example `json.load(sys.stdin.buffer)`) rather than relying
+on the machine locale. The document contains the confirmed job plus:
 
 - `run_id`: unique attempt ID;
 - `project_root`: local absolute path to a private, run-scoped snapshot containing
@@ -67,7 +69,9 @@ polling and credentials stay in the external runtime configuration.
 
 ## Adapter stdout
 
-On success, write one bounded JSON object to stdout:
+On success, write one bounded UTF-8 JSON object to stdout. Portable adapters
+should ASCII-escape JSON strings so Windows locale settings cannot corrupt
+project paths:
 
 ```json
 {
