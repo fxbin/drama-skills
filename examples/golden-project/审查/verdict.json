@@ -115,7 +115,7 @@
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP001/storyboard/motion-specs.jsonl",
-      "hash": "bece78870d771ab293dc0cc0b95104d4073a47acc5aff4030716ed4a4014303e",
+      "hash": "93ac41d28f3e554eaef18699ee703984005b2966940f51e92003c2bbf7283fa0",
       "authority": "accepted"
     },
     {
@@ -187,7 +187,7 @@
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP002/storyboard/motion-specs.jsonl",
-      "hash": "2d94368f8f767a7a8042a27d0415bd40abc6c25e1e4918b7a5ac4d3a2adaa0ec",
+      "hash": "1e67f36f15163dad16b5716dffc34c2c71c6460af826fa44c1068fe4c66924ef",
       "authority": "accepted"
     },
     {
@@ -259,7 +259,7 @@
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP003/storyboard/motion-specs.jsonl",
-      "hash": "954ba436385f893715fd650c1ef05c7909c48dec6b7c01c08eac4c0bdca747ef",
+      "hash": "398e9ac60e7d31e199122361e795202664f9002623616afe535ac79a095fa01d",
       "authority": "accepted"
     },
     {
@@ -331,7 +331,7 @@
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP004/storyboard/motion-specs.jsonl",
-      "hash": "15163e83da190049eaa5db69808a38c5b0e61dd1d99a9305b3220252c5ed95b6",
+      "hash": "f39acecd5236359791f9904a987915d7b92c8546d5ea504081936ac72cbdd773",
       "authority": "accepted"
     },
     {
@@ -403,7 +403,7 @@
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP005/storyboard/motion-specs.jsonl",
-      "hash": "da3472f1b54b65d58962ed3a87f3c604ae33a01f2f2bc8cf6c9f2888f5e10f1e",
+      "hash": "2d8460cb498752574f69613c54bb01dad25700246f0dc6ca23ddd31d68b5d680",
       "authority": "accepted"
     },
     {
@@ -475,7 +475,7 @@
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP006/storyboard/motion-specs.jsonl",
-      "hash": "7b9e0b6745d79bffeb950da4567602e2bade2b9cf8dbe78350f4ee17a7444931",
+      "hash": "80975b1d2a843193432724e5523a124edd6e49aa96c8a7976ca910caf391a05f",
       "authority": "accepted"
     },
     {
@@ -547,7 +547,7 @@
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP007/storyboard/motion-specs.jsonl",
-      "hash": "0de3335e465012b53b3fbe77ef750eaf02c78a676a5d2a584b6c6c93d45f7d1e",
+      "hash": "05114068d9d60c3d96251748054716a56c6887c5d23f7c65118648ea17d38be9",
       "authority": "accepted"
     },
     {
@@ -627,55 +627,55 @@
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-GLOBAL-ASSET-SNAPSHOT"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP001-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP002-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP003-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP004-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP005-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP006-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP007-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6fa6688964b8ab02e8c17b097916d9dd1994ecaa53c223d001fb012b89672759",
+      "hash": "fd2712effb162185d888e052ed9e495d99730934e4abc7558deb9f76373358bb",
       "record_id": "CD-EP008-CHAIN-ACCEPTANCE"
     }
   ],

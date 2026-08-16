@@ -384,7 +384,15 @@ class GoldenProjectTests(unittest.TestCase):
                     actions = []
                     for item in motion["ordered_subject_motion"]:
                         actions.append(item["action"])
+                        self.assertNotIn(" / [", item["action"])
                         self.assertTrue(item["source_refs"])
+                        self.assertTrue(
+                            all(
+                                index[source_ref["record_id"]]["kind"]
+                                in {"action", "dialogue"}
+                                for source_ref in item["source_refs"]
+                            )
+                        )
                         self.assertTrue(
                             {
                                 source_ref["record_id"]
@@ -398,6 +406,18 @@ class GoldenProjectTests(unittest.TestCase):
                         )
                     )
                     self.assertEqual(len(actions), len(set(actions)))
+
+                    if shot["shot_id"] == "SHOT-EP001-05":
+                        self.assertEqual(
+                            {
+                                item["actor"]: item["action"]
+                                for item in motion["ordered_subject_motion"]
+                            },
+                            {
+                                "CHAR-CHEN-YUAN": "陈予安在账本上写下一行。",
+                                "CHAR-LIANG-FENG": "梁锋慢慢放下配送箱，双手捧住热碗。",
+                            },
+                        )
 
                     expected_dialogue = {
                         item["record_id"] for item in shot["dialogue_audio_refs"]
