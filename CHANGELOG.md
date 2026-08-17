@@ -66,6 +66,11 @@
   从 119 个降到 27 个。
 - **新增 `tools/compact_refs.py`**。按依赖顺序改写一个项目的引用写法，只在文件确实变短时改写；
   `--check` 核对每条引用都能解析、且绑定的 hash 等于被引用文件的当前字节。
+- **两份示例合并到 `examples/`**。原 `demo/` 迁到 `examples/excerpt-chain/`，与
+  `examples/golden-project/` 并列，新增 `examples/README.md` 说明各自回答什么问题：
+  摘录链条看一个环节交给下一个环节什么，Golden Sample 看完整项目的落盘形态与引用链。
+  README 同时写清摘录链条的范围——剧本、资产设定与图片提示词、分镜、视频提示词，
+  不含关键帧与审查结论。
 
 ## [0.4.0] - 2026-08-16
 

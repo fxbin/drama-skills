@@ -48,6 +48,21 @@ RELEASE_TEXT_SUFFIXES = {
 }
 
 
+def tracked_paths() -> list[str]:
+    # -z, not the default listing: git escapes non-ASCII paths, and every
+    # creative path in this repository is Chinese. Quoted names match nothing.
+    if not (SUITE / ".git").exists():
+        # Skip rather than return nothing: scanning zero files is green.
+        raise unittest.SkipTest("no checkout: cannot tell which files ship")
+    listing = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=SUITE,
+        check=True,
+        capture_output=True,
+    ).stdout.decode("utf-8")
+    return [name for name in listing.split("\0") if name]
+
+
 def shipped_text_files() -> list[Path]:
     return [
         path
@@ -59,18 +74,28 @@ def shipped_text_files() -> list[Path]:
 
 
 def release_facing_text_files() -> list[Path]:
-    roots = [SUITE / "skills", SUITE / "maintainers", SUITE / "demo"]
-    top_level = [SUITE / "README.md", SUITE / "README_EN.md", SUITE / "CONTRIBUTING.md"]
-    nested = [
-        path
-        for root in roots
-        if root.is_dir()
-        for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
-        and "__pycache__" not in path.parts
+    # Only tracked files are release-facing. Walking the working tree instead
+    # swept in whatever a maintainer kept locally — a showcase project under an
+    # ignored path carried real provider responses through this scan, while the
+    # published example project was never covered at all.
+    roots = ("skills/", "maintainers/", "examples/")
+    tracked = tracked_paths()
+    selected = [
+        name
+        for name in tracked
+        if name.startswith(roots) or ("/" not in name and name.endswith(".md"))
     ]
-    return [path for path in top_level if path.is_file()] + nested
+    for root in roots:
+        # A renamed or removed directory must turn this red, not quietly shrink
+        # the scan. Both callers pass on an empty set without noticing, and
+        # `assert` would vanish under -O.
+        if not any(name.startswith(root) for name in selected):
+            raise RuntimeError(f"no tracked file under {root}: scan roots drifted")
+    return [
+        path
+        for path in (SUITE / name for name in selected)
+        if path.is_file() and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
+    ]
 
 
 def local_forbidden_terms() -> frozenset[str]:
@@ -84,22 +109,11 @@ class ShippingBoundaryTests(unittest.TestCase):
         ignored = (SUITE / ".gitignore").read_text(encoding="utf-8").splitlines()
         self.assertIn("maintainers/evals/", ignored)
         self.assertIn("tests/local-terms.txt", ignored)
-        if not (SUITE / ".git").exists():
-            return
-        tracked = subprocess.run(
-            [
-                "git",
-                "ls-files",
-                "--",
-                "maintainers/evals",
-                "tests/local-terms.txt",
-            ],
-            cwd=SUITE,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.splitlines()
-        self.assertEqual(tracked, [])
+        private = {"maintainers/evals", "tests/local-terms.txt"}
+        self.assertEqual(
+            [name for name in tracked_paths() if name.startswith(tuple(private))],
+            [],
+        )
 
     def test_shipped_tree_contains_no_cache_or_binary_artifact(self) -> None:
         forbidden = {".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe"}

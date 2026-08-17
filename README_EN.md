@@ -112,7 +112,9 @@ Use $short-drama-produce to preview EP001's accepted image, video, TTS, or timel
 Use $short-drama-review to review EP001's script and prompts
 ```
 
-See [demo/](demo/) for a one-episode excerpt chain. The verifiable eight-episode
+Both samples live in [examples/](examples/). To see what the text looks like,
+read the [one-episode excerpt chain](examples/excerpt-chain/): screenplay, assets
+with their image prompts, storyboard, motion prompts. The verifiable eight-episode
 [Golden Sample, *Kindness Is Not a Debt*](examples/golden-project/), demonstrates
 the full path from development and byte-stable screenplay indexes through assets,
 image prompts, storyboards, keyframes, motion prompts, and review.
