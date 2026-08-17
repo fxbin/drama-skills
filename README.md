@@ -96,7 +96,7 @@ done
 ```
 
 两份示例都在 [examples/](examples/)。想先读文本长什么样，看
-[一集四环节的摘录链条](examples/excerpt-chain/)：剧本 → 资产设定 → 分镜 → 视频提示词。
+[一集的摘录链条](examples/excerpt-chain/)：剧本 → 资产设定与图片提示词 → 分镜 → 视频提示词。
 想看可校验的八集端到端项目，看
 [Golden Sample《善意不结账》](examples/golden-project/)：项目开发 → 剧本与稳定索引 →
 资产设定 → 图像提示词 → 分镜与关键帧 → 视频提示词 → 审查结论。

@@ -15,4 +15,4 @@ maintainers/evals/
 # Scratch space for local showcase workspaces: real creator projects, opened in
 # the dashboard, carrying generated media and provider responses. Nothing here
 # ships. The published excerpt chain lives in examples/excerpt-chain/.
-demo/
+/demo/
