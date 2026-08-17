@@ -1,7 +1,8 @@
-# Demo：一集短剧的文本交接示例
+# 摘录链条：一集短剧的文本交接示例
 
 本目录用四份 Markdown 展示剧本到资产说明、分镜和视频提示词的交接。题材为原创
-都市短剧，情节、人物和地名均为虚构。
+都市短剧，情节、人物和地名均为虚构。完整落盘形态见
+[golden-project/](../golden-project/)。
 
 | 文件 | 环节 | 对应技能 |
 |---|---|---|
@@ -16,5 +17,5 @@
 
 [EP001-剧本.md](EP001-剧本.md) 使用**生产方言格式**，展示创作者常见来稿。
 规范化入口和标准语法见
-[screenplay-format.md](../skills/short-drama-write/references/screenplay-format.md)。
+[screenplay-format.md](../../skills/short-drama-write/references/screenplay-format.md)。
 `short-drama-write` 完成格式转换和创作者确认后，发布 `screenplay.md` 与索引。

@@ -48,6 +48,22 @@ RELEASE_TEXT_SUFFIXES = {
 }
 
 
+def tracked_paths() -> list[str]:
+    # -z, not the default listing: git escapes non-ASCII paths, and every
+    # creative path in this repository is Chinese. Quoted names match nothing.
+    if not (SUITE / ".git").exists():
+        # Skip, never return an empty set: a leak gate that silently scans
+        # nothing reports the same green as one that scanned everything.
+        raise unittest.SkipTest("no checkout: cannot tell which files ship")
+    listing = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=SUITE,
+        check=True,
+        capture_output=True,
+    ).stdout.decode("utf-8")
+    return [name for name in listing.split("\0") if name]
+
+
 def shipped_text_files() -> list[Path]:
     return [
         path
@@ -59,18 +75,22 @@ def shipped_text_files() -> list[Path]:
 
 
 def release_facing_text_files() -> list[Path]:
-    roots = [SUITE / "skills", SUITE / "maintainers", SUITE / "demo"]
-    top_level = [SUITE / "README.md", SUITE / "README_EN.md", SUITE / "CONTRIBUTING.md"]
-    nested = [
-        path
-        for root in roots
-        if root.is_dir()
-        for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
-        and "__pycache__" not in path.parts
+    # Only tracked files are release-facing. Walking the working tree instead
+    # swept in whatever a maintainer kept locally — a showcase project under an
+    # ignored path carried real provider responses through this scan, while the
+    # published example project was never covered at all.
+    roots = ("skills/", "maintainers/", "examples/")
+    top_level = {"README.md", "README_EN.md", "CONTRIBUTING.md"}
+    candidates = [
+        SUITE / name
+        for name in tracked_paths()
+        if name in top_level or name.startswith(roots)
     ]
-    return [path for path in top_level if path.is_file()] + nested
+    return [
+        path
+        for path in candidates
+        if path.is_file() and path.suffix.lower() in RELEASE_TEXT_SUFFIXES
+    ]
 
 
 def local_forbidden_terms() -> frozenset[str]:

@@ -12,7 +12,7 @@ tests/local-terms.txt
 .github/skills/
 maintainers/evals/
 .coverage
-# Local showcase workspaces may be derived from private creator projects and
-# may contain generated media. Keep them available to the dashboard without
-# shipping source-specific text, identifiers, or binary assets.
-demo/workspace/
+# Scratch space for local showcase workspaces: real creator projects, opened in
+# the dashboard, carrying generated media and provider responses. Nothing here
+# ships. The published excerpt chain lives in examples/excerpt-chain/.
+demo/
