@@ -210,6 +210,12 @@ reviewer 在下游审查结论中决定，不能回写运动规格形成循环�
   [delivery-container.jsonl.md](assets/delivery-container.jsonl.md)；
 - `剧集/<EP>/storyboard/video-prompts.md`：由已接受规格、容器记录和配方 `hash` 生成的文本版本。
 
+`generic_prompt` 与派生文本是同一段交付文本，写成执行端可以直接下单的画面描述：从已接受起点的
+姿态与持物说起，逐条写动作、接触、摄影机行为与终点状态。写满的样子见
+[生产提示词语法惯例](references/production-prompt-grammar.md)，那里有成稿与一段合成反例。
+它只含要被拍出来的内容（`VID-22`）——把规格字段名、规则原文或约束清单复述进去，
+读起来很规范，但执行端拿不到任何可以画出来的名词。
+
 自然语言改提示词时，先展示规格字段怎样变化和重新生成的文本预览；若改动触碰分镜或
 剧本负责的内容，保持当前文件不变，并把修改请求交给对应技能。项目工具可用时用 `publish`
 发布跨文件产物并声明直接输入；独立运行时直接写出本阶段文件。
@@ -229,7 +235,11 @@ reviewer 在下游审查结论中决定，不能回写运动规格形成循环�
 spec、起止帧/参考文件、时长、画幅、声音要求和目标路径；生产技能必须展示完整预览并取得
 本次任务的明确确认后才可调用外部 adapter。本技能本身仍只负责规格和提示词。
 
-若音乐承担跨镜、跨场或主题曲职责，先写独立的 provider-neutral
-`music-specs.jsonl`，并用 `scripts/music_spec_check.py` 校验。音乐是时间线层，不能为了某个
+环境声与事件音随镜头走，写在各自运动规格的 `audio` 里；已被镜头认领的 `[SFX]` 剧本块，
+它声明的那个声音要出现在这一镜的 `audio` 里，否则这条已接受的事实到交付时就消失了。
+
+音乐承担跨镜、跨场或主题曲职责时，写独立的 provider-neutral
+`剧集/<EP>/storyboard/music-specs.jsonl`，并用
+[music_spec_check.py](scripts/music_spec_check.py) 校验。音乐是时间线层，不能为了某个
 供应商方便而复制进每镜视频提示词。生成时把已接受的 prompt、歌词（如有）、引用和目标路径
 作为独立 `music` job 交给 `$short-drama-produce`。

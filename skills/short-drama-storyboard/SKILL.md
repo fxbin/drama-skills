@@ -144,6 +144,12 @@ python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shot
 
 时长表示剪辑意图。只有明确的计时算术可以机械检查；一般的可拍性必须结合本镜内容判断。
 
+写 `duration_seconds` 之前，先按项目在 `short-drama.json` 的 `format.pacing` 里声明的速率，
+把每个镜头认领的剧本块折算成秒——台词按字数、动作段按段数，这与 `duration_estimate.py` 在
+剧本阶段用的是同一组速率。折算值是起点，为节奏调整它是创作决定；跳过折算直接凭感觉写，
+整集总时长会到覆盖检查那一步才暴露，而那时要重排的是全部镜头。项目没有声明速率时先向
+创作者要一个量级。
+
 ### 6. 默认每镜一个冻结关键帧
 
 使用 [keyframe-template.jsonl](assets/keyframe-template.jsonl) 写结构化来源，发布为
@@ -153,6 +159,11 @@ python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shot
 
 把已接受镜头的开始边界和准确资产版本，落到一个可以同时存在的瞬间：焦点、构图、
 摄影机与镜头焦段、空间锚点、姿态、目光、双手与持物、表情、光线、排除项。
+
+`generic_prompt` 写这一瞬间要拍出来的画面本身，按 `keyframe-craft.md` 的十二项逐条写满，
+那里有一段四百余字的成稿可以照着写。它只含要被拍出来的内容——不写镜头/记录 ID、规则 ID、
+状态词与成段否定罗列（`SHT-21`）。同一集里两条关键帧的正文不应该只有编号不同：
+读起来一样，说明写的是模板不是画面。
 
 关键帧不得包含“先、再、最后”、表演变化过程、运镜过程或正在变化的环境；时间变化
 交给 `$short-drama-video-prompts`。

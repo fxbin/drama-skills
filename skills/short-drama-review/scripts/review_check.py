@@ -12,7 +12,7 @@ from typing import Any, NamedTuple
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
-    raise SystemExit("review_check.py requires Python 3.10 or newer")
+    raise SystemExit("review_check.py requires Python 3.9 or newer")
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 HASH_RE = re.compile(r"[0-9a-f]{64}")
@@ -213,7 +213,10 @@ def validate_findings(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]
             raise ValidationError(f"{label}: invalid status")
         disposition = finding.get("disposition")
         if disposition not in DISPOSITIONS:
-            raise ValidationError(f"{label}: invalid disposition")
+            raise ValidationError(
+                f"{label}: invalid disposition {disposition!r}; "
+                f"use one of {', '.join(sorted(DISPOSITIONS))}"
+            )
         if disposition in {"targeted_edit", "resubmit", "rewrite"} and not finding["required_change"].strip():
             raise ValidationError(f"{label}: disposition requires required_change")
         refs = finding.get("evidence_refs")

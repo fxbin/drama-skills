@@ -163,7 +163,7 @@ def reconcile(
             findings.append(
                 _finding(
                     "VID15_CONTAINER_DURATION_MISSING",
-                    "container_duration is not a number",
+                    "container_duration must be present and a number of seconds",
                     container_id=container_id,
                 )
             )
