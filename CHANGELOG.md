@@ -211,9 +211,10 @@ v0.4.2 是一次校准版本，改动大多来自一次和竞品的端到端对�
   | 多集整稿导入的 span 校验 | **基本仍在**。`source_byte_length`、byte span 有效性与顺序、行↔字节一致性都还在；失去的是逐行内容摘要 |
   | 创作者验收钉住字节 | **没了**。验收记录只记接受了哪些产物 |
 
-  `CLAUDE.md` 增加一条规则：产物里不写任何哈希。`tests/test_golden_project.py` 与
-  `tests/test_suite_anatomy.py` 各有一条断言把这些键列为已退役，样例与模板都覆盖到，
-  加回去会直接红。
+  `CLAUDE.md` 增加一条规则：产物里不写任何哈希。三条断言把这些键列为已退役——样例的
+  JSON/JSONL、技能的 JSON/JSONL 与 `assets/*.md`，外加一条按字面扫描 `skills/**/*.md`
+  的（`references/*.md` 里的 JSON 块只有这一条拦得住，而那正是当初 `derivation` 溜回来的
+  入口）。三条都反向验过：加回任一键会报红。
 
   **工具自己维护的那一层保留**：生命周期状态（`update_needed` 靠它）、交付包
   `checksums.sha256`（`verify` 靠它）、生产任务指纹。它们不写进产物，也不靠人维护。
