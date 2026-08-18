@@ -69,7 +69,7 @@
 | STY-09 | reviewed_invariant | A reveal/reversal grows from established facts and changes a plan, explanation, relationship, or costly choice. |
 | STY-10 | craft_default | Establish the recurring-payoff promise once the opening pressure makes it legible; an opening may imply, delay, or state it according to genre and creator intent. Plan each outgoing hook from the episode's local result rather than repeating a type by quota. |
 | STY-11 | craft_default | Build only the prior-world reservoir needed to predict present choices, then enter where an established strategy begins to create visible cost. |
-| STY-12 | reviewed_invariant | Claimed character progression cites a pressure test, choice or retreat, local result, cost, and changed visible strategy. |
+| STY-12 | reviewed_invariant | Claimed character progression cites a pressure test, choice or retreat, local result, cost, and changed visible strategy. It is recorded once per character in the story engine, not restated in every episode record; the episode carries only the local result and the outgoing pressure it produced. |
 | STY-13 | reviewed_invariant | Each episode produces a local dramatic result before its outgoing hook; serialization cannot rely only on pausing an unfinished action. |
 | STY-14 | craft_default | Maintain compact serial memory for character strategy/state, relationships, information permissions, setup debt, rhythm, and exact handoff. |
 | STY-15 | reviewed_invariant | Calibrate each information release to what its visible carrier directly supports, while keeping unproved identity, cause, motive, or mechanism explicit as unresolved inference. |

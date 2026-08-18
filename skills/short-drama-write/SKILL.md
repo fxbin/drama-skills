@@ -17,6 +17,22 @@ python3 {技能目录}/scripts/selftest.py
 python3 {技能目录}/scripts/screenplay_index.py <screenplay.md> --output <screenplay-index.jsonl>
 ```
 
+## 估算本集时长
+
+写完一集后，可以按**项目自己声明的速率**估算它有多长。套件不带跨项目速率，也不设容差带：
+
+```bash
+python3 {技能目录}/scripts/duration_estimate.py <screenplay.md> --project <short-drama.json>
+```
+
+脚本见 [duration_estimate.py](scripts/duration_estimate.py)。速率写在 `short-drama.json` 的
+`format.pacing`（`spoken_characters_per_second` 与 `seconds_per_action_paragraph`），
+由创作者按本项目的戏来定——密集争辩和沉默劳作不是同一个折算比。没有声明速率时，脚本只报
+台词字数与动作段数，不猜秒数。
+
+结果是**给创作者看的数字，不是门槛**：偏离目标不阻断交付。它的价值在于让"这一集到底多长"
+在剧本阶段就能回答，而不是等到分镜环节才发现装不下——那时戏已经写完了。
+
 ## 开始前
 
 本技能可独立安装和执行。先读取用户明确提供的单集材料与本任务直接输入；若当前目录是

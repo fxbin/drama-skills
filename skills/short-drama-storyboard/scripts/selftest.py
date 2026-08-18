@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import copy
 import sys
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from storyboard_check import (
     check_boundary_entries,
     check_episode_duration,
     check_keyframe_boundaries,
+    check_screenplay_coverage,
 )
 
 MINIMUM_PYTHON = (3, 10)
@@ -79,6 +82,40 @@ EXPANDED_KEYFRAME: dict[str, Any] = {
 }
 
 
+def test_screenplay_coverage_flags_gaps_and_double_claims() -> None:
+    """Every screenplay line must be claimed by exactly one shot.
+
+    A line no shot claims never gets filmed; a line two shots claim gets shown
+    twice. Both are referential facts, so both are checked here -- whether the
+    coverage is *well designed* stays with the agent.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        screenplay = Path(directory) / "screenplay.md"
+        screenplay.write_text(
+            "# EP001\n\n## EP001-SC001 内 · 房间 · 日\n\n"
+            "他推开门。\n\n甲：你来了。\n\n她把钥匙放下。\n\n"
+            "[连续性] 钥匙留在桌上。\n",
+            encoding="utf-8",
+        )
+        shots = [
+            {"shot_id": "SH001", "source_lines": ["他推开门。"]},
+            {"shot_id": "SH002", "source_lines": ["甲：你来了。"]},
+            {"shot_id": "SH003", "source_lines": ["甲：你来了。"]},
+            {"shot_id": "SH004", "source_lines": ["屋外下着雨。"]},
+        ]
+        found = {f["code"] for f in check_screenplay_coverage(shots, screenplay)}
+    require("SHT21_LINE_UNCLAIMED" in found, "an unfilmed line must be reported")
+    require("SHT21_LINE_CLAIMED_TWICE" in found, "a doubly claimed line must be reported")
+    require(
+        "SHT21_LINE_NOT_IN_SCREENPLAY" in found,
+        "a shot claiming absent text must be reported",
+    )
+
+
+def test_screenplay_coverage_is_skipped_when_not_supplied() -> None:
+    require(check_screenplay_coverage([], None) == [], "no screenplay means no claim")
+
+
 def main() -> int:
     require(check_episode_duration(COVERAGE, [SHOT], 5) == [], "valid duration")
     require(
@@ -137,7 +174,10 @@ def main() -> int:
         "a boundary entry that only points back was not detected",
     )
 
-    print("11 self-tests passed")
+    test_screenplay_coverage_flags_gaps_and_double_claims()
+    test_screenplay_coverage_is_skipped_when_not_supplied()
+
+    print("13 self-tests passed")
     return 0
 
 
