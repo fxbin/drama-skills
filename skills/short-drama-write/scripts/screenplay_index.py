@@ -869,7 +869,6 @@ def build_index(
         SCREENPLAY_SOURCE_KEY: {
             "owner": "short-drama-write",
             "artifact": _portable_source_ref(source, source_ref),
-            "hash": source_sha256,
         }
     }
     source_artifact_ref: dict[str, str] = {"src": SCREENPLAY_SOURCE_KEY}
@@ -884,7 +883,6 @@ def build_index(
         previous_snapshot = {
             "owner": "short-drama-write",
             "artifact": _portable_source_ref(previous_source, source_ref),
-            "hash": _sha256(previous_source.read_bytes()),
         }
         previous_key = SCREENPLAY_SOURCE_KEY
         if previous_snapshot != declared_sources[SCREENPLAY_SOURCE_KEY]:
