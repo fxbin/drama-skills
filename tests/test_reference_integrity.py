@@ -82,19 +82,53 @@ def resolve_reference(reference: Any, sources: dict[str, Any]) -> dict[str, Any]
     return None
 
 
-def record_by_id(records: list[Any], record_id: str) -> Any:
-    """The record a ``record_id`` names.
+def identity_key(records: list[Any]) -> set[str]:
+    """The key that identifies a record, as opposed to one that points elsewhere.
 
-    Every record type spells its own identity key -- ``prop_id``, ``shot_id``,
-    ``episode_id`` and so on -- so any ``*_id`` field carrying the value
-    identifies the record. Enumerating the key names instead would silently
-    skip whichever type was added last.
+    Records carry several ``*_id`` fields: an occurrence has ``occurrence_id``
+    but also ``episode_id`` and ``scene_id``, and an acceptance has
+    ``decision_id`` alongside ``artifact_id``. Matching any ``*_id`` would let a
+    reference resolve against some other record's *foreign key* and report a
+    dangling reference as fine -- the exact failure this module exists to catch.
+
+    An identity key is unique among the records that carry it. Foreign keys
+    repeat -- many occurrences share one ``episode_id`` -- so they are excluded.
+    A file may hold more than one record type (a screenplay index opens with a
+    meta record and continues with blocks), so candidates are gathered from
+    every record rather than from the first one.
+
+    Limitation worth knowing: a foreign key that happens to be unique *and*
+    present on every record of its type is indistinguishable from a co-identity
+    without a schema. Acceptance records are the real case -- each decision is
+    about exactly one artifact, so ``artifact_id`` is unique and total. Treating
+    it as an identity is right there; if a genuine foreign key ever acquires
+    that shape, this resolver would accept a reference to it.
     """
+    rows = [record for record in records if isinstance(record, dict)]
+    keys = {key for row in rows for key in row if key.endswith("_id")}
+    identities = set()
+    for key in keys:
+        carriers = [row for row in rows if isinstance(row.get(key), str)]
+        if not carriers:
+            continue
+        values = [row[key] for row in carriers]
+        if len(set(values)) != len(values):
+            continue  # repeats, so it points at something else
+        # A key carried by only some records of a type is a foreign key on those
+        # records, not the identity of the type.
+        same_shape = [row for row in rows if row.get("record_type") == carriers[0].get("record_type")]
+        if len(carriers) == len(same_shape):
+            identities.add(key)
+    return identities
+
+
+def record_by_id(records: list[Any], record_id: str) -> Any:
+    identities = identity_key(records)
     for record in records:
         if not isinstance(record, dict):
             continue
-        for key, value in record.items():
-            if key.endswith("_id") and value == record_id:
+        for key in identities:
+            if record.get(key) == record_id:
                 return record
     return None
 

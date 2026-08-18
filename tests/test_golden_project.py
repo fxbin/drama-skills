@@ -365,11 +365,17 @@ class GoldenProjectTests(unittest.TestCase):
                     image_prompt_check.validate_file(root / "assets/image-prompt-specs.jsonl")["status"],
                     "valid",
                 )
+                # The screenplay index is passed on purpose: it turns on the
+                # block-coverage check, so every shipped episode proves that
+                # each screenplay block is filmed exactly once. Leaving it off
+                # is how a coverage checker built on the wrong field once
+                # looked healthy against a project it could not actually read.
                 storyboard = storyboard_check.check(
                     root / "storyboard/coverage.json",
                     root / "storyboard/shots.jsonl",
                     root / "storyboard/keyframes.jsonl",
                     project / "short-drama.json",
+                    root / "screenplay-index.jsonl",
                 )
                 self.assertEqual(storyboard["status"], "pass", storyboard.get("findings"))
                 motion = motion_timing_check.check(
