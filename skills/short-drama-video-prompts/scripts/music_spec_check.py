@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, NamedTuple
 
-MINIMUM_PYTHON = (3, 10)
+MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit("music_spec_check.py requires Python 3.10 or newer")
 

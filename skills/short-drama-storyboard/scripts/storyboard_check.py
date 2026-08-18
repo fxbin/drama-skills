@@ -22,7 +22,7 @@ from typing import Any, NamedTuple
 
 # Creators run these scripts on whatever interpreter their machine provides, so
 # an unsupported version must say so instead of failing inside an import.
-MINIMUM_PYTHON = (3, 10)
+MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit(
         "short-drama needs Python {}.{} or newer; this interpreter is {}.{}".format(
@@ -498,72 +498,69 @@ def _declared_target(project: Path | None) -> float | None:
     return float(value)
 
 
-# A screenplay line that no shot claims is a line nobody will film. A line two
-# shots claim is a line the edit will show twice. Neither is a taste judgment,
-# so both are checked here; whether the coverage is *good* stays with the agent.
-SCREENPLAY_HEADING = re.compile(r"^#{1,6}\s")
-SCREENPLAY_TAG = re.compile(r"^\[[^\]]+\]")
-
-
-def screenplay_lines(text: str) -> list[str]:
-    """The lines a shot can claim: not headings, not production tags, not blank."""
-    lines = []
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or SCREENPLAY_HEADING.match(line) or SCREENPLAY_TAG.match(line):
-            continue
-        lines.append(line)
-    return lines
+# A screenplay block that no shot claims is a block nobody will film. A block
+# two shots claim is a block the edit will show twice. Shots bind to the
+# screenplay through the index -- stable block IDs -- not through the prose,
+# because the prose is edited constantly and the IDs survive that.
+def screenplay_block_ids(index_path: Path) -> list[str]:
+    _sources, records = _load_jsonl(index_path)
+    return [
+        str(record["block_id"])
+        for record in records
+        if record.get("record_type") == "block" and isinstance(record.get("block_id"), str)
+    ]
 
 
 def check_screenplay_coverage(
-    shots: list[dict[str, Any]], screenplay_path: Path | None
+    shots: list[dict[str, Any]],
+    shot_sources: dict[str, Any],
+    index_path: Path | None,
 ) -> list[dict[str, Any]]:
-    if screenplay_path is None:
+    if index_path is None:
         return []
     try:
-        text = screenplay_path.read_text(encoding="utf-8")
+        wanted = screenplay_block_ids(index_path)
     except OSError as error:
-        raise CheckError(f"screenplay cannot be read: {error}") from error
+        raise CheckError(f"screenplay index cannot be read: {error}") from error
 
-    wanted = screenplay_lines(text)
-    claims: dict[str, list[str]] = {line: [] for line in wanted}
+    claims: dict[str, list[str]] = {block_id: [] for block_id in wanted}
     unknown: list[dict[str, Any]] = []
     for shot in shots:
         shot_id = shot.get("shot_id")
-        for claimed in shot.get("source_lines") or []:
-            if not isinstance(claimed, str):
+        for reference in shot.get("source_refs") or []:
+            resolved, _defect = resolve_ref(reference, shot_sources, "source_refs")
+            if resolved is None or resolved.record_id is None:
                 continue
-            key = claimed.strip()
-            if key in claims:
-                claims[key].append(shot_id)
-            else:
-                unknown.append({"shot_id": shot_id, "line": key})
+            record_id = str(resolved.record_id)
+            if record_id in claims:
+                claims[record_id].append(shot_id)
+            elif resolved.artifact.endswith("screenplay-index.jsonl"):
+                unknown.append({"shot_id": shot_id, "block_id": record_id})
 
     findings = []
-    for line, owners in claims.items():
+    for block_id, owners in claims.items():
         if not owners:
             findings.append(
                 _finding(
-                    "SHT21_LINE_UNCLAIMED",
-                    "no shot claims this screenplay line",
-                    line=line,
+                    "SHT21_BLOCK_UNCLAIMED",
+                    "no shot claims this screenplay block",
+                    block_id=block_id,
                 )
             )
         elif len(owners) > 1:
             findings.append(
                 _finding(
-                    "SHT21_LINE_CLAIMED_TWICE",
-                    "more than one shot claims the same screenplay line",
-                    line=line,
+                    "SHT21_BLOCK_CLAIMED_TWICE",
+                    "more than one shot claims the same screenplay block",
+                    block_id=block_id,
                     shot_ids=owners,
                 )
             )
     for stray in unknown:
         findings.append(
             _finding(
-                "SHT21_LINE_NOT_IN_SCREENPLAY",
-                "a shot claims a line that is not in the screenplay",
+                "SHT21_BLOCK_NOT_IN_SCREENPLAY",
+                "a shot claims a block that is not in the screenplay index",
                 **stray,
             )
         )
@@ -575,15 +572,15 @@ def check(
     shots_path: Path,
     keyframes_path: Path | None,
     project_path: Path | None,
-    screenplay_path: Path | None = None,
+    screenplay_index_path: Path | None = None,
 ) -> dict[str, Any]:
     coverage = _load_json(coverage_path)
     if not isinstance(coverage, dict):
         raise CheckError("coverage must be a JSON object")
-    _, shots = _load_jsonl(shots_path)
+    shot_sources, shots = _load_jsonl(shots_path)
     findings = check_episode_duration(coverage, shots, _declared_target(project_path))
     findings.extend(check_boundary_entries(shots))
-    findings.extend(check_screenplay_coverage(shots, screenplay_path))
+    findings.extend(check_screenplay_coverage(shots, shot_sources, screenplay_index_path))
     keyframes: list[dict[str, Any]] | None = None
     if keyframes_path is not None:
         keyframe_sources, keyframes = _load_jsonl(keyframes_path)
@@ -608,9 +605,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--shots", type=Path, required=True)
     parser.add_argument("--keyframes", type=Path)
     parser.add_argument(
-        "--screenplay",
+        "--screenplay-index",
         type=Path,
-        help="screenplay.md, so every line is claimed by exactly one shot",
+        help="screenplay-index.jsonl, so every block is claimed by exactly one shot",
     )
     parser.add_argument(
         "--project",
@@ -624,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         result = check(
-            args.coverage, args.shots, args.keyframes, args.project, args.screenplay
+            args.coverage, args.shots, args.keyframes, args.project, args.screenplay_index
         )
     except CheckError as error:
         print(f"{type(error).__name__}: {error}", file=sys.stderr)

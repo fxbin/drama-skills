@@ -65,11 +65,9 @@ ruff check --no-cache .
 版本上实跑一次：
 
 ```bash
-uv venv --python 3.10 /tmp/floor && \
+uv venv --python 3.9 /tmp/floor && \
   PYTHONDONTWRITEBYTECODE=1 /tmp/floor/bin/python -B -m unittest discover -s tests
 ```
-
-（`datetime.UTC` 需要 3.11、`zip(strict=)` 需要 3.10，都属于本机能跑、下限跑不了的典型。）
 
 每个 `skills/*` 目录独立维护，可以单独安装。改一个技能时，改动应当只落在它自己的目录里。
 
