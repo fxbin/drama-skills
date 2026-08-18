@@ -9,7 +9,6 @@ split/merge revision.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -179,10 +178,6 @@ VOICE_TAG_BODY_RE = re.compile(r"^(?P<speaker>[^\s：（）:\[\]#]{1,40})：(?P<
 BLOCK_ID_RE = re.compile(r"^BLK-(?P<scope>.+)-(?P<code>[HADPC])(?P<number>\d+)$")
 
 
-def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
 def _newline_style(data: bytes) -> str:
     crlf = data.count(b"\r\n")
     bare_lf = data.count(b"\n") - crlf
@@ -245,7 +240,6 @@ def _span(
         "line_end": lines[end_index]["number"],
         "_raw": raw,
         "_text": raw.decode("utf-8"),
-        "content_sha256": _sha256(raw),
     }
 
 
@@ -259,7 +253,6 @@ def _issue(
         "issue_code": code,
         "severity": "review_required",
         "message": message,
-        "content_sha256": span["content_sha256"],
     }
 
 
@@ -523,11 +516,16 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _load_previous(
-    previous_index_path: Path,
+    records: list[dict[str, Any]],
     previous_source_path: Path,
 ) -> list[dict[str, Any]]:
+    # Without the previous screenplay's bytes a block's identity is its content
+    # digest and nothing more: exact-content reuse still holds, split/merge
+    # detection does not. A rewritten body block then loses its ID instead of
+    # exception by design — they are reused on a stable scene_id, so an edited
+    # heading keeps its ID; the scene is the same scene, and the blocks under it
+    # are what carry the content.
     source_data = previous_source_path.read_bytes()
-    records = _read_jsonl(previous_index_path)
     sources = load_sources(records)
     body = [record for record in records if record.get("record_type") != SOURCES_RECORD_TYPE]
     if not body or body[0].get("record_type") != "screenplay_index_meta":
@@ -539,16 +537,10 @@ def _load_previous(
     resolved, _defect = resolve_ref(body[0].get("source_ref"), sources, "previous_index")
     if resolved is None:
         raise ValueError("previous index does not name its screenplay")
-    previous_speakers = frozenset(
-        speaker
-        for record in records
-        if record.get("record_type") == "block"
-        and record.get("kind") == "dialogue"
-        and isinstance((speaker := record.get("speaker")), str)
-    )
+    previous_speakers = previous_index_speakers(records)
     parsed_blocks, _ = _parse_screenplay(source_data, previous_speakers)
     parsed_by_span = {
-        (block["byte_start"], block["byte_end"], block["content_sha256"], block["kind"]): block
+        (block["byte_start"], block["byte_end"], block["kind"]): block
         for block in parsed_blocks
     }
     previous: list[dict[str, Any]] = []
@@ -564,29 +556,44 @@ def _load_previous(
         seen_ids.add(block_id)
         byte_start = record.get("byte_start")
         byte_end = record.get("byte_end")
-        digest = record.get("content_sha256")
         kind = record.get("kind")
         if (
             not isinstance(byte_start, int)
             or not isinstance(byte_end, int)
+            or isinstance(byte_start, bool)
+            or isinstance(byte_end, bool)
             or not 0 <= byte_start < byte_end <= len(source_data)
-            or not isinstance(digest, str)
             or kind not in KIND_CODES
         ):
             raise ValueError(f"previous block {block_id} does not resolve against previous source")
-        parsed = parsed_by_span.get((byte_start, byte_end, digest, kind))
+        parsed = parsed_by_span.get((byte_start, byte_end, kind))
         if parsed is None:
             raise ValueError(f"previous block {block_id} does not resolve against previous source")
         previous.append({**record, "_text": parsed["_text"], "_order": parsed["_order"]})
     return previous
 
 
+def previous_index_speakers(records: list[dict[str, Any]]) -> frozenset[str]:
+    """Recover the dialogue speaker roster an earlier index already resolved."""
+    return frozenset(
+        speaker.strip()
+        for record in records
+        if record.get("record_type") == "block"
+        and record.get("kind") == "dialogue"
+        and isinstance((speaker := record.get("speaker")), str)
+        and speaker.strip()
+    )
+
+
 def _fingerprint(block: dict[str, Any]) -> tuple[Any, ...]:
+    # Content identity comes from the prose, re-read from the previous screenplay.
+    # No digest is stored in the index, so a rebuild without those bytes has
+    # nothing to compare and renumbers by position.
     return (
         block["kind"],
         block.get("episode_id"),
         block.get("scene_id"),
-        block["content_sha256"],
+        _normalized(block["_text"]),
     )
 
 
@@ -864,7 +871,6 @@ def build_index(
         raise ValueError("speaker names must match the screenplay dialogue label grammar")
 
     source_data = source.read_bytes()
-    source_sha256 = _sha256(source_data)
     declared_sources: dict[str, dict[str, str]] = {
         SCREENPLAY_SOURCE_KEY: {
             "owner": "short-drama-write",
@@ -874,6 +880,13 @@ def build_index(
     source_artifact_ref: dict[str, str] = {"src": SCREENPLAY_SOURCE_KEY}
     if authority == "candidate":
         source_artifact_ref["authority"] = "candidate"
+    previous_records: list[dict[str, Any]] = []
+    if previous_index_path is not None:
+        previous_records = _read_jsonl(Path(previous_index_path))
+        # Union, not replacement: a reviser who adds one new speaker passes only
+        # that name, and dropping the rest would turn every other dialogue line
+        # back into an ambiguous block and change its ID.
+        speaker_names |= previous_index_speakers(previous_records)
     current, source_issues = _parse_screenplay(source_data, speaker_names)
     previous: list[dict[str, Any]] = []
     raw_requests: list[dict[str, Any]] = []
@@ -891,10 +904,7 @@ def build_index(
         previous_source_ref = {"src": previous_key}
         if authority == "candidate":
             previous_source_ref["authority"] = "candidate"
-        previous = _load_previous(
-            Path(previous_index_path),
-            previous_source,
-        )
+        previous = _load_previous(previous_records, previous_source)
         raw_requests = _mark_revision_mappings(current, previous)
     _assign_new_ids(current, previous)
 
@@ -952,7 +962,6 @@ def build_index(
     _atomic_jsonl(output, records)
     return {
         "output": str(output),
-        "source_sha256": source_sha256,
         "block_count": len(current),
         "source_issue_count": len(issue_records),
         "mapping_review_count": len(review_requests),

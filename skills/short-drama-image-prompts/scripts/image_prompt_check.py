@@ -12,7 +12,7 @@ from typing import Any, NamedTuple
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
-    raise SystemExit("image_prompt_check.py requires Python 3.10 or newer")
+    raise SystemExit("image_prompt_check.py requires Python 3.9 or newer")
 
 # ---------------------------------------------------------------------------
 # REFERENCE RESOLVER -- reference implementation.
@@ -106,6 +106,19 @@ def resolve_ref(
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 HASH_RE = re.compile(r"[0-9a-f]{64}")
+# `common-recipe.md` forbids weight syntax and any one engine's control words, and
+# `keyframe-craft.md` rejects "cinematic, 8K, masterpiece" as a substitute for
+# subject identity. A generic prompt that carries them has stopped being generic.
+ENGINE_SYNTAX_RE = re.compile(
+    r"(?:^|[\s,，(（])--(?:ar|v|q|niji|style|no|seed|cref|sref)\b"
+    r"|::-?\d"
+    # Weight syntax is written (x:1.2); prose writes "(aperture: 1.8)" with a space.
+    r"|:[01]\.\d\s*[)）]"
+    # Quality words only count in a tag slot. A 4K monitor in shot is content.
+    r"|(?:^|,\s*)(?:8k|4k|uhd)\s*(?=,|$)"
+    r"|(?:^|,\s*)(?:masterpiece|best quality|ultra[- ]detailed|trending on artstation)\s*(?=,|$)",
+    re.IGNORECASE,
+)
 PURPOSES = {
     "character_sheet",
     "location_plate",
@@ -329,7 +342,10 @@ def validate_records(
         identifiers.add(spec_id)
         purpose = record.get("purpose")
         if purpose not in PURPOSES:
-            raise ValidationError(f"{label}: invalid purpose {purpose!r}")
+            raise ValidationError(
+                f"{label}: invalid purpose {purpose!r}; "
+                f"use one of {', '.join(sorted(PURPOSES))}"
+            )
         if record.get("status") not in {"candidate", "accepted"}:
             raise ValidationError(f"{label}: status must be candidate or accepted")
         leaked = sorted(vendor_field_paths(record))
@@ -338,6 +354,12 @@ def validate_records(
         prompt = text(record, "generic_prompt", label)
         if HASH_RE.search(prompt) or "<sha256>" in prompt:
             raise ValidationError(f"{label}: generic_prompt leaks internal hashes")
+        engine_syntax = ENGINE_SYNTAX_RE.search(prompt)
+        if engine_syntax:
+            raise ValidationError(
+                f"{label}: generic_prompt carries engine-specific syntax "
+                f"{engine_syntax.group(0).strip()!r}; keep it in a provider adapter"
+            )
         validate_reference_bindings(record, sources, label)
         if purpose == "lookdev_frame":
             validate_lookdev_spec(record, sources, label)

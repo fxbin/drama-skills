@@ -333,7 +333,8 @@ def check_episode_duration(
             findings.append(
                 _finding(
                     "SHT16_DISPOSITION_CLAIMS_A_TARGET",
-                    "no target is declared, so the disposition cannot judge one",
+                    "no target is declared, so the disposition cannot judge one; "
+                    "leave it unset or use no_target_declared",
                 )
             )
         return findings
@@ -353,15 +354,14 @@ def check_episode_duration(
                 computed=round(expected, 6),
             )
         )
-    if duration.get("disposition") not in {
-        "within_creator_tolerance",
-        "creator_accepted_overrun",
-        "to_revise",
-    }:
+    allowed = ("within_creator_tolerance", "creator_accepted_overrun", "to_revise")
+    if duration.get("disposition") not in set(allowed):
         findings.append(
             _finding(
                 "SHT16_DISPOSITION_MISSING",
-                "a declared target needs a disposition for its delta",
+                "a declared target needs a disposition for its delta; "
+                f"use one of {', '.join(allowed)}",
+                stated=duration.get("disposition"),
             )
         )
     return findings

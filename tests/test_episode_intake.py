@@ -72,7 +72,6 @@ class EpisodeIntakeTests(unittest.TestCase):
         for row in document["episodes"]:
             self.assertIn("byte_start", row)
             self.assertIn("byte_end", row)
-            self.assertIn("content_sha256", row)
             self.assertEqual(row["byte_length"], row["byte_end"] - row["byte_start"])
         self.assertEqual(document["source_ref"], self.source.name)
 
@@ -200,10 +199,6 @@ class ProgressAndMergeTests(unittest.TestCase):
         self.assertEqual(first["completed"], ["EP001", "EP004"])
         self.assertEqual(first["next_batch"], ["EP002", "EP003", "EP005"])
         self.assertEqual(first["pending"], ["EP002", "EP003", "EP005", "EP006", "EP007", "EP008"])
-        self.assertEqual(first["source_sha256"], episode_intake.sha256(self.source.read_bytes()))
-        self.assertIn("index_sha256", first)
-        self.assertIn("map_sha256", first)
-        self.assertEqual(len(first["record_hashes"]), 2)
 
     def test_merge_is_atomic_sorted_and_replay_is_noop(self) -> None:
         initial = self.batch("initial.jsonl", [{"episode_id": "EP004", "beat": "丁"}])

@@ -19,7 +19,7 @@ Every record after the header names the snapshot through its key:
 ```
 
 - `source_refs` carry `src` plus the record or field they point at; the
-  snapshot's `owner`, `artifact` and `hash` live in the header entry that `src`
+  artifact's `owner` and `artifact` live in the header entry that `src`
   names.
 - `scope` is the accepted timeline interval; it does not promise a supplier can
   generate that exact duration.

@@ -1,4 +1,3 @@
-import hashlib
 import importlib.util
 import json
 import subprocess
@@ -95,9 +94,6 @@ class ScreenplayIndexTests(unittest.TestCase):
             self.assertTrue(
                 all(row["mapping"]["status"] == "reused" for row in second_blocks)
             )
-            for row in second_blocks:
-                selected = source_bytes[row["byte_start"] : row["byte_end"]]
-                self.assertEqual(hashlib.sha256(selected).hexdigest(), row["content_sha256"])
             meta = read_jsonl(second)[0]
             # The index declares its screenplay once and every reference names
             # it by key. A rerun over the same bytes is the same snapshot, so
@@ -132,8 +128,6 @@ class ScreenplayIndexTests(unittest.TestCase):
             records = read_jsonl(previous_index)
             action = next(row for row in records if row.get("kind") == "action")
             action["byte_start"] += 1
-            selected = source.read_bytes()[action["byte_start"] : action["byte_end"]]
-            action["content_sha256"] = hashlib.sha256(selected).hexdigest()
             previous_index.write_text(
                 "\n".join(json.dumps(row, ensure_ascii=False) for row in records) + "\n",
                 encoding="utf-8",
@@ -183,15 +177,16 @@ class ScreenplayIndexTests(unittest.TestCase):
                 speakers={"周野"},
             )
 
-            old_by_hash = {row["content_sha256"]: row["block_id"] for row in blocks(old_index)}
+            old_ids = {row["block_id"] for row in blocks(old_index)}
             new_rows = blocks(new_index)
             reused = [row for row in new_rows if row["mapping"]["status"] == "reused"]
             self.assertEqual(len(reused), 3)
             for row in reused:
-                self.assertEqual(row["block_id"], old_by_hash[row["content_sha256"]])
+                self.assertIn(row["block_id"], old_ids)
+                self.assertEqual(row["mapping"]["previous_block_ids"], [row["block_id"]])
             inserted = [row for row in new_rows if row["mapping"]["status"] == "new"]
             self.assertEqual(len(inserted), 1)
-            self.assertNotIn(inserted[0]["block_id"], set(old_by_hash.values()))
+            self.assertNotIn(inserted[0]["block_id"], old_ids)
 
     def test_split_and_merge_are_unresolved_instead_of_guessed(self) -> None:
         cases = {
@@ -345,9 +340,11 @@ class ScreenplayIndexTests(unittest.TestCase):
                 speakers={"林岚"},
             )
 
-            repeated_hash = hashlib.sha256("门外传来两声敲门。".encode()).hexdigest()
+            body = new_source.read_bytes()
             repeated = [
-                row for row in blocks(new_index) if row["content_sha256"] == repeated_hash
+                row
+                for row in blocks(new_index)
+                if body[row["byte_start"] : row["byte_end"]].decode() == "门外传来两声敲门。"
             ]
             self.assertEqual(len(repeated), 2)
             self.assertTrue(

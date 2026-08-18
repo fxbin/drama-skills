@@ -121,7 +121,7 @@ python3 {技能目录}/scripts/episode_intake.py index <多集整稿> --out <epi
 - `项目开发/creative-brief.md`
 - `项目开发/story-engine.md`
 - `项目开发/director-brief.md`（项目需要时；仅为 creator authority 候选）
-- `项目开发/adaptation-map.jsonl`（长材料改编时；只保留输入 locator/span/hash、
+- `项目开发/adaptation-map.jsonl`（长材料改编时；只保留输入 locator/span、
   去引用的功能摘要、候选去向与未决项，不复制原文；例见
   [adaptation-map.example.jsonl](assets/adaptation-map.example.jsonl)）
 - `项目开发/series-arc.json`（项目需要时）

@@ -13,7 +13,6 @@ The script reads accepted creator files and writes nothing.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -273,17 +272,6 @@ def check(
             )
             continue
         raw = screenplay[start:end]
-        if hashlib.sha256(raw).hexdigest() != block.get("content_sha256"):
-            findings.append(
-                _finding(
-                    "VOICE_INDEX_IS_STALE_AGAINST_SCREENPLAY",
-                    "the index no longer matches the screenplay bytes; rebuild it",
-                    line_id=line_id,
-                    record_id=record_id,
-                )
-            )
-            continue
-
         match = DIALOGUE.match(raw.decode("utf-8").strip())
         if match is None:
             findings.append(

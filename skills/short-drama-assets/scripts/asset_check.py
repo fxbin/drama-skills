@@ -12,7 +12,7 @@ from typing import Any, NamedTuple
 
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
-    raise SystemExit("asset_check.py requires Python 3.10 or newer")
+    raise SystemExit("asset_check.py requires Python 3.9 or newer")
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 HASH_RE = re.compile(r"[0-9a-f]{64}")

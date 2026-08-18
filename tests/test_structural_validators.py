@@ -374,16 +374,6 @@ class VoiceSheetCheckTests(unittest.TestCase):
         )
         self.assertIn("VOICE_LINE_TEXT_DIVERGED", codes(result["findings"]))
 
-    def test_a_screenplay_revised_without_rebuilding_the_index_is_caught(self) -> None:
-        index, _source, block_id = self.build()
-        revised = self.SCREENPLAY.replace("你把本子放下。", "你把本子放下吧。")
-        result = voice_sheet_check.check(
-            [self.line(block_id)], index, revised.encode("utf-8")
-        )
-        self.assertIn(
-            "VOICE_INDEX_IS_STALE_AGAINST_SCREENPLAY", codes(result["findings"])
-        )
-
     def test_a_speaker_that_disagrees_with_the_index_is_caught(self) -> None:
         index, source, block_id = self.build()
         result = voice_sheet_check.check(

@@ -94,6 +94,26 @@ SENSITIVE_TEXT = (
     "/Users/",
     "C:\\Users\\",
 )
+# Byte digests the authoring chain used to carry by hand. Nothing ever verified
+# them, so they were a second copy of lifecycle state that went stale in silence:
+# `1313c97` removed the chain from references and missed `derivation`, which then
+# shipped 196 rotten values for several releases. Tool-maintained byte records
+# (lifecycle state, delivery checksums, source-drift digests) are unaffected.
+RETIRED_DIGEST_KEYS = {
+    "content_sha256",
+    "input_hashes",
+    "index_sha256",
+    "map_sha256",
+    "observed_media_sha256",
+    "production_profile_hash",
+    "prompt_or_spec_hashes",
+    "record_hashes",
+    "reference_slot_set_hash",
+    "rendered_hash",
+    "source_end_hash",
+    "source_sha256",
+    "target_hashes",
+}
 IPV4_LITERAL = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
 LONG_DECIMAL_LITERAL = re.compile(r"(?<![A-Za-z0-9])\d{6,}(?![A-Za-z0-9])")
 
@@ -286,6 +306,10 @@ class GoldenProjectTests(unittest.TestCase):
                 for value in walk_values(documents):
                     if isinstance(value, dict):
                         self.assertFalse(SENSITIVE_KEYS.intersection(value), relative)
+                        self.assertFalse(
+                            RETIRED_DIGEST_KEYS.intersection(value),
+                            f"{relative} carries a hand-maintained byte digest",
+                        )
 
     def test_screenplay_indexes_are_clean_and_byte_for_byte_rebuildable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

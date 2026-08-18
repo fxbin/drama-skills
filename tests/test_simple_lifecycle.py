@@ -641,6 +641,84 @@ class SimpleLifecycleTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIsInstance(json.loads(result.stdout), dict)
 
+    def test_pacing_rates_have_a_write_path_and_a_hand_edit_is_reported(self) -> None:
+        # A/B Round 2: `duration_estimate.py` requires `format.pacing`, publish
+        # refuses `short-drama.json`, and set-authority accepted only
+        # `target_seconds_per_episode` — so the rates could reach the manifest
+        # only by hand, and no command anywhere reported that it had happened.
+        relative = "创作者决策/decisions.jsonl"
+        decision = {
+            "decision_id": "CD-PACING-001",
+            "status": "accepted",
+            "accepted_value": {
+                "spoken_characters_per_second": 5.0,
+                "seconds_per_action_paragraph": 2.5,
+            },
+            "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama",
+                artifact_id="project:decisions",
+                outputs={relative: (json.dumps(decision, ensure_ascii=False) + "\n").encode()},
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="project:decisions", decision="accepted"
+            )
+            project_tool.set_creator_authority(
+                root,
+                field="/format/pacing",
+                decision_path=relative,
+                decision_id="CD-PACING-001",
+            )
+
+            manifest = root / "short-drama.json"
+            written = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(written["format"]["pacing"]["spoken_characters_per_second"], 5.0)
+            self.assertEqual(
+                project_tool.project_status(root)["authority"], {"/format/pacing": "bound"}
+            )
+
+            edited = json.loads(manifest.read_text(encoding="utf-8"))
+            edited["format"]["pacing"]["spoken_characters_per_second"] = 6.5
+            project_tool.atomic_json(manifest, edited)
+            self.assertEqual(
+                project_tool.project_status(root)["authority"],
+                {"/format/pacing": "hand_edited"},
+            )
+
+    def test_pacing_rejects_rates_that_are_not_positive_numbers(self) -> None:
+        # The object slot is merged, not replaced, so a decision that sets only
+        # one rate leaves the other at null: the write would report `bound` while
+        # `duration_estimate.py` still refuses to produce seconds.
+        relative = "创作者决策/decisions.jsonl"
+        decision = {
+            "decision_id": "CD-PACING-BAD",
+            "status": "accepted",
+            "accepted_value": {"spoken_characters_per_second": 5.0},
+            "target_locators": [{"src": "short-drama", "field": "/format/pacing"}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            project_tool.publish_candidate(
+                root,
+                owner="short-drama",
+                artifact_id="project:decisions",
+                outputs={relative: (json.dumps(decision, ensure_ascii=False) + "\n").encode()},
+            )
+            project_tool.record_creator_acceptance(
+                root, artifact_id="project:decisions", decision="accepted"
+            )
+            with self.assertRaisesRegex(ValueError, "positive number"):
+                project_tool.set_creator_authority(
+                    root,
+                    field="/format/pacing",
+                    decision_path=relative,
+                    decision_id="CD-PACING-BAD",
+                )
+
     def test_set_authority_writes_only_through_an_accepted_decision(self) -> None:
         decisions = [
             {
