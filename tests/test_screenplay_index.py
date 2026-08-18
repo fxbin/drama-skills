@@ -172,8 +172,8 @@ class ScreenplayIndexTests(unittest.TestCase):
             new_source = root / "new.md"
             old_index = root / "old.jsonl"
             new_index = root / "new.jsonl"
-            old_source.write_text(old_text, encoding="utf-8", newline="")
-            new_source.write_text(new_text, encoding="utf-8", newline="")
+            old_source.write_bytes(old_text.encode("utf-8"))
+            new_source.write_bytes(new_text.encode("utf-8"))
             screenplay_index.build_index(old_source, old_index, speakers={"周野"})
             screenplay_index.build_index(
                 new_source,

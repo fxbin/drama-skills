@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/worldwonderer/drama-skills)](https://github.com/worldwonderer/drama-skills/releases/latest)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/worldwonderer/drama-skills)](LICENSE)
 
 面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十个技能把一个点子或一部长篇材料，
@@ -32,7 +32,7 @@ Seedance、GPT Image 2 与 MiniMax Music 的可选 adapter，但项目文件和�
 
 ## 安装
 
-需要 **Python 3.10 或更新版本**（macOS 自带的 3.9 不够）。直接告诉 Claude Code、
+需要 **Python 3.9 或更新版本**（macOS 自带的即可）。直接告诉 Claude Code、
 Codex 等支持导入 GitHub 仓库的智能体：
 
 ```

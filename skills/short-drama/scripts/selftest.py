@@ -12,9 +12,9 @@ from typing import Any, NamedTuple
 
 from project_tool import initialize_project, project_status, publish_candidate
 
-MINIMUM_PYTHON = (3, 10)
+MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
-    raise SystemExit("selftest.py requires Python 3.10 or newer")
+    raise SystemExit("selftest.py requires Python 3.9 or newer")
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE_RECORDS = (

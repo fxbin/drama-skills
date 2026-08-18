@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-MINIMUM_PYTHON = (3, 10)
+MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
     raise SystemExit(
         "episode_intake.py requires Python {}.{} or newer; found {}.{}".format(

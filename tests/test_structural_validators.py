@@ -6,6 +6,8 @@ failures they catch are precisely the ones that look fine to a reader: a
 coverage list missing one shot ID reads identically to a complete one.
 """
 
+from __future__ import annotations
+
 import contextlib
 import importlib.util
 import io

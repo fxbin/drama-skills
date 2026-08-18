@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/worldwonderer/drama-skills)](https://github.com/worldwonderer/drama-skills/releases/latest)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/github/license/worldwonderer/drama-skills)](LICENSE)
 
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
@@ -42,7 +42,7 @@ files and the other skills remain provider-neutral.
 
 ## Install
 
-Needs **Python 3.10 or newer** (the 3.9 that ships with macOS is not enough).
+Needs **Python 3.9 or newer** (the version macOS ships is enough).
 Just tell Claude Code, Codex, or any agent that can import a GitHub repository:
 
 ```
