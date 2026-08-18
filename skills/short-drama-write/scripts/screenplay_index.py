@@ -523,11 +523,17 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _load_previous(
-    previous_index_path: Path,
-    previous_source_path: Path,
+    records: list[dict[str, Any]],
+    previous_source_path: Path | None,
 ) -> list[dict[str, Any]]:
-    source_data = previous_source_path.read_bytes()
-    records = _read_jsonl(previous_index_path)
+    # Without the previous screenplay's bytes a block's identity is its content
+    # digest and nothing more: exact-content reuse still holds, split/merge
+    # detection does not. A rewritten body block then loses its ID instead of
+    # silently keeping it and pointing at new content. Scene headings are the
+    # exception by design — they are reused on a stable scene_id, so an edited
+    # heading keeps its ID; the scene is the same scene, and the blocks under it
+    # are what carry the content.
+    source_data = previous_source_path.read_bytes() if previous_source_path is not None else b""
     sources = load_sources(records)
     body = [record for record in records if record.get("record_type") != SOURCES_RECORD_TYPE]
     if not body or body[0].get("record_type") != "screenplay_index_meta":
@@ -539,18 +545,19 @@ def _load_previous(
     resolved, _defect = resolve_ref(body[0].get("source_ref"), sources, "previous_index")
     if resolved is None:
         raise ValueError("previous index does not name its screenplay")
-    previous_speakers = frozenset(
-        speaker
-        for record in records
-        if record.get("record_type") == "block"
-        and record.get("kind") == "dialogue"
-        and isinstance((speaker := record.get("speaker")), str)
-    )
-    parsed_blocks, _ = _parse_screenplay(source_data, previous_speakers)
-    parsed_by_span = {
-        (block["byte_start"], block["byte_end"], block["content_sha256"], block["kind"]): block
-        for block in parsed_blocks
-    }
+    previous_speakers = previous_index_speakers(records)
+    if previous_source_path is None:
+        parsed_by_span: dict[tuple[Any, ...], dict[str, Any]] = {}
+    else:
+        parsed_blocks, _ = _parse_screenplay(source_data, previous_speakers)
+        parsed_by_span = {
+            (block["byte_start"], block["byte_end"], block["content_sha256"], block["kind"]): block
+            for block in parsed_blocks
+        }
+    previous_length = body[0].get("source_byte_length")
+    if not isinstance(previous_length, int) or isinstance(previous_length, bool):
+        previous_length = None
+    span_cursor = 0
     previous: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     for record in records:
@@ -566,19 +573,58 @@ def _load_previous(
         byte_end = record.get("byte_end")
         digest = record.get("content_sha256")
         kind = record.get("kind")
+        if not isinstance(digest, str) or kind not in KIND_CODES:
+            raise ValueError(f"previous block {block_id} is missing its content digest or kind")
         if (
             not isinstance(byte_start, int)
             or not isinstance(byte_end, int)
-            or not 0 <= byte_start < byte_end <= len(source_data)
-            or not isinstance(digest, str)
-            or kind not in KIND_CODES
+            or isinstance(byte_start, bool)
+            or isinstance(byte_end, bool)
+            or byte_start < 0
+            or byte_start >= byte_end
         ):
+            raise ValueError(f"previous block {block_id} has no usable byte span")
+        if previous_source_path is None:
+            # Without the previous prose the spans cannot be re-parsed, but they
+            # still have to describe one file: ordered, non-overlapping, and
+            # inside the length the previous index recorded. That is what keeps a
+            # truncated or hand-edited index from being adopted in silence.
+            if byte_start < span_cursor:
+                raise ValueError(f"previous block {block_id} overlaps or reorders its byte span")
+            if previous_length is not None and byte_end > previous_length:
+                raise ValueError(f"previous block {block_id} runs past the recorded source length")
+            span_cursor = byte_end
+            previous.append({**record, "_order": len(previous)})
+            continue
+        if byte_end > len(source_data):
             raise ValueError(f"previous block {block_id} does not resolve against previous source")
         parsed = parsed_by_span.get((byte_start, byte_end, digest, kind))
         if parsed is None:
             raise ValueError(f"previous block {block_id} does not resolve against previous source")
         previous.append({**record, "_text": parsed["_text"], "_order": parsed["_order"]})
     return previous
+
+
+def _previous_index_error(error: ValueError, output: Path, adopted_output: bool) -> ValueError:
+    """Name the file that was read, when nobody asked for it to be read."""
+    if not adopted_output:
+        return error
+    return ValueError(
+        f"{output} already exists and was read as the previous index, but it cannot be "
+        f"used as one ({error}); delete it or pass --no-previous to rebuild from scratch"
+    )
+
+
+def previous_index_speakers(records: list[dict[str, Any]]) -> frozenset[str]:
+    """Recover the dialogue speaker roster an earlier index already resolved."""
+    return frozenset(
+        speaker.strip()
+        for record in records
+        if record.get("record_type") == "block"
+        and record.get("kind") == "dialogue"
+        and isinstance((speaker := record.get("speaker")), str)
+        and speaker.strip()
+    )
 
 
 def _fingerprint(block: dict[str, Any]) -> tuple[Any, ...]:
@@ -663,6 +709,10 @@ def _mark_revision_mappings(
             matched_current.update(new_indices)
             matched_previous.update(old_indices)
 
+    if any("_text" not in block for block in previous):
+        # Digest-only rebuild: without the previous prose there is nothing to
+        # compare a split or a merge against, so those blocks just lose their IDs.
+        return duplicate_requests
     return duplicate_requests + _find_split_merge_requests(
         current, previous, matched_current, matched_previous
     )
@@ -842,14 +892,22 @@ def build_index(
     source_ref: str | None = None,
     authority: str = "accepted",
     speakers: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
+    use_previous: bool = True,
 ) -> dict[str, Any]:
     """Parse ``source_path`` and atomically publish its derived JSONL index."""
     source = Path(source_path)
     output = Path(output_path)
     if source.resolve() == output.resolve():
         raise ValueError("output path must not be the screenplay source path")
-    if (previous_index_path is None) != (previous_source_path is None):
-        raise ValueError("--previous-index and --previous-source must be supplied together")
+    if previous_source_path is not None and previous_index_path is None:
+        raise ValueError("--previous-source needs --previous-index")
+    adopted_output = False
+    if previous_index_path is None and use_previous and output.exists():
+        # Rebuilding in place is the normal revision path, so it defaults to
+        # keeping IDs by content. Positional renumbering would leave every
+        # downstream reference resolving to whatever moved into its slot.
+        previous_index_path = output
+        adopted_output = True
     if authority not in {"accepted", "candidate"}:
         raise ValueError("authority must be accepted or candidate")
     raw_speakers = tuple(speakers or ())
@@ -874,27 +932,38 @@ def build_index(
     source_artifact_ref: dict[str, str] = {"src": SCREENPLAY_SOURCE_KEY}
     if authority == "candidate":
         source_artifact_ref["authority"] = "candidate"
+    previous_records: list[dict[str, Any]] = []
+    if previous_index_path is not None:
+        try:
+            previous_records = _read_jsonl(Path(previous_index_path))
+        except ValueError as error:
+            raise _previous_index_error(error, output, adopted_output) from error
+        # Union, not replacement: a reviser who adds one new speaker passes only
+        # that name, and dropping the rest would turn every other dialogue line
+        # back into an ambiguous block and change its ID.
+        speaker_names |= previous_index_speakers(previous_records)
     current, source_issues = _parse_screenplay(source_data, speaker_names)
     previous: list[dict[str, Any]] = []
     raw_requests: list[dict[str, Any]] = []
     previous_source_ref: dict[str, str] | None = None
-    if previous_index_path is not None and previous_source_path is not None:
-        previous_source = Path(previous_source_path)
-        previous_snapshot = {
-            "owner": "short-drama-write",
-            "artifact": _portable_source_ref(previous_source, source_ref),
-        }
-        previous_key = SCREENPLAY_SOURCE_KEY
-        if previous_snapshot != declared_sources[SCREENPLAY_SOURCE_KEY]:
-            previous_key = PREVIOUS_SCREENPLAY_SOURCE_KEY
-            declared_sources[previous_key] = previous_snapshot
-        previous_source_ref = {"src": previous_key}
-        if authority == "candidate":
-            previous_source_ref["authority"] = "candidate"
-        previous = _load_previous(
-            Path(previous_index_path),
-            previous_source,
-        )
+    if previous_index_path is not None:
+        previous_source = Path(previous_source_path) if previous_source_path is not None else None
+        if previous_source is not None:
+            previous_snapshot = {
+                "owner": "short-drama-write",
+                "artifact": _portable_source_ref(previous_source, source_ref),
+            }
+            previous_key = SCREENPLAY_SOURCE_KEY
+            if previous_snapshot != declared_sources[SCREENPLAY_SOURCE_KEY]:
+                previous_key = PREVIOUS_SCREENPLAY_SOURCE_KEY
+                declared_sources[previous_key] = previous_snapshot
+            previous_source_ref = {"src": previous_key}
+            if authority == "candidate":
+                previous_source_ref["authority"] = "candidate"
+        try:
+            previous = _load_previous(previous_records, previous_source)
+        except ValueError as error:
+            raise _previous_index_error(error, output, adopted_output) from error
         raw_requests = _mark_revision_mappings(current, previous)
     _assign_new_ids(current, previous)
 
@@ -967,6 +1036,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("source", type=Path, help="UTF-8 Markdown screenplay source")
     parser.add_argument("--output", type=Path, help="output JSONL path")
     parser.add_argument("--previous-index", type=Path)
+    parser.add_argument(
+        "--no-previous",
+        action="store_true",
+        help="renumber from scratch instead of keeping IDs from the index already at --output",
+    )
     parser.add_argument("--previous-source", type=Path)
     parser.add_argument(
         "--source-ref",
@@ -1004,6 +1078,7 @@ def main(argv: list[str] | None = None) -> int:
             source_ref=args.source_ref,
             authority=args.authority,
             speakers=args.speaker,
+            use_previous=not args.no_previous,
         )
     except (OSError, UnicodeDecodeError, ValueError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)

@@ -610,6 +610,75 @@ class EpisodeIdentifierAgreementTests(unittest.TestCase):
                     msg=f"lifecycle path rule disagrees on {candidate}",
                 )
 
+    def test_rebuilding_in_place_keeps_block_ids_on_their_content(self) -> None:
+        # A/B Round 2: inserting a paragraph mid-scene and rerunning the same
+        # command renumbered by position, so BLK-EP001-SC001-A02 silently moved
+        # onto the inserted text. Four downstream references still resolved and
+        # pointed at the wrong block; no checker and no lifecycle state noticed.
+        before = (
+            "## EP001-SC001 内 · 工位区 · 午后\n\n"
+            "午后的光斜切过一排铁皮柜。\n\n"
+            "江晨：两个粉丝，五天，一百万。\n\n"
+            "他低头看手机，又抬起头。\n"
+        ).encode()
+        after = (
+            "## EP001-SC001 内 · 工位区 · 午后\n\n"
+            "午后的光斜切过一排铁皮柜。\n\n"
+            "他拨了一个内线，听筒里传来对方的声音。\n\n"
+            "江晨：两个粉丝，五天，一百万。\n\n"
+            "他低头看手机，又抬起头。\n"
+        ).encode()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "screenplay.md"
+            index = root / "screenplay-index.jsonl"
+
+            source.write_bytes(before)
+            screenplay_index.build_index(source, index, speakers={"江晨"})
+            first = {row["block_id"]: row["content_sha256"] for row in blocks(index)}
+
+            source.write_bytes(after)
+            # No --previous-index and no --speaker: the plain rebuild is the path
+            # a reviser actually takes, so it is the one that has to hold.
+            screenplay_index.build_index(source, index)
+            second = {row["block_id"]: row["content_sha256"] for row in blocks(index)}
+
+            for block_id, digest in first.items():
+                self.assertEqual(
+                    second.get(block_id),
+                    digest,
+                    msg=f"{block_id} changed what it points at",
+                )
+            self.assertEqual(len(second), len(first) + 1)
+            self.assertEqual(
+                [row["speaker"] for row in blocks(index) if row["kind"] == "dialogue"],
+                ["江晨"],
+                msg="the speaker roster was not recovered from the previous index",
+            )
+
+    def test_rewritten_block_loses_its_id_instead_of_keeping_it(self) -> None:
+        # The other half of the same contract: a block whose content changed must
+        # not keep its ID, so references to it fail loudly instead of resolving
+        # onto rewritten text.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "screenplay.md"
+            index = root / "screenplay-index.jsonl"
+
+            source.write_bytes(
+                "## EP001-SC001 内 · 工位区 · 午后\n\n他站起来，抓起三脚架。\n".encode()
+            )
+            screenplay_index.build_index(source, index)
+            original = {row["block_id"] for row in blocks(index)}
+
+            source.write_bytes(
+                "## EP001-SC001 内 · 工位区 · 午后\n\n他坐了回去，把三脚架放下。\n".encode()
+            )
+            screenplay_index.build_index(source, index)
+            rebuilt = {row["block_id"] for row in blocks(index)}
+
+            self.assertNotEqual(original, rebuilt)
+
     def test_scene_ids_do_not_admit_full_width_digits(self) -> None:
         # `\d` is Unicode-aware, so EP001-SC００１ and EP001-SC001 would be two
         # spellings of one scene inside the durable BLK- identity namespace.
