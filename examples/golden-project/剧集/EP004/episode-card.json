@@ -43,7 +43,6 @@
     ],
     "causal_escalation_realization": [
       {
-        "source_step_pointer": "/causal_escalation/0",
         "visible_choice_carrier": "陈予安要确认盒中证据和父亲当年的真实要求。",
         "visible_countermove_carrier": "现金看似构成偿还，但欠条背面的文字否定了简单结账。",
         "visible_state_change_carrier": "周海平证明自己既带回本金，也执行过父亲留下的条件。"

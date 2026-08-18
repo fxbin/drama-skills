@@ -43,7 +43,6 @@
     ],
     "causal_escalation_realization": [
       {
-        "source_step_pointer": "/causal_escalation/0",
         "visible_choice_carrier": "梁锋想证明自己没有白拿那碗面。",
         "visible_countermove_carrier": "陈予安拒绝把善意重新结算成两人之间的钱债。",
         "visible_state_change_carrier": "陈予安不收十元，把梁锋的记录改为已传一次。"

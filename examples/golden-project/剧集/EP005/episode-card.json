@@ -43,7 +43,6 @@
     ],
     "causal_escalation_realization": [
       {
-        "source_step_pointer": "/causal_escalation/0",
         "visible_choice_carrier": "陈予安要决定收下现金是否背叛父亲的规则。",
         "visible_countermove_carrier": "拒收能保持清白，却会让一笔可继续帮助人的资金停下来。",
         "visible_state_change_carrier": "陈予安暂不收钱，先让周海平说明这些年钱如何往前传。"

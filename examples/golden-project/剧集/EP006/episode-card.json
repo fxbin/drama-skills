@@ -43,7 +43,6 @@
     ],
     "causal_escalation_realization": [
       {
-        "source_step_pointer": "/causal_escalation/0",
         "visible_choice_carrier": "周海平要证明自己不是用现金买断愧疚。",
         "visible_countermove_carrier": "单靠自述不足以证明持续行动，陈予安仍担心这是一次性偿还。",
         "visible_state_change_carrier": "陈予安确认父亲的帮助已经改变了另一个家庭的行动方式。"
