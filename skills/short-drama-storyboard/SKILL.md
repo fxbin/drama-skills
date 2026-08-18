@@ -80,8 +80,7 @@ python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shot
 - `nonvisual_context`：仅供理解、无需直接呈现的内容。
 
 对白、动作、画面文字、画外音或关键音效还没有着落时，不要先追求漂亮镜头。
-发布原文落实表时，先在文件的 `sources` 里为每个上游快照声明一次 `owner`、`artifact`
-和 `hash`，再让每条 `shot_refs` 用 `src` 指向该声明并写上 `record_id`。裸 `shot_id`
+发布原文落实表时，先在文件的 `sources` 里为每个上游快照声明一次 `owner` 与 `artifact`，再让每条 `shot_refs` 用 `src` 指向该声明并写上 `record_id`。裸 `shot_id`
 只可表示同一镜头文件内的关系，不能证明审的是哪一版。
 
 ### 2. 关键场次先比较整场导演选择（可选）

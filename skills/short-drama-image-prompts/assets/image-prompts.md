@@ -5,8 +5,8 @@
 ```markdown
 # EP<编号> · 资产图片提示词
 
-> 来源：`image-prompt-specs.jsonl` 已接受快照 `<hash>`
-> 配方：`<recipe>@<version>` · 当前文本 `<hash>`
+> 来源：`image-prompt-specs.jsonl` 的已接受记录
+> 配方：`<recipe>@<version>`
 > 范围：本文件仅提供提示词，不触发媒体服务；实际图片生产交 `$short-drama-produce`
 
 ## `<display name>` · `<purpose>`
@@ -34,4 +34,4 @@
 ```
 
 每个资产或版本独立一节；不要把多个互相冲突的造型、观察方向或状态合成一个可复制段落。
-若该文件与规格 `hash` 不一致，先按 `restore | adopt` 流程预览将要恢复或采用的内容。
+该文件被手改过时，先按 `restore | adopt` 流程预览将要恢复或采用的内容。

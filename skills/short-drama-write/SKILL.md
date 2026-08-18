@@ -142,7 +142,7 @@ diff，让创作者明确选择 authority 迁移，将 standalone 契约标记 s
 
 不要把镜头、资产全集、模型参数或提示词写进剧本。私密想法要转成行为、证据、空间后果，或明确标记的声音表达。
 
-正文发布后，用 [screenplay_index.py](scripts/screenplay_index.py) 生成只读派生索引；工具只识别格式契约中的场景标题、动作、对白、六种生产标签和注释，并保留 UTF-8 byte offsets、行范围与 source/content hash：
+正文发布后，用 [screenplay_index.py](scripts/screenplay_index.py) 生成只读派生索引；工具只识别格式契约中的场景标题、动作、对白、六种生产标签和注释，并保留 UTF-8 byte offsets 与行范围：
 
 ```bash
 python3 <skill-dir>/scripts/screenplay_index.py 剧集/EP001/screenplay.md \
@@ -204,7 +204,7 @@ python3 <skill-dir>/scripts/voice_sheet_check.py 剧集/EP001/voice-record-sheet
   --screenplay 剧集/EP001/screenplay.md
 ```
 
-脚本按块 ID 定位、切出剧本原字节、核对内容 hash，再逐字比对台词与说话人。剧本改过而
+脚本按块 ID 定位、切出剧本原字节，再逐字比对台词与说话人。剧本改过而
 索引没重建、或有人在表里顺手改了词，都会被单独报出来——**这两种情况下的配音本看起来
 和正常的一模一样**，而它被带进录音棚的那一刻正是没人能核对的时刻。
 

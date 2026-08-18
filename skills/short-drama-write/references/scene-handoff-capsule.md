@@ -42,7 +42,7 @@ accepted。
 
 ## 恢复步骤
 
-1. 先核对 `sources.screenplay.hash` 与磁盘文件；不一致时丢弃胶囊，重新从当前剧本恢复。
+1. 先确认 `sources.screenplay` 指的还是当前剧本；剧本已经改过就丢弃胶囊，重新从当前剧本恢复。
 2. 用 `tail_locator` 读最后一个块及其相邻上下文，确认语气、动作和状态确实对得上。
 3. 读取下一场直接依赖的单集契约、setup/payoff 与连续性引用；不预加载无关 reference。
 4. 写下一场前重新回答 agenda、opposition、turn、exit_state，不能把胶囊里的候选当既定剧情。
