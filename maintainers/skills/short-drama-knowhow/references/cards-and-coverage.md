@@ -110,7 +110,7 @@ observer_report:
   observer_ref: opaque-creator-or-authorized-observer
   observer_media_observed: true
 observation_evidence:
-  observed_media_sha256: bounded-media-hash
+  observed_media_ref: bounded-media-locator
   prompt_or_spec_refs: [exact-versioned-record-ref]
   reference_slot_conditions: [stable-slot-id-order-and-ref-set]
   production_configuration: bounded-project-configuration-or-unknown
@@ -139,7 +139,7 @@ observer_report:
   observer_ref: opaque-creator-or-authorized-observer
   observer_media_observed: true
 observation_evidence:
-  observed_media_sha256: bounded-media-hash
+  observed_media_ref: bounded-media-locator
   input_reference_refs: [exact-versioned-reference-record-ref]
   bounded_regions_or_intervals: [what-was-actually-observed]
   direct_observations: [creator-attributed-or-inspector-observation]
