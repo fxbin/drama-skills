@@ -43,7 +43,6 @@
     ],
     "causal_escalation_realization": [
       {
-        "source_step_pointer": "/causal_escalation/0",
         "visible_choice_carrier": "陈予安要验证新规则离开三人的承诺后是否仍能继续。",
         "visible_countermove_carrier": "系列完成后最容易停在一次感动，没有新的行动者。",
         "visible_state_change_carrier": "新的资源和新的参与者进入，面馆规则从旧账变成持续机制。"

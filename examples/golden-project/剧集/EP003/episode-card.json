@@ -43,7 +43,6 @@
     ],
     "causal_escalation_realization": [
       {
-        "source_step_pointer": "/causal_escalation/0",
         "visible_choice_carrier": "周海平要把一笔拖了十二年的旧账交回陈家。",
         "visible_countermove_carrier": "陈予安不认识他，也不知道父亲账本里的旧名字意味着什么。",
         "visible_state_change_carrier": "陈予安在旧账页找到周海平，但尚未打开盒子。"
