@@ -98,7 +98,8 @@ python3 {core 技能目录}/scripts/project_tool.py publish {项目根} \
 `_work/_index.next.json`，通过 `verify` 后再按上面的公开生命周期发布——手写的行也要带齐
 `sequence` / `line_start` / `line_end`，`verify` 会逐行检查并报出缺字段的行。
 
-改了原文必须重建索引，不能沿用旧 span——`verify` 只核对编号与行号连续，不再比对字节。
+改了原文必须重建索引，不能沿用旧 span。`verify` 核对编号、顺序与行号覆盖，所以插行删行会被报出来；
+但同行数的原地改写不会——那一步靠改原文的人自己重建，套件不比对字节。
 
 ```bash
 python3 {技能目录}/scripts/novel_index.py verify \
