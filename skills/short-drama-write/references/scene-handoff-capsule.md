@@ -32,7 +32,7 @@ scene_handoff_capsule:
   setup_debt: [仍待兑现或明确放弃的 setup ID/ref]
   information_permissions: [谁知道/误信/怀疑什么，观众此刻能知道什么]
   next_scene_pressure: 下一场由哪个已发生结果发动
-  tail_locator: {block_id: <last-accepted-block>, content_sha256: <hash>}
+  tail_locator: {block_id: <last-accepted-block>}
   unresolved: [不得由续写者自行补齐的选择]
 ```
 

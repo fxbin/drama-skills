@@ -84,7 +84,7 @@ python3 {core 技能目录}/scripts/project_tool.py publish {项目根} \
 脚本识别阿拉伯数字与中文数字章号（含 千 / 两，覆盖千章以上连载），**只认一种编号单位**
 （章/回/节里出现最多的那个，其余记进 `ignored_heading_units`），只把**短的独立行**当标题
 （以章号开头的正文段落记进 `long_heading_lines_skipped`），剔除开头的目录块，
-按卷分段校验编号，并给每章绑定 `content_sha256`。它**不做编辑判断**——哪章重要、
+按卷分段校验编号。它**不做编辑判断**——哪章重要、
 讲了什么，是后面阶段的事。
 
 `problems` 非空就停下报告，不要带着错表进 S1。常见四种：章号跳号（缺章或抓错标题）、
@@ -96,10 +96,9 @@ python3 {core 技能目录}/scripts/project_tool.py publish {项目根} \
 
 原文本身没有章节标题时索引会返回空表，此时与创作者确认按什么切分，把边界写进
 `_work/_index.next.json`，通过 `verify` 后再按上面的公开生命周期发布——手写的行也要带齐
-`sequence` / `line_start` / `line_end` /
-`content_sha256`，`verify` 会逐行检查并报出缺字段的行。
+`sequence` / `line_start` / `line_end`，`verify` 会逐行检查并报出缺字段的行。
 
-原文换了一个字节，`verify` 就会报出来；改了原文必须重建索引，不能沿用旧 span。
+改了原文必须重建索引，不能沿用旧 span——`verify` 只核对编号与行号连续，不再比对字节。
 
 ```bash
 python3 {技能目录}/scripts/novel_index.py verify \

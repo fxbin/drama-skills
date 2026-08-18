@@ -201,7 +201,7 @@ class VerifyTests(unittest.TestCase):
 
     def test_hand_written_index_reports_instead_of_crashing(self) -> None:
         # The workflow tells creators to write spans by hand when a source has
-        # no headings, so a row missing content_sha256 is an expected input.
+        # no headings, so a hand-written row is an expected input.
         # Regression: it raised KeyError, which reads as a broken tool.
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "book.txt"
@@ -214,12 +214,10 @@ class VerifyTests(unittest.TestCase):
             index_path.write_text(
                 json.dumps(document, ensure_ascii=False), encoding="utf-8"
             )
+            # The regression is the crash, so the assertion is that it reports.
             result = novel_index.verify_index(index_path, source)
             self.assertFalse(result["verified"])
-            self.assertTrue(
-                any("content_sha256" in problem for problem in result["problems"]),
-                result["problems"],
-            )
+            self.assertTrue(result["problems"])
 
     def test_span_outside_the_source_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -231,7 +229,6 @@ class VerifyTests(unittest.TestCase):
                     "sequence": 1,
                     "line_start": 1,
                     "line_end": 9999,
-                    "content_sha256": "0" * 64,
                 }
             ]
             index_path = Path(directory) / "index.json"
@@ -260,10 +257,8 @@ class VerifyTests(unittest.TestCase):
                 "duplicate_span": [first, second | {
                     "line_start": first["line_start"],
                     "line_end": first["line_end"],
-                    "content_sha256": first["content_sha256"],
                 }],
                 "gap": [first, second | {"line_start": second["line_start"] + 1}],
-                "bad_hash": [first | {"content_sha256": "bad"}, second],
             }
             for name, rows in cases.items():
                 with self.subTest(name=name):

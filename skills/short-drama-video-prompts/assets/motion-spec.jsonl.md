@@ -164,7 +164,6 @@
       "visible_state": "<reported>"
     },
     "comparison": "match | mismatch | unrealized",
-    "source_end_hash": "<sha256>",
     "differences": []
   },
   "reference_frame_economy": {

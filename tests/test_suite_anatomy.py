@@ -210,7 +210,21 @@ class SuiteAnatomyTests(unittest.TestCase):
         # Hand-maintained byte digests. Nothing verifies them, so they are a
         # second copy of lifecycle state that goes stale in silence; a template
         # carrying one hands that maintenance to every project built from it.
-        retired_digest_keys = {"input_hashes", "rendered_hash"}
+        retired_digest_keys = {
+            "content_sha256",
+            "input_hashes",
+            "index_sha256",
+            "map_sha256",
+            "observed_media_sha256",
+            "production_profile_hash",
+            "prompt_or_spec_hashes",
+            "record_hashes",
+            "reference_slot_set_hash",
+            "rendered_hash",
+            "source_end_hash",
+            "source_sha256",
+            "target_hashes",
+        }
 
         def check(document: object, path: Path, declares: bool, cursor: str = "") -> None:
             def canonical(reference: object) -> bool:

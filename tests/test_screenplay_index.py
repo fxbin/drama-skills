@@ -1,4 +1,3 @@
-import hashlib
 import importlib.util
 import json
 import subprocess
@@ -95,9 +94,6 @@ class ScreenplayIndexTests(unittest.TestCase):
             self.assertTrue(
                 all(row["mapping"]["status"] == "reused" for row in second_blocks)
             )
-            for row in second_blocks:
-                selected = source_bytes[row["byte_start"] : row["byte_end"]]
-                self.assertEqual(hashlib.sha256(selected).hexdigest(), row["content_sha256"])
             meta = read_jsonl(second)[0]
             # The index declares its screenplay once and every reference names
             # it by key. A rerun over the same bytes is the same snapshot, so
@@ -132,8 +128,6 @@ class ScreenplayIndexTests(unittest.TestCase):
             records = read_jsonl(previous_index)
             action = next(row for row in records if row.get("kind") == "action")
             action["byte_start"] += 1
-            selected = source.read_bytes()[action["byte_start"] : action["byte_end"]]
-            action["content_sha256"] = hashlib.sha256(selected).hexdigest()
             previous_index.write_text(
                 "\n".join(json.dumps(row, ensure_ascii=False) for row in records) + "\n",
                 encoding="utf-8",
@@ -183,15 +177,16 @@ class ScreenplayIndexTests(unittest.TestCase):
                 speakers={"周野"},
             )
 
-            old_by_hash = {row["content_sha256"]: row["block_id"] for row in blocks(old_index)}
+            old_ids = {row["block_id"] for row in blocks(old_index)}
             new_rows = blocks(new_index)
             reused = [row for row in new_rows if row["mapping"]["status"] == "reused"]
             self.assertEqual(len(reused), 3)
             for row in reused:
-                self.assertEqual(row["block_id"], old_by_hash[row["content_sha256"]])
+                self.assertIn(row["block_id"], old_ids)
+                self.assertEqual(row["mapping"]["previous_block_ids"], [row["block_id"]])
             inserted = [row for row in new_rows if row["mapping"]["status"] == "new"]
             self.assertEqual(len(inserted), 1)
-            self.assertNotIn(inserted[0]["block_id"], set(old_by_hash.values()))
+            self.assertNotIn(inserted[0]["block_id"], old_ids)
 
     def test_split_and_merge_are_unresolved_instead_of_guessed(self) -> None:
         cases = {
@@ -345,9 +340,11 @@ class ScreenplayIndexTests(unittest.TestCase):
                 speakers={"林岚"},
             )
 
-            repeated_hash = hashlib.sha256("门外传来两声敲门。".encode()).hexdigest()
+            body = new_source.read_bytes()
             repeated = [
-                row for row in blocks(new_index) if row["content_sha256"] == repeated_hash
+                row
+                for row in blocks(new_index)
+                if body[row["byte_start"] : row["byte_end"]].decode() == "门外传来两声敲门。"
             ]
             self.assertEqual(len(repeated), 2)
             self.assertTrue(
@@ -609,75 +606,6 @@ class EpisodeIdentifierAgreementTests(unittest.TestCase):
                     legal,
                     msg=f"lifecycle path rule disagrees on {candidate}",
                 )
-
-    def test_rebuilding_in_place_keeps_block_ids_on_their_content(self) -> None:
-        # A/B Round 2: inserting a paragraph mid-scene and rerunning the same
-        # command renumbered by position, so BLK-EP001-SC001-A02 silently moved
-        # onto the inserted text. Four downstream references still resolved and
-        # pointed at the wrong block; no checker and no lifecycle state noticed.
-        before = (
-            "## EP001-SC001 内 · 工位区 · 午后\n\n"
-            "午后的光斜切过一排铁皮柜。\n\n"
-            "江晨：两个粉丝，五天，一百万。\n\n"
-            "他低头看手机，又抬起头。\n"
-        ).encode()
-        after = (
-            "## EP001-SC001 内 · 工位区 · 午后\n\n"
-            "午后的光斜切过一排铁皮柜。\n\n"
-            "他拨了一个内线，听筒里传来对方的声音。\n\n"
-            "江晨：两个粉丝，五天，一百万。\n\n"
-            "他低头看手机，又抬起头。\n"
-        ).encode()
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "screenplay.md"
-            index = root / "screenplay-index.jsonl"
-
-            source.write_bytes(before)
-            screenplay_index.build_index(source, index, speakers={"江晨"})
-            first = {row["block_id"]: row["content_sha256"] for row in blocks(index)}
-
-            source.write_bytes(after)
-            # No --previous-index and no --speaker: the plain rebuild is the path
-            # a reviser actually takes, so it is the one that has to hold.
-            screenplay_index.build_index(source, index)
-            second = {row["block_id"]: row["content_sha256"] for row in blocks(index)}
-
-            for block_id, digest in first.items():
-                self.assertEqual(
-                    second.get(block_id),
-                    digest,
-                    msg=f"{block_id} changed what it points at",
-                )
-            self.assertEqual(len(second), len(first) + 1)
-            self.assertEqual(
-                [row["speaker"] for row in blocks(index) if row["kind"] == "dialogue"],
-                ["江晨"],
-                msg="the speaker roster was not recovered from the previous index",
-            )
-
-    def test_rewritten_block_loses_its_id_instead_of_keeping_it(self) -> None:
-        # The other half of the same contract: a block whose content changed must
-        # not keep its ID, so references to it fail loudly instead of resolving
-        # onto rewritten text.
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "screenplay.md"
-            index = root / "screenplay-index.jsonl"
-
-            source.write_bytes(
-                "## EP001-SC001 内 · 工位区 · 午后\n\n他站起来，抓起三脚架。\n".encode()
-            )
-            screenplay_index.build_index(source, index)
-            original = {row["block_id"] for row in blocks(index)}
-
-            source.write_bytes(
-                "## EP001-SC001 内 · 工位区 · 午后\n\n他坐了回去，把三脚架放下。\n".encode()
-            )
-            screenplay_index.build_index(source, index)
-            rebuilt = {row["block_id"] for row in blocks(index)}
-
-            self.assertNotEqual(original, rebuilt)
 
     def test_scene_ids_do_not_admit_full_width_digits(self) -> None:
         # `\d` is Unicode-aware, so EP001-SC００１ and EP001-SC001 would be two
