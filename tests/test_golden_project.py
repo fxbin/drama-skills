@@ -1,4 +1,3 @@
-import hashlib
 import importlib.util
 import io
 import json
@@ -97,7 +96,9 @@ IPV4_LITERAL = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
 LONG_DECIMAL_LITERAL = re.compile(r"(?<![A-Za-z0-9])\d{6,}(?![A-Za-z0-9])")
 
 
-REF_TRIPLE = ("owner", "artifact", "hash")
+# A reference names its upstream. Bytes are no longer carried in the authoring
+# chain, so identity is the owner/artifact pair.
+REF_PAIR = ("owner", "artifact")
 SOURCES_RECORD_TYPE = "sources"
 
 
@@ -149,13 +150,13 @@ def resolve_ref(reference: Any, sources: dict[str, Any]) -> dict[str, Any] | Non
     if isinstance(src, str):
         entry = sources.get(src)
         if not isinstance(entry, dict) or not all(
-            isinstance(entry.get(key), str) for key in REF_TRIPLE
+            isinstance(entry.get(key), str) for key in REF_PAIR
         ):
             return None
-        return {key: entry[key] for key in REF_TRIPLE} | {
+        return {key: entry[key] for key in REF_PAIR} | {
             key: value for key, value in reference.items() if key != "src"
         }
-    if all(isinstance(reference.get(key), str) for key in REF_TRIPLE):
+    if all(isinstance(reference.get(key), str) for key in REF_PAIR):
         return dict(reference)
     return None
 
@@ -173,7 +174,7 @@ def iter_refs(document: Any) -> Iterator[dict[str, Any]]:
     if not isinstance(document, dict):
         return
     if isinstance(document.get("src"), str) or all(
-        isinstance(document.get(key), str) and document[key] for key in REF_TRIPLE
+        isinstance(document.get(key), str) and document[key] for key in REF_PAIR
     ):
         yield document
         return
@@ -303,13 +304,13 @@ class GoldenProjectTests(unittest.TestCase):
                     )
                     self.assertEqual(rebuilt.read_bytes(), existing.read_bytes())
 
-    def test_every_direct_reference_resolves_to_its_exact_hash(self) -> None:
-        """Every reference names a real file at the bytes that file actually has.
+    def test_every_direct_reference_resolves_to_a_real_file(self) -> None:
+        """Every reference names a real file that really exists.
 
         References are compact: the file declares each upstream snapshot once
         under ``sources`` and each reference names it by key. Resolving here
-        rather than reading ``owner``/``artifact``/``hash`` off the reference is
-        what makes an undeclared ``src`` a failure instead of a skipped record.
+        rather than reading ``owner``/``artifact`` off the reference is what
+        makes an undeclared ``src`` a failure instead of a skipped record.
         """
         checked = 0
         for source in GOLDEN.rglob("*"):
@@ -327,7 +328,6 @@ class GoldenProjectTests(unittest.TestCase):
                 self.assertNotIn("..", artifact.parts, source)
                 target = GOLDEN / artifact
                 self.assertTrue(target.is_file(), f"{source}: {artifact}")
-                self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), value["hash"], f"{source}: {artifact}")
                 record: Any = None
                 if target.suffix == ".jsonl" and "record_id" in value:
                     record = record_with_id(data_records(target), value["record_id"])
@@ -470,7 +470,7 @@ class GoldenProjectTests(unittest.TestCase):
         written = stream.buffer.getvalue().decode("utf-8")  # type: ignore[attr-defined]
         self.assertIn("剧集/EP001/storyboard/keyframes.jsonl", written)
 
-    def test_approved_review_is_bound_to_creator_accepted_hashes_and_text_policy(self) -> None:
+    def test_approved_review_is_bound_to_creator_accepted_artifacts_and_text_policy(self) -> None:
         acceptance_path = GOLDEN / "创作者决策/golden-production-acceptance.jsonl"
         decisions = data_records(acceptance_path)
         acceptance_sources = sources_of(read_jsonl(acceptance_path))
@@ -482,7 +482,7 @@ class GoldenProjectTests(unittest.TestCase):
                 snapshot = resolve_ref(reference, acceptance_sources)
                 self.assertIsNotNone(snapshot, f"{acceptance_path}: {reference}")
                 assert snapshot is not None
-                accepted.add(tuple(snapshot[key] for key in REF_TRIPLE))
+                accepted.add(tuple(snapshot[key] for key in REF_PAIR))
 
         verdict_path = GOLDEN / "审查/verdict.json"
         verdict = json.loads(verdict_path.read_text(encoding="utf-8"))
@@ -494,7 +494,7 @@ class GoldenProjectTests(unittest.TestCase):
             assert snapshot is not None
             with self.subTest(artifact=snapshot["artifact"]):
                 self.assertEqual(snapshot.get("authority"), "accepted")
-                self.assertIn(tuple(snapshot[key] for key in REF_TRIPLE), accepted)
+                self.assertIn(tuple(snapshot[key] for key in REF_PAIR), accepted)
                 if snapshot["artifact"].endswith("motion-specs.jsonl"):
                     self.assertEqual(snapshot["owner"], "short-drama-video-prompts")
 

@@ -110,7 +110,6 @@ class ScreenplayIndexTests(unittest.TestCase):
                     "screenplay": {
                         "owner": "short-drama-write",
                         "artifact": "第一集 剧本.md",
-                        "hash": hashlib.sha256(source_bytes).hexdigest(),
                     }
                 },
             )
