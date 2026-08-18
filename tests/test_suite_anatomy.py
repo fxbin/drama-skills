@@ -281,6 +281,36 @@ class SuiteAnatomyTests(unittest.TestCase):
             for document in resolved_records(path):
                 check(document, path, declares)
 
+    def test_no_shipped_markdown_reintroduces_a_retired_digest_key(self) -> None:
+        """The reference docs are where a retired key can come back unseen.
+
+        `test_structured_artifact_refs_use_one_canonical_shape` parses JSON, so it
+        only reaches `*.json`, `*.jsonl` and `*/assets/*.md`. A fenced block in a
+        `references/*.md` slipped through — which is how `derivation` carried 196
+        stale digests across several releases. A literal-token scan closes it
+        without parsing anything.
+        """
+        retired = (
+            "content_sha256",
+            "index_sha256",
+            "input_hashes",
+            "map_sha256",
+            "observed_media_sha256",
+            "production_profile_hash",
+            "prompt_or_spec_hashes",
+            "record_hashes",
+            "reference_slot_set_hash",
+            "rendered_hash",
+            "source_end_hash",
+            "source_sha256",
+            "target_hashes",
+        )
+        for path in sorted((SUITE / "skills").rglob("*.md")):
+            text = path.read_text(encoding="utf-8")
+            for key in retired:
+                with self.subTest(path=str(path.relative_to(SUITE)), key=key):
+                    self.assertNotIn(key, text)
+
     def test_cross_template_json_pointers_resolve(self) -> None:
         project = resolved_records(CORE / "assets/project-template/short-drama.json")[0]
         shot = record_with(
