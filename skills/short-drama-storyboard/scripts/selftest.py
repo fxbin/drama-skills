@@ -83,37 +83,43 @@ EXPANDED_KEYFRAME: dict[str, Any] = {
 
 
 def test_screenplay_coverage_flags_gaps_and_double_claims() -> None:
-    """Every screenplay line must be claimed by exactly one shot.
+    """Every screenplay block must be claimed by exactly one shot.
 
-    A line no shot claims never gets filmed; a line two shots claim gets shown
-    twice. Both are referential facts, so both are checked here -- whether the
-    coverage is *well designed* stays with the agent.
+    Shots bind to the screenplay through the index, so coverage is measured in
+    block IDs. Measuring it in prose lines instead reported every line of a
+    correctly covered episode as unfilmed.
     """
     with tempfile.TemporaryDirectory() as directory:
-        screenplay = Path(directory) / "screenplay.md"
-        screenplay.write_text(
-            "# EP001\n\n## EP001-SC001 内 · 房间 · 日\n\n"
-            "他推开门。\n\n甲：你来了。\n\n她把钥匙放下。\n\n"
-            "[连续性] 钥匙留在桌上。\n",
+        index = Path(directory) / "screenplay-index.jsonl"
+        index.write_text(
+            '{"record_type":"block","block_id":"BLK-A"}\n'
+            '{"record_type":"block","block_id":"BLK-B"}\n'
+            '{"record_type":"block","block_id":"BLK-C"}\n',
             encoding="utf-8",
         )
+        sources = {
+            "screenplay-index": {
+                "owner": "short-drama-write",
+                "artifact": "剧集/EP001/screenplay-index.jsonl",
+            }
+        }
         shots = [
-            {"shot_id": "SH001", "source_lines": ["他推开门。"]},
-            {"shot_id": "SH002", "source_lines": ["甲：你来了。"]},
-            {"shot_id": "SH003", "source_lines": ["甲：你来了。"]},
-            {"shot_id": "SH004", "source_lines": ["屋外下着雨。"]},
+            {"shot_id": "SH001", "source_refs": [{"src": "screenplay-index", "record_id": "BLK-A"}]},
+            {"shot_id": "SH002", "source_refs": [{"src": "screenplay-index", "record_id": "BLK-B"}]},
+            {"shot_id": "SH003", "source_refs": [{"src": "screenplay-index", "record_id": "BLK-B"}]},
+            {"shot_id": "SH004", "source_refs": [{"src": "screenplay-index", "record_id": "BLK-Z"}]},
         ]
-        found = {f["code"] for f in check_screenplay_coverage(shots, screenplay)}
-    require("SHT21_LINE_UNCLAIMED" in found, "an unfilmed line must be reported")
-    require("SHT21_LINE_CLAIMED_TWICE" in found, "a doubly claimed line must be reported")
+        found = {f["code"] for f in check_screenplay_coverage(shots, sources, index)}
+    require("SHT21_BLOCK_UNCLAIMED" in found, "an unfilmed block must be reported")
+    require("SHT21_BLOCK_CLAIMED_TWICE" in found, "a doubly claimed block must be reported")
     require(
-        "SHT21_LINE_NOT_IN_SCREENPLAY" in found,
-        "a shot claiming absent text must be reported",
+        "SHT21_BLOCK_NOT_IN_SCREENPLAY" in found,
+        "a shot claiming an absent block must be reported",
     )
 
 
 def test_screenplay_coverage_is_skipped_when_not_supplied() -> None:
-    require(check_screenplay_coverage([], None) == [], "no screenplay means no claim")
+    require(check_screenplay_coverage([], {}, None) == [], "no index means no claim")
 
 
 def main() -> int:

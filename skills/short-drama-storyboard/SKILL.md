@@ -170,8 +170,13 @@ python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shot
 python3 <skill-dir>/scripts/storyboard_check.py 剧集/EP001/storyboard/coverage.json \
   --shots 剧集/EP001/storyboard/shots.jsonl \
   --keyframes 剧集/EP001/storyboard/keyframes.jsonl \
+  --screenplay-index 剧集/EP001/screenplay-index.jsonl \
   --project short-drama.json
 ```
+
+给了 `--screenplay-index` 就多做一项覆盖对账：**剧本的每一个块必须被恰好一个镜头认领**。
+没有镜头认领的块不会被拍，两个镜头认领的块会被剪两次。认领按块 ID 走
+（`source_refs` 里的 `record_id`），不按正文——正文一直在改，块 ID 不变。
 
 它只做算术和结构比对：本集时长总和是否等于各镜头 `duration_seconds` 之和、覆盖列出的
 镜头有没有既不计入也不挂起、有没有边界条目整条写成「同上」「位置不变」这类回指、
