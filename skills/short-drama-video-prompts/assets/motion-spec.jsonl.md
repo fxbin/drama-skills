@@ -186,11 +186,7 @@
   ],
   "generic_prompt": "<把本规格渲染成一段只含要拍出来的画面的交付文本：从已接受起点的姿态与持物说起，逐条写动作、接触、摄影机行为与终点状态；不写镜头/记录 ID、规则 ID、状态词、工艺备注与成段否定罗列；写满的样子见 references/production-prompt-grammar.md>",
   "derivation": {
-    "recipe_version": "<version>",
-    "input_hashes": [
-      "<sha256>"
-    ],
-    "rendered_hash": "<sha256>"
+    "recipe_version": "<version>"
   },
   "provenance": "creator_project"
 }

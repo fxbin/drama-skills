@@ -172,11 +172,7 @@
   ],
   "generic_prompt": "<从本规格渲染的可复制通用提示词>",
   "derivation": {
-    "input_hashes": [
-      "<sha256>"
-    ],
-    "renderer": "generic-markdown",
-    "rendered_hash": "<sha256>"
+    "renderer": "generic-markdown"
   },
   "provenance": "creator_project"
 }

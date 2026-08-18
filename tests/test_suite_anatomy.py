@@ -207,6 +207,10 @@ class SuiteAnatomyTests(unittest.TestCase):
         """
 
         legacy_keys = {"artifact_hash", "field_pointer", "accepted_snapshot_hash"}
+        # Hand-maintained byte digests. Nothing verifies them, so they are a
+        # second copy of lifecycle state that goes stale in silence; a template
+        # carrying one hands that maintenance to every project built from it.
+        retired_digest_keys = {"input_hashes", "rendered_hash"}
 
         def check(document: object, path: Path, declares: bool, cursor: str = "") -> None:
             def canonical(reference: object) -> bool:
@@ -222,6 +226,10 @@ class SuiteAnatomyTests(unittest.TestCase):
                 self.assertFalse(
                     legacy_keys.intersection(document),
                     f"{path}:{cursor} uses a legacy reference alias",
+                )
+                self.assertFalse(
+                    retired_digest_keys.intersection(document),
+                    f"{path}:{cursor} carries a hand-maintained byte digest",
                 )
                 for key, value in document.items():
                     if (

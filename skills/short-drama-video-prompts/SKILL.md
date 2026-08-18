@@ -208,7 +208,7 @@ reviewer 在下游审查结论中决定，不能回写运动规格形成循环�
 - `剧集/<EP>/storyboard/delivery-containers.jsonl`：**仅当项目声明了多镜交付容器时**，
   记录容器成员顺序、各成员已接受时长的只读引用与容器时长，模板见
   [delivery-container.jsonl.md](assets/delivery-container.jsonl.md)；
-- `剧集/<EP>/storyboard/video-prompts.md`：由已接受规格、容器记录和配方 `hash` 生成的文本版本。
+- `剧集/<EP>/storyboard/video-prompts.md`：由已接受规格与容器记录生成的文本版本，元信息写明用的是哪个配方。
 
 `generic_prompt` 与派生文本是同一段交付文本，写成执行端可以直接下单的画面描述：从已接受起点的
 姿态与持物说起，逐条写动作、接触、摄影机行为与终点状态。写满的样子见

@@ -117,11 +117,7 @@
   ],
   "generic_prompt": "<只含可被画出的自然中文，不含字段名/hash/审查话术>",
   "derivation": {
-    "input_hashes": [
-      "<sha256>"
-    ],
-    "renderer": "generic-markdown",
-    "rendered_hash": "<sha256>"
+    "renderer": "generic-markdown"
   },
   "provenance": "creator_project"
 }

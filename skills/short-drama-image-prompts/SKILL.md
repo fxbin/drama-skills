@@ -137,7 +137,7 @@ python3 {技能目录}/scripts/selftest.py
   Look Development 使用，后者为派生文本；
 - `剧集/<EP>/assets/image-prompt-specs.jsonl`：权威规格，写入时 `status` 如实跟随对象当前
   生命周期状态（预览为 `candidate`，已接受的落盘规格为 `accepted`）；
-- `剧集/<EP>/assets/image-prompts.md`：由已接受规格和配方 `hash` 重新生成的文本版本。
+- `剧集/<EP>/assets/image-prompts.md`：由已接受规格重新生成的文本版本，元信息写明用的是哪个渲染器。
 
 项目工具可用时用 `publish` 发布规格和派生文本并声明直接输入；独立运行时直接写出本阶段文件。
 两种方式都不得以半成品覆盖当前版本。
