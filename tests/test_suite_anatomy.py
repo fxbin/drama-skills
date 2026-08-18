@@ -21,7 +21,9 @@ EXPECTED_SKILLS = {
 }
 
 
-REF_TRIPLE = {"owner", "artifact", "hash"}
+# A reference now names its upstream; bytes are no longer carried in the
+# authoring chain, so the canonical pair is owner+artifact.
+REF_PAIR = {"owner", "artifact"}
 FENCED_RECORD = re.compile(r"```jsonl?\n(\{.*?\})\n```", re.S)
 
 # A ``*.fragment.json`` is pasted into a host record, so its ``src`` keys are
@@ -82,8 +84,8 @@ def expand_refs(node: Any, sources: dict[str, Any]) -> Any:
     src = node.get("src")
     if isinstance(src, str):
         entry = sources.get(src)
-        if isinstance(entry, dict) and REF_TRIPLE.issubset(entry):
-            return {key: entry[key] for key in ("owner", "artifact", "hash")} | rest
+        if isinstance(entry, dict) and REF_PAIR.issubset(entry):
+            return {key: entry[key] for key in ("owner", "artifact")} | rest
         return dict(node)
     return rest
 
@@ -214,7 +216,7 @@ class SuiteAnatomyTests(unittest.TestCase):
                 # the host declares rather than a declaration of its own.
                 if not declares and isinstance(reference.get("src"), str):
                     return True
-                return REF_TRIPLE.issubset(reference)
+                return REF_PAIR.issubset(reference)
 
             if isinstance(document, dict):
                 self.assertFalse(
@@ -386,7 +388,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         for document in documents.values():
             check(document)
 
-    def test_delivery_container_and_motion_hash_refs_are_acyclic(self) -> None:
+    def test_delivery_container_and_motion_refs_are_acyclic(self) -> None:
         templates = {
             "剧集/<EP>/storyboard/delivery-containers.jsonl": fenced_json(
                 SUITE
@@ -402,12 +404,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         def collect(source: str, value: object) -> None:
             if isinstance(value, dict):
                 artifact = value.get("artifact")
-                digest = value.get("hash")
-                if (
-                    isinstance(artifact, str)
-                    and artifact in templates
-                    and isinstance(digest, str)
-                ):
+                if isinstance(artifact, str) and artifact in templates:
                     edges[source].add(artifact)
                 for child in value.values():
                     collect(source, child)
@@ -424,7 +421,7 @@ class SuiteAnatomyTests(unittest.TestCase):
 
         def visit(node: str, active: tuple[str, ...], complete: set[str]) -> None:
             if node in active:
-                self.fail("hash-reference cycle: " + " -> ".join((*active, node)))
+                self.fail("reference cycle: " + " -> ".join((*active, node)))
             if node in complete:
                 return
             for target in edges[node]:
@@ -435,7 +432,16 @@ class SuiteAnatomyTests(unittest.TestCase):
         for source in templates:
             visit(source, (), complete)
 
-    def test_asset_template_reference_graph_has_no_self_ref_or_hash_cycle(self) -> None:
+    def test_asset_template_derivation_graph_has_no_self_ref_or_cycle(self) -> None:
+        """Derivation must be a DAG; cross-naming between peers need not be.
+
+        Edges come from ``sources`` -- the artifacts a file was built from --
+        not from every artifact a record happens to mention. An occurrence may
+        name the decision it feeds while that decision names the occurrence it
+        consumes: with byte digests gone from the chain there is nothing
+        impossible about two peers naming each other, only about one being
+        derived from the other in both directions.
+        """
         templates = SUITE / "skills/short-drama-assets/assets"
         edges: set[tuple[str, str]] = set()
         for path in templates.glob("*.jsonl"):
@@ -443,28 +449,17 @@ class SuiteAnatomyTests(unittest.TestCase):
                 source = document.get("destination")
                 if not isinstance(source, str):
                     continue
-
-                def collect(value: object) -> None:
-                    if isinstance(value, dict):
-                        artifact = value.get("artifact")
-                        digest = value.get("hash")
-                        if isinstance(artifact, str) and isinstance(digest, str):
-                            self.assertNotEqual(
-                                artifact,
-                                source,
-                                f"{path.name} creates an impossible self-hash ref",
-                            )
-                            if artifact.startswith(
-                                ("设定集/", "剧集/", "bible/", "episodes/")
-                            ):
-                                edges.add((source, artifact))
-                        for child in value.values():
-                            collect(child)
-                    elif isinstance(value, list):
-                        for child in value:
-                            collect(child)
-
-                collect(document)
+                for entry in (document.get("sources") or {}).values():
+                    artifact = entry.get("artifact") if isinstance(entry, dict) else None
+                    if not isinstance(artifact, str):
+                        continue
+                    self.assertNotEqual(
+                        artifact,
+                        source,
+                        f"{path.name} declares itself as its own source",
+                    )
+                    if artifact.startswith(("设定集/", "剧集/", "bible/", "episodes/")):
+                        edges.add((source, artifact))
 
         graph: dict[str, set[str]] = {}
         for source, target in edges:
@@ -473,7 +468,7 @@ class SuiteAnatomyTests(unittest.TestCase):
         def visit(node: str, active: tuple[str, ...], complete: set[str]) -> None:
             if node in active:
                 cycle = " -> ".join((*active, node))
-                self.fail(f"cross-artifact hash cycle: {cycle}")
+                self.fail(f"derivation cycle: {cycle}")
             if node in complete:
                 return
             for target in graph.get(node, set()):
@@ -514,7 +509,7 @@ class SuiteAnatomyTests(unittest.TestCase):
 
             def check(value: object, cursor: str = "") -> None:
                 if isinstance(value, dict):
-                    if {"owner", "artifact", "hash"}.issubset(value):
+                    if {"owner", "artifact"}.issubset(value):
                         authority = value.get("authority")
                         self.assertIn(authority, {None, "candidate"}, f"{path}:{cursor}")
                         if authority == "candidate":
@@ -550,12 +545,12 @@ class SuiteAnatomyTests(unittest.TestCase):
             SUITE / "skills/short-drama-review/assets/finding-template.jsonl", "target_ref"
         )
         self.assertGreaterEqual(len(finding["evidence_refs"]), 2)
-        self.assertTrue(REF_TRIPLE.issubset(finding["target_ref"]))
+        self.assertTrue(REF_PAIR.issubset(finding["target_ref"]))
         verdict = resolved_records(
             SUITE / "skills/short-drama-review/assets/verdict-template.json"
         )[0]
         self.assertTrue(verdict["reviewed_artifacts"])
-        self.assertTrue(REF_TRIPLE.issubset(verdict["findings_ref"]))
+        self.assertTrue(REF_PAIR.issubset(verdict["findings_ref"]))
         self.assertEqual(verdict["open_blocker_count"], 0)
         self.assertEqual(verdict["review_method"], "uninvolved_reviewer | self_check")
         self.assertIsInstance(verdict["reviewer"], str)

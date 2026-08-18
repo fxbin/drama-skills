@@ -13,613 +13,511 @@
     {
       "owner": "short-drama-assets",
       "artifact": "设定集/characters.jsonl",
-      "hash": "231e6dcd59cbdfcc3651b20937e731fdc776224430a15bdff1ce5e9c718a68f5",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "设定集/looks.jsonl",
-      "hash": "d5ce5f9b75f95f832a5bba444827a0eb49c66b63655fcda7d1f9dad725eb7a46",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "设定集/locations.jsonl",
-      "hash": "a4b3c77c5bea0cc5bce0740682672eed3b19639ff228b1b3487485d2fb77bc99",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "设定集/location-views.jsonl",
-      "hash": "165abf29f9dc40ce7c87b5a786c563df06c0f5083a8af8af4f13daf93746743d",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "设定集/props.jsonl",
-      "hash": "0623073b81ba3a5975fef82cd880ef2c7eedb006644b6df28e0a059f14949365",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "设定集/prop-states.jsonl",
-      "hash": "5dd09bb03f30418cdc1806b140013cde4bb3522b35f2b0a16bed70bebe59055a",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP001/episode-card.json",
-      "hash": "2e73c9ce948693bfb9d924b75141eb2e803a1eb1a704f3fafd8ba185dac2111e",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP001/beats.jsonl",
-      "hash": "f4c73389dfe7d2584614ee60bdbd3062acf7a9e60a1da02e054aba394b994942",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP001/screenplay.md",
-      "hash": "607a4e58cd4c1d7cb903473da185bc53bd1b23fd271cc925489853aebbc17040",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP001/screenplay-index.jsonl",
-      "hash": "f6f95c5d2014b57a3fb335c81fabc82d4b69457fed338b60157902668606f687",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP001/assets/occurrences.jsonl",
-      "hash": "02ceb737f6aef757bf02e31f7dab429288f0c1c8571c85d6dcfad1043f4dc8f0",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP001/assets/decisions.jsonl",
-      "hash": "8cca9ca60c3d184932de5105341bc42133e270aaaf2d9805b56b1e31b82b6131",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP001/assets/continuity.jsonl",
-      "hash": "4d97aff59dea889ad6586922566a3621a00c3a004dfb16e4f4c3d95392ce7be2",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP001/assets/image-prompt-specs.jsonl",
-      "hash": "bec95a0c6324fabacdd9ad88c3d0753a71a319e9ba1d2b818a59f6757588bbff",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP001/storyboard/shots.jsonl",
-      "hash": "c0562f516cbd7bf8362a4264de6007f85e4c0ffac1d0d77a6e37d3cd386049e6",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP001/storyboard/coverage.json",
-      "hash": "c00b1e2dcedc49300f762be544e5030cd428e3351366734a1a6c96d78c750fde",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP001/storyboard/keyframes.jsonl",
-      "hash": "b70bd68876d74ce2b6e8c5fbad365aca179bd38d24672b0f59d98e6af7c3f16f",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP001/storyboard/motion-specs.jsonl",
-      "hash": "1399b9bb5addf6a474be9a2ca39ce4edb1b8fce76c969652db2fd32a1ec728f4",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP002/episode-card.json",
-      "hash": "db685d8f7c607131e69ba0516ddaf66e717e6497245e8de59b4981a01cdfd97f",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP002/beats.jsonl",
-      "hash": "8b6266a4f400b9b2f7645e146c8e0e83a868033498bd5620161bc9ecfe80624a",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP002/screenplay.md",
-      "hash": "6e0c8b2af2d6d685204adc4ed8b35ec724874bf0018f8f163ed1a9f3c442bda4",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP002/screenplay-index.jsonl",
-      "hash": "ca12a6c1de460acebdd0ed7f3fd969591155dafbb9b608ccc524eac8fa3b3cd3",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP002/assets/occurrences.jsonl",
-      "hash": "3884786b3a6c7966e184755c8cf1d0d8d17069b4c776826e1fcc6c6d39bfb6b9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP002/assets/decisions.jsonl",
-      "hash": "7a0b4c07b0f6590c4f719df07639c894bd2046b6547cf436634d5425b9e326a8",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP002/assets/continuity.jsonl",
-      "hash": "e4c2f29f3e8b6bb9be3ac9585dbdf8323cdebca839bfdfd9b00b875ec692ba60",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP002/assets/image-prompt-specs.jsonl",
-      "hash": "7f119518de600c745a9d2984163259e57ccaf74e2242f2a7aaf86482fa257bc9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP002/storyboard/shots.jsonl",
-      "hash": "fd154ba3229b25b79c84e5b02f29242e278899d578feb99750bf1f425f9ebddd",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP002/storyboard/coverage.json",
-      "hash": "d7c581505eae4625d7d46689c5b454fab1205a27fcf89bca595ca722eb42ba70",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP002/storyboard/keyframes.jsonl",
-      "hash": "6aac09c41d908454097281b3274337a06bf8a7ba921a0fb631f25400ee0a4539",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP002/storyboard/motion-specs.jsonl",
-      "hash": "36db609f985decd22614d111bbdc1fc077db1de2a9edc5c6a249d0a18699e474",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP003/episode-card.json",
-      "hash": "64b2aa937323c0b4f685981c4255658105a3b8ffcc183e317c6aab084c00cc9a",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP003/beats.jsonl",
-      "hash": "36c748aba69ed0348accba5bd9fa71f35965f8df1d32f3e8cc2a6ceb3c52a214",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP003/screenplay.md",
-      "hash": "5824089dac54ca6aac0057d06f598b197c6eeb9941b50a4b2b254b2b201a72a4",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP003/screenplay-index.jsonl",
-      "hash": "f5a7ea9e4f0cabc7496391f978e1e629c8e557f2206e961bc297e0999049154a",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP003/assets/occurrences.jsonl",
-      "hash": "0652de4a0a4663327356b52780e42378e5eee0902788de78d8243fb8983d5578",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP003/assets/decisions.jsonl",
-      "hash": "5029cb6a6abc38fc3b48dd58f94f5a6a3d13a3d486a3c402b1e6088336700eb1",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP003/assets/continuity.jsonl",
-      "hash": "e5eddaa5f650aeabfb0db702a7e6f467bb3cef0e8a0c7a05d42d8f19f9a47b06",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP003/assets/image-prompt-specs.jsonl",
-      "hash": "534cf6c92c66c45cc94e061c295f1d17a22e9d28e2f54a85dfb750d896709ff9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP003/storyboard/shots.jsonl",
-      "hash": "789122fdc7b8f370bb9950fa842b668c25632d6ec7a887cb1ab5e43406ae1ec9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP003/storyboard/coverage.json",
-      "hash": "1f6102cbefbebb60fa215d0cd26fe94502dcffabf6ac3aa3cbfd828a6d9b43dc",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP003/storyboard/keyframes.jsonl",
-      "hash": "2bc5308469ff9af83fe1873fb3d3cc4f08f575b4ded0d28bda0c647ee6c475d2",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP003/storyboard/motion-specs.jsonl",
-      "hash": "1d6f4a2e43d03ca41d78c857158e2e65db0ae038acbdeac1d70d763043987057",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP004/episode-card.json",
-      "hash": "0e9636dfd3347b7677dc55cc0d840c993fb10c7d2ba7b05f8c293c80dca1d9a0",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP004/beats.jsonl",
-      "hash": "fb77d2636e7026dc0468d45cb787df042f82d6f438bb04dd96d99b5418a3ecfd",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP004/screenplay.md",
-      "hash": "85bd9f70c3c2f9589ecca46770b411117a87a7666e881c50edf187bbdba895a1",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP004/screenplay-index.jsonl",
-      "hash": "68076b6210059612adc69cd4ef7acaca3c67fe28ceafca5bf0e042ed608a1307",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP004/assets/occurrences.jsonl",
-      "hash": "a4c5872d695f0d957160c3e489299c51b57cbcb1f23525c11a061d690dd460be",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP004/assets/decisions.jsonl",
-      "hash": "075ebfd866b887a3c74e90a70b8a0695d984b1fa76f9daa80b6f544f59400168",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP004/assets/continuity.jsonl",
-      "hash": "08a3b1ed54aa012ec176a07d79fb8066ee35753ffc5873cbe9356009cbf453b0",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP004/assets/image-prompt-specs.jsonl",
-      "hash": "45d120d64a03e137da8d701cdb71cc89035e4731a4a60fa8076c7b83fe9bc305",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP004/storyboard/shots.jsonl",
-      "hash": "cfb37f8b9d9048a8039a4a14deba21e7b1e24c2c55b3476ec7a1d4a0c66b2068",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP004/storyboard/coverage.json",
-      "hash": "64607e9e9525cea02895c0cd10f4341f1b4e2cc54ddfc502fe9fe62b51bf0527",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP004/storyboard/keyframes.jsonl",
-      "hash": "3125c53bdaaca8660d72078cf464d6da7e50be55bb8c2ee06c172f929b84ee3c",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP004/storyboard/motion-specs.jsonl",
-      "hash": "bc9d9b2bfc81ea357fd7bee6639ddb567eefc3e7e68cc8edd76305b5306c2463",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP005/episode-card.json",
-      "hash": "1fa988b1a0264bb587ffd2041e5adce7a16dfe64c6b236473bc1273457179d28",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP005/beats.jsonl",
-      "hash": "3c3f7ff9b7008263935328d958fb4faf68fdf0575bf3724cac452aaffb6c3ff9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP005/screenplay.md",
-      "hash": "d420796cd842aa52354bccb857d054fc8d776552b90874f6d9d209643f4e274b",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP005/screenplay-index.jsonl",
-      "hash": "07a12fa9638824d7f9ce59b3a014bd816408ccbb7be206271eaf8fdb87e1afd5",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP005/assets/occurrences.jsonl",
-      "hash": "b370612a0e7e104d7f3dba83d386fc63a0990965ef903912a879a0bcda5f3c43",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP005/assets/decisions.jsonl",
-      "hash": "f943b537d9989c639a4b21f6eb99aff7d098e22528ccafdc238c2f513ae301e1",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP005/assets/continuity.jsonl",
-      "hash": "bb4a97bce83e868ba33a8551ac83d8bc50b3e93bbd7deb4d9efedb58523d1a55",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP005/assets/image-prompt-specs.jsonl",
-      "hash": "ee7e79afa58b6519bdb7022791f513e0e1b8c68b080a4f0fae29b9312e72eb6f",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP005/storyboard/shots.jsonl",
-      "hash": "7ae8b1ff389d0f7b85ca2242cf1eadf908ddffa2fe7fe510981a2eef30629dc5",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP005/storyboard/coverage.json",
-      "hash": "4291b8120332a0a31d2963b9ea2db785278b629e0a92a664a52858d218d448fd",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP005/storyboard/keyframes.jsonl",
-      "hash": "56d1e42d14ffda343f4fbf21f578bd5116914daa97e04ffac5a4477ad6c49bd0",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP005/storyboard/motion-specs.jsonl",
-      "hash": "ab8eb443af7eb17865cc97247df9cff3bde490ad31b747823eacf0d8cc753701",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP006/episode-card.json",
-      "hash": "7836dc7244ec8ece9701a760adf02798441590b0edd1d1682bb48bab8d3ac0c9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP006/beats.jsonl",
-      "hash": "e32b9ae2d8af80f374bf5d9bd9f4613261ac7aef14c2303131b2908713977ba0",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP006/screenplay.md",
-      "hash": "9c6bb203f5c4a08de88cf3ec226c1535733853ee8930f477f7ea887f08ef0a32",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP006/screenplay-index.jsonl",
-      "hash": "a54dd18bc6736ba4179ddea4effced41cc5bff271b19d1daf3b6f4d7359b5a73",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP006/assets/occurrences.jsonl",
-      "hash": "3cfd5ab8eadc2b0d1cdd34fdcfc250d7bdce7040ca0bd0645cb75e8868810833",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP006/assets/decisions.jsonl",
-      "hash": "a0fd4321a573489f08ffe52c29a464a26f3af5e1f1982207807d77b5ffb3137a",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP006/assets/continuity.jsonl",
-      "hash": "6c0fd7d108f2995b7e2fcbd02e6d11788148ad421da35897ffb03b6dd2357d93",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP006/assets/image-prompt-specs.jsonl",
-      "hash": "91c7818cacf505edf2b3fa17884f3a78c5be4dddd527d44dd67f6f40afb83769",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP006/storyboard/shots.jsonl",
-      "hash": "82f5290775bbab86801825341b4063b0fbe71f8c910300e96a65e17ed68a6fcb",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP006/storyboard/coverage.json",
-      "hash": "95c9f9102b57b006692130fa38c0dc461cd7e1d55e86c2be06c0ded3d0deb1fd",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP006/storyboard/keyframes.jsonl",
-      "hash": "ce4cfcc7b67dd11c0308c1258c82d631f429bb0c236ec7392f60bf9fba404a2a",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP006/storyboard/motion-specs.jsonl",
-      "hash": "b43b78950e935fcf2975a5540a72148868a553f6b8aed21e0c2b4013a78df13f",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP007/episode-card.json",
-      "hash": "b9c593d278726c988279028b83b366ca9832ea9b0c434f77462378516ab9027c",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP007/beats.jsonl",
-      "hash": "4afde132b8d37b117d86281264ece07edbd26c7e8cf17f2891e63478c4739013",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP007/screenplay.md",
-      "hash": "e9c42b0066f1ad6cb3117ab8c78369341b9e4247ddcdf07f7ced8f0461360722",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP007/screenplay-index.jsonl",
-      "hash": "436ee375309b0f2b2b45cb1eeb1a206b6d51fcaf35e5a96f5cd3c9de3f6476a5",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP007/assets/occurrences.jsonl",
-      "hash": "abd3e6c71aaf769585277717c7d2993afcffa1fef57435159d0d1cedb9950bb9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP007/assets/decisions.jsonl",
-      "hash": "eb2abbc6edf6d3a9a5894ef7d54f6bd067b31beb86d8f94a8f20d3d0187d07b9",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP007/assets/continuity.jsonl",
-      "hash": "21eb4d246fa467f30d62aba0bf53b2edda9a46921afcb892d94904c5583febfc",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP007/assets/image-prompt-specs.jsonl",
-      "hash": "6a55a8c073cda22a653fba38565bbd0cca629f7f9841ac5ea2e5a30bec9e04bf",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP007/storyboard/shots.jsonl",
-      "hash": "411b381004dbc4efc0a576bd4a51da4ccef5847f946b1a8430941b49d10ec5e8",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP007/storyboard/coverage.json",
-      "hash": "203ff082fb78a911cc03f015bb02c9a9df4b7f50940b5b50956fca41261a5919",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP007/storyboard/keyframes.jsonl",
-      "hash": "a59d895387fc9e386615585e857a4e302008783b4989642695a7f0ec3a560949",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP007/storyboard/motion-specs.jsonl",
-      "hash": "3e1f481dd2ab8585c7781f2d2309063a23871a5f0eac66a1242525c691e7aa92",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP008/episode-card.json",
-      "hash": "9da080acd805208cc7b16bd3099b866c3cac78347a223706240dfe150df8c610",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP008/beats.jsonl",
-      "hash": "8bb0ba09e0525d9b6d22182dc8d57a476e897cb81f2d5e8c71021e307209b33f",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP008/screenplay.md",
-      "hash": "976bc438094503c1f6ef77509d3f15c4c8a2ee00ee480ed41835bfc9378ca2e7",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP008/screenplay-index.jsonl",
-      "hash": "6512e0f56a9bfd37392af367a158817800a7b5bde6071172f593d41464be5a7b",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP008/assets/occurrences.jsonl",
-      "hash": "55ca178eb02d733378bdf20157710d28e99f16680b1447962defafd3a41053c7",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP008/assets/decisions.jsonl",
-      "hash": "395c64606bde528fb26b791c38450df2132daf02fcc41e8ad70163978b032410",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-assets",
       "artifact": "剧集/EP008/assets/continuity.jsonl",
-      "hash": "30a2088a72088c821ac74091ba2a7738122ce4c938deac85e99e97841b067fbd",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-image-prompts",
       "artifact": "剧集/EP008/assets/image-prompt-specs.jsonl",
-      "hash": "b4c60e3da053764268e261664657ca9f4f3ffe3a4e65b31040eda5a055821488",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP008/storyboard/shots.jsonl",
-      "hash": "b29f0230ef30c4d7021cf71c174a230535320aafe156d9c202c745a1276c48ca",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP008/storyboard/coverage.json",
-      "hash": "86c468e9aadd9a1fc29b863d08ade7e2f0ba55bc71383cd957407d7baa2d9f87",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-storyboard",
       "artifact": "剧集/EP008/storyboard/keyframes.jsonl",
-      "hash": "7ca8bf2c3f2004ca9b06581659038977b44385bfd3cca4ca9c9f0a5b21a6d96f",
       "authority": "accepted"
     },
     {
       "owner": "short-drama-video-prompts",
       "artifact": "剧集/EP008/storyboard/motion-specs.jsonl",
-      "hash": "f0b1719d05ecaecc7a771911683a58c2b453837205635efaf848f47028720c36",
       "authority": "accepted"
     }
   ],
@@ -627,62 +525,52 @@
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-GLOBAL-ASSET-SNAPSHOT"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP001-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP002-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP003-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP004-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP005-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP006-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP007-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
       "record_id": "CD-EP008-CHAIN-ACCEPTANCE"
     }
   ],
   "findings_ref": {
     "owner": "short-drama-review",
-    "artifact": "审查/findings.jsonl",
-    "hash": "6afa6590162a6c340f80901e5acf6b9a2f4b318962e680db38a2820bddcf7c81"
+    "artifact": "审查/findings.jsonl"
   },
   "review_method": "self_check",
   "reviewer": "golden_fixture_maintainer",

@@ -32,7 +32,6 @@ class ResolvedRef(NamedTuple):
 
     owner: str
     artifact: str
-    hash: str
     record_id: str | None
     field: str | None
     authority: str | None
@@ -75,25 +74,24 @@ def resolve_ref(
             return None, RefFinding(
                 "REF_SRC_IS_NOT_DECLARED", location, f"src {src!r} has no sources entry"
             )
-        owner, artifact, digest = entry.get("owner"), entry.get("artifact"), entry.get("hash")
-        if not (isinstance(owner, str) and isinstance(artifact, str) and isinstance(digest, str)):
+        owner, artifact = entry.get("owner"), entry.get("artifact")
+        if not (isinstance(owner, str) and isinstance(artifact, str)):
             return None, RefFinding(
-                "SOURCE_ENTRY_IS_INCOMPLETE", location, f"sources[{src!r}] needs owner/artifact/hash"
+                "SOURCE_ENTRY_IS_INCOMPLETE", location, f"sources[{src!r}] needs owner/artifact"
             )
-    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact", "hash")):
-        owner, artifact, digest = ref["owner"], ref["artifact"], ref["hash"]
+    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact")):
+        owner, artifact = ref["owner"], ref["artifact"]
     else:
         return None, RefFinding(
-            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact+hash"
+            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact"
         )
     optional = {
         key: ref[key] for key in ("record_id", "field", "authority") if isinstance(ref.get(key), str)
     }
     return (
         ResolvedRef(
-            owner,
-            artifact,
-            digest,
+        owner,
+        artifact,
             optional.get("record_id"),
             optional.get("field"),
             optional.get("authority"),
@@ -206,8 +204,6 @@ def validate_ref(
         raise ValidationError(f"{label}: reference could not be resolved")
     if not resolved.owner.strip() or not resolved.artifact.strip():
         raise ValidationError(f"{label}: owner and artifact must be non-empty text")
-    if HASH_RE.fullmatch(resolved.hash) is None:
-        raise ValidationError(f"{label}: hash must be lowercase sha256")
     if "record_id" not in value and (not field_allowed or "field" not in value):
         raise ValidationError(f"{label}: record_id or field is required")
 

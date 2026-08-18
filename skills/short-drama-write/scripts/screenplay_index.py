@@ -49,7 +49,6 @@ class ResolvedRef(NamedTuple):
 
     owner: str
     artifact: str
-    hash: str
     record_id: str | None
     field: str | None
     authority: str | None
@@ -92,18 +91,18 @@ def resolve_ref(
             return None, RefFinding(
                 "REF_SRC_IS_NOT_DECLARED", location, f"src {src!r} has no sources entry"
             )
-        owner, artifact, digest = entry.get("owner"), entry.get("artifact"), entry.get("hash")
-        if not (isinstance(owner, str) and isinstance(artifact, str) and isinstance(digest, str)):
+        owner, artifact = entry.get("owner"), entry.get("artifact")
+        if not (isinstance(owner, str) and isinstance(artifact, str)):
             return None, RefFinding(
                 "SOURCE_ENTRY_IS_INCOMPLETE",
                 location,
-                f"sources[{src!r}] needs owner/artifact/hash",
+                f"sources[{src!r}] needs owner/artifact",
             )
-    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact", "hash")):
-        owner, artifact, digest = ref["owner"], ref["artifact"], ref["hash"]
+    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact")):
+        owner, artifact = ref["owner"], ref["artifact"]
     else:
         return None, RefFinding(
-            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact+hash"
+            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact"
         )
     optional = {
         key: ref[key]
@@ -112,9 +111,8 @@ def resolve_ref(
     }
     return (
         ResolvedRef(
-            owner,
-            artifact,
-            digest,
+        owner,
+        artifact,
             optional.get("record_id"),
             optional.get("field"),
             optional.get("authority"),
@@ -534,9 +532,13 @@ def _load_previous(
     body = [record for record in records if record.get("record_type") != SOURCES_RECORD_TYPE]
     if not body or body[0].get("record_type") != "screenplay_index_meta":
         raise ValueError("previous index is missing screenplay_index_meta")
+    # The previous index must name the screenplay it was built from. It no
+    # longer carries that screenplay's bytes, so a resume can confirm identity
+    # but not that the file is unchanged; a screenplay edited between runs is
+    # caught by re-parsing below, not by a stored digest.
     resolved, _defect = resolve_ref(body[0].get("source_ref"), sources, "previous_index")
-    if resolved is None or resolved.hash != _sha256(source_data):
-        raise ValueError("previous source hash does not match previous index")
+    if resolved is None:
+        raise ValueError("previous index does not name its screenplay")
     previous_speakers = frozenset(
         speaker
         for record in records
@@ -867,7 +869,6 @@ def build_index(
         SCREENPLAY_SOURCE_KEY: {
             "owner": "short-drama-write",
             "artifact": _portable_source_ref(source, source_ref),
-            "hash": source_sha256,
         }
     }
     source_artifact_ref: dict[str, str] = {"src": SCREENPLAY_SOURCE_KEY}
@@ -882,7 +883,6 @@ def build_index(
         previous_snapshot = {
             "owner": "short-drama-write",
             "artifact": _portable_source_ref(previous_source, source_ref),
-            "hash": _sha256(previous_source.read_bytes()),
         }
         previous_key = SCREENPLAY_SOURCE_KEY
         if previous_snapshot != declared_sources[SCREENPLAY_SOURCE_KEY]:

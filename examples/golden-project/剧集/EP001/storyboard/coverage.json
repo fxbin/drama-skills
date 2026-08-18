@@ -2,18 +2,15 @@
   "sources": {
     "screenplay-index": {
       "owner": "short-drama-write",
-      "artifact": "剧集/EP001/screenplay-index.jsonl",
-      "hash": "f6f95c5d2014b57a3fb335c81fabc82d4b69457fed338b60157902668606f687"
+      "artifact": "剧集/EP001/screenplay-index.jsonl"
     },
     "short-drama": {
       "owner": "short-drama",
-      "artifact": "short-drama.json",
-      "hash": "63c4ba91f0c65c79b08aff608655004aea8efe370ec98445f2866f6e457633d7"
+      "artifact": "short-drama.json"
     },
     "shots": {
       "owner": "short-drama-storyboard",
-      "artifact": "剧集/EP001/storyboard/shots.jsonl",
-      "hash": "c0562f516cbd7bf8362a4264de6007f85e4c0ffac1d0d77a6e37d3cd386049e6"
+      "artifact": "剧集/EP001/storyboard/shots.jsonl"
     }
   },
   "episode_id": "EP001",

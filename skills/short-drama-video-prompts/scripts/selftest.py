@@ -68,9 +68,11 @@ def main() -> int:
     unsupported[1]["token"] = "not provider-neutral"
     fail(unsupported, "unsupported fields")
 
+    # A source entry now names an upstream artifact and nothing else; a stray
+    # byte digest is an unsupported field rather than a malformed hash.
     stale_source = [copy.deepcopy(header), spec]
     stale_source[0]["sources"]["screenplay"]["hash"] = "not-a-sha256"
-    fail(stale_source, "lowercase sha256")
+    fail(stale_source, "unsupported fields")
 
     print("10 self-tests passed")
     return 0

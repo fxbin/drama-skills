@@ -30,7 +30,7 @@ def fail(records: list[dict[str, Any]], sources: dict[str, dict[str, Any]], mark
 
 def expanded(ref: dict[str, Any], sources: dict[str, dict[str, Any]]) -> dict[str, Any]:
     entry = sources[ref["src"]]
-    inline = {key: entry[key] for key in ("owner", "artifact", "hash")}
+    inline = {key: entry[key] for key in ("owner", "artifact")}
     inline.update({key: value for key, value in ref.items() if key != "src"})
     return inline
 

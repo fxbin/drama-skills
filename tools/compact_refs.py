@@ -4,7 +4,7 @@
 
 Expanded form (still accepted everywhere, never rewritten back)::
 
-    {"owner": "...", "artifact": "...", "hash": "<sha256>", "record_id": "..."}
+    {"owner": "...", "artifact": "...", "record_id": "..."}
 
 Compact form::
 
@@ -71,7 +71,6 @@ class ResolvedRef(NamedTuple):
 
     owner: str
     artifact: str
-    hash: str
     record_id: str | None
     field: str | None
     authority: str | None
@@ -114,25 +113,24 @@ def resolve_ref(
             return None, RefFinding(
                 "REF_SRC_IS_NOT_DECLARED", location, f"src {src!r} has no sources entry"
             )
-        owner, artifact, digest = entry.get("owner"), entry.get("artifact"), entry.get("hash")
-        if not (isinstance(owner, str) and isinstance(artifact, str) and isinstance(digest, str)):
+        owner, artifact = entry.get("owner"), entry.get("artifact")
+        if not (isinstance(owner, str) and isinstance(artifact, str)):
             return None, RefFinding(
-                "SOURCE_ENTRY_IS_INCOMPLETE", location, f"sources[{src!r}] needs owner/artifact/hash"
+                "SOURCE_ENTRY_IS_INCOMPLETE", location, f"sources[{src!r}] needs owner/artifact"
             )
-    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact", "hash")):
-        owner, artifact, digest = ref["owner"], ref["artifact"], ref["hash"]
+    elif all(isinstance(ref.get(key), str) for key in ("owner", "artifact")):
+        owner, artifact = ref["owner"], ref["artifact"]
     else:
         return None, RefFinding(
-            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact+hash"
+            "REF_HAS_NO_UPSTREAM_BINDING", location, "needs src, or owner+artifact"
         )
     optional = {
         key: ref[key] for key in ("record_id", "field", "authority") if isinstance(ref.get(key), str)
     }
     return (
         ResolvedRef(
-            owner,
-            artifact,
-            digest,
+        owner,
+        artifact,
             optional.get("record_id"),
             optional.get("field"),
             optional.get("authority"),
@@ -145,7 +143,7 @@ def resolve_ref(
 # END REFERENCE RESOLVER
 # ---------------------------------------------------------------------------
 
-REF_TRIPLE = ("owner", "artifact", "hash")
+REF_PAIR = ("owner", "artifact")
 SOURCES_KEY = "sources"
 DATA_SUFFIXES = (".json", ".jsonl")
 MAX_KEY_QUALIFIER_DEPTH = 8
@@ -157,8 +155,8 @@ MAX_KEY_QUALIFIER_DEPTH = 8
 REF_CARRIER_SUFFIXES = ("_ref", "_refs")
 EXTRA_REF_CARRIERS = ("reviewed_artifacts",)
 
-# (owner, artifact, hash) identifies one upstream snapshot.
-SourceId = tuple[str, str, str]
+# (owner, artifact) identifies one upstream artifact.
+SourceId = tuple[str, str]
 
 
 class Finding(NamedTuple):
@@ -285,7 +283,7 @@ def is_expanded_ref(node: Any) -> bool:
     """
     if not isinstance(node, dict):
         return False
-    return all(isinstance(node.get(key), str) and node[key] for key in REF_TRIPLE)
+    return all(isinstance(node.get(key), str) and node[key] for key in REF_PAIR)
 
 
 def is_compact_ref(node: Any) -> bool:
@@ -304,11 +302,11 @@ def expand_refs(node: Any, sources: dict[str, dict[str, Any]]) -> Any:
         return node
     if is_compact_ref(node):
         entry = sources.get(str(node["src"]))
-        if entry is not None and all(isinstance(entry.get(key), str) for key in REF_TRIPLE):
+        if entry is not None and all(isinstance(entry.get(key), str) for key in REF_PAIR):
             rest = {
                 key: expand_refs(value, sources) for key, value in node.items() if key != "src"
             }
-            return {key: entry[key] for key in REF_TRIPLE} | rest
+            return {key: entry[key] for key in REF_PAIR} | rest
     return {key: expand_refs(value, sources) for key, value in node.items()}
 
 
@@ -325,53 +323,27 @@ def iter_expanded_refs(node: Any) -> Iterator[dict[str, Any]]:
         yield from iter_expanded_refs(value)
 
 
-def compact_refs(node: Any, keys: dict[SourceId, str], remap: dict[tuple[str, str], str]) -> Any:
+def compact_refs(node: Any, keys: dict[SourceId, str]) -> Any:
     if isinstance(node, list):
-        return [compact_refs(item, keys, remap) for item in node]
+        return [compact_refs(item, keys) for item in node]
     if not isinstance(node, dict):
         return node
     if is_expanded_ref(node):
-        source_id = resolved_source_id(node, remap)
+        source_id = resolved_source_id(node)
         rest = {
-            key: compact_refs(value, keys, remap)
+            key: compact_refs(value, keys)
             for key, value in node.items()
-            if key not in REF_TRIPLE
+            if key not in REF_PAIR
         }
         return {"src": keys[source_id]} | rest
-    return {key: compact_refs(value, keys, remap) for key, value in node.items()}
+    return {key: compact_refs(value, keys) for key, value in node.items()}
 
 
-def resolved_source_id(ref: dict[str, Any], remap: dict[tuple[str, str], str]) -> SourceId:
-    """Apply the fixed point: a hash that named a file's pre-rewrite bytes moves."""
-    owner, artifact, digest = (str(ref[key]) for key in REF_TRIPLE)
-    return owner, artifact, remap.get((artifact, digest), digest)
+def resolved_source_id(ref: dict[str, Any]) -> SourceId:
+    """A reference identifies its upstream by owner and artifact."""
+    owner, artifact = (str(ref[key]) for key in REF_PAIR)
+    return owner, artifact
 
-
-def rebind_refs(node: Any, remap: dict[tuple[str, str], str]) -> Any:
-    """Move refs onto post-rewrite upstream hashes without declaring sources.
-
-    A file whose references are all to different snapshots has nothing to share,
-    so the declaration would be pure overhead. Such a file keeps writing each
-    triple inline, and still needs its upstream hashes re-bound.
-    """
-    if isinstance(node, list):
-        return [rebind_refs(item, remap) for item in node]
-    if not isinstance(node, dict):
-        return node
-    if is_expanded_ref(node):
-        source_id = resolved_source_id(node, remap)
-        rest = {
-            key: rebind_refs(value, remap)
-            for key, value in node.items()
-            if key not in REF_TRIPLE
-        }
-        return dict(zip(REF_TRIPLE, source_id)) | rest
-    return {key: rebind_refs(value, remap) for key, value in node.items()}
-
-
-# ---------------------------------------------------------------------------
-# Source key derivation
-# ---------------------------------------------------------------------------
 
 
 def slug(text: str) -> str:
@@ -542,7 +514,6 @@ def migrate(root: Path) -> int:
             files[loaded.relative] = loaded
 
     # (artifact, pre-rewrite hash) -> post-rewrite hash.
-    remap: dict[tuple[str, str], str] = {}
     changed = 0
     for relative in build_order(files):
         loaded = files[relative]
@@ -551,22 +522,20 @@ def migrate(root: Path) -> int:
         records = [expand_refs(record, declared) for record in records]
 
         source_ids = {
-            resolved_source_id(ref, remap)
+            resolved_source_id(ref)
             for record in records
             for ref in iter_expanded_refs(record)
         }
         keys = derive_source_keys(source_ids)
         sources = {
-            keys[source_id]: {"owner": source_id[0], "artifact": source_id[1], "hash": source_id[2]}
+            keys[source_id]: {"owner": source_id[0], "artifact": source_id[1]}
             for source_id in sorted(source_ids, key=lambda entry: keys[entry])
         }
         compact = place_sources(
-            [compact_refs(record, keys, remap) for record in records], mode, position, sources
+            [compact_refs(record, keys) for record in records], mode, position, sources
         )
         compact_payload = render(compact, loaded.fmt).encode("utf-8")
-        inline_payload = render(
-            [rebind_refs(record, remap) for record in records], loaded.fmt
-        ).encode("utf-8")
+        inline_payload = render(records, loaded.fmt).encode("utf-8")
         # Declaring a snapshot once pays off only when something references it
         # more than once. A fan-in manifest naming 104 artifacts once each would
         # grow, so it keeps the inline form.
@@ -576,7 +545,6 @@ def migrate(root: Path) -> int:
         if payload != loaded.original_bytes:
             loaded.path.write_bytes(payload)
             changed += 1
-            remap[(relative, sha256_bytes(loaded.original_bytes))] = sha256_bytes(payload)
 
     emit(f"rewrote {changed} of {len(files)} data files under {root}")
     return 0
@@ -593,7 +561,10 @@ def check(root: Path) -> int:
         loaded = load_file(path, root)
         if loaded is not None:
             files[loaded.relative] = loaded
-    on_disk = {relative: sha256_bytes(loaded.original_bytes) for relative, loaded in files.items()}
+    # References no longer carry bytes, so the strongest local claim is that the
+    # artifact a reference names is really there. Whether it is *current* is a
+    # lifecycle question, answered by project_tool state, not by these files.
+    on_disk = set(files)
 
     findings: list[Finding] = []
     for relative in sorted(files):
@@ -610,34 +581,26 @@ def check(root: Path) -> int:
                     detail = f"{defect.location}: {defect.detail}"
                     findings.append(Finding(relative, defect.code, detail))
                     continue
-                # A declared snapshot is hash-checked once below; an inline one
-                # is only reachable here.
+                # A declared source is checked once below; an inline one is only
+                # reachable here.
                 if resolved is not None and not compact:
-                    current = on_disk.get(resolved.artifact)
-                    if current is not None and current != resolved.hash:
-                        detail = (
-                            f"{location} names {resolved.hash[:12]}… "
-                            f"but {resolved.artifact} now hashes to {current[:12]}…"
-                        )
-                        findings.append(Finding(relative, "REF_HASH_IS_STALE", detail))
+                    if resolved.artifact not in on_disk and (root / resolved.artifact).is_file() is False:
+                        detail = f"{location} names {resolved.artifact}, which is not in this project"
+                        findings.append(Finding(relative, "REF_TARGET_IS_MISSING", detail))
         for key in sorted(sources):
             entry = sources[key]
-            artifact, digest = entry.get("artifact"), entry.get("hash")
+            artifact = entry.get("artifact")
             if key not in used:
                 detail = f"sources[{key!r}] is declared but no reference uses it"
                 findings.append(Finding(relative, "SOURCE_IS_UNUSED", detail))
-            if not (isinstance(artifact, str) and isinstance(digest, str)):
+            if not isinstance(artifact, str):
                 continue
-            current = on_disk.get(artifact)
-            if current is not None and current != digest:
-                detail = (
-                    f"sources[{key!r}] names {digest[:12]}… "
-                    f"but {artifact} now hashes to {current[:12]}…"
-                )
-                findings.append(Finding(relative, "SOURCE_HASH_IS_STALE", detail))
+            if artifact not in on_disk and not (root / artifact).is_file():
+                detail = f"sources[{key!r}] names {artifact}, which is not in this project"
+                findings.append(Finding(relative, "SOURCE_TARGET_IS_MISSING", detail))
 
     if not findings:
-        emit(f"every reference in {len(files)} data files under {root} resolves to a current snapshot")
+        emit(f"every reference in {len(files)} data files under {root} names an artifact that exists")
         return 0
     for report in findings:
         emit(f"{report.path}: {report.code}: {report.detail}")

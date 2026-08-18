@@ -45,7 +45,6 @@ def shot_ref(shot_id: str) -> dict[str, Any]:
     return {
         "owner": "short-drama-storyboard",
         "artifact": "episodes/EP001/storyboard/shots.jsonl",
-        "hash": "0" * 64,
         "record_id": shot_id,
     }
 
@@ -186,7 +185,6 @@ class KeyframeBoundaryCheckTests(unittest.TestCase):
             "boundary_ref": {
                 "owner": "short-drama-storyboard",
                 "artifact": "episodes/EP001/storyboard/shots.jsonl",
-                "hash": "0" * 64,
                 "record_id": "SHOT-1",
                 "field": "/start_boundary",
             },
@@ -204,7 +202,6 @@ class KeyframeBoundaryCheckTests(unittest.TestCase):
             boundary_ref={
                 "owner": "short-drama-storyboard",
                 "artifact": "episodes/EP001/storyboard/shots.jsonl",
-                "hash": "0" * 64,
                 "record_id": "SHOT-1",
                 "field": "/end_boundary",
             },
@@ -355,7 +352,6 @@ class VoiceSheetCheckTests(unittest.TestCase):
             "source_ref": {
                 "owner": "short-drama-write",
                 "artifact": "episodes/EP001/screenplay-index.jsonl",
-                "hash": "0" * 64,
                 "record_id": block_id,
             },
         }
