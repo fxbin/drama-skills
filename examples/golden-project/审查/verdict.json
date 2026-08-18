@@ -49,7 +49,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP001/episode-card.json",
-      "hash": "2e73c9ce948693bfb9d924b75141eb2e803a1eb1a704f3fafd8ba185dac2111e",
+      "hash": "8057dc9a7cf66b3aeaa6db1797679b04853420b2283601b8f909ce550b884146",
       "authority": "accepted"
     },
     {
@@ -121,7 +121,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP002/episode-card.json",
-      "hash": "db685d8f7c607131e69ba0516ddaf66e717e6497245e8de59b4981a01cdfd97f",
+      "hash": "f6e95b4aa5cd5206dd7923202635218fe4200a5a5eafe503626a5c048caae830",
       "authority": "accepted"
     },
     {
@@ -193,7 +193,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP003/episode-card.json",
-      "hash": "64b2aa937323c0b4f685981c4255658105a3b8ffcc183e317c6aab084c00cc9a",
+      "hash": "9e8750f0415d082cd705922ba881c32dbfd18da1e3a6d866aa096588a86ad0b6",
       "authority": "accepted"
     },
     {
@@ -265,7 +265,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP004/episode-card.json",
-      "hash": "0e9636dfd3347b7677dc55cc0d840c993fb10c7d2ba7b05f8c293c80dca1d9a0",
+      "hash": "dc4abbe4144d7b32ab14fe499e1103925b253ebccce95188b5c6f730a6d1eb07",
       "authority": "accepted"
     },
     {
@@ -337,7 +337,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP005/episode-card.json",
-      "hash": "1fa988b1a0264bb587ffd2041e5adce7a16dfe64c6b236473bc1273457179d28",
+      "hash": "faefa5c9005ad66f56f2917737e0e44c6b20e8aaaec139a1d6bb274161f343c5",
       "authority": "accepted"
     },
     {
@@ -409,7 +409,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP006/episode-card.json",
-      "hash": "7836dc7244ec8ece9701a760adf02798441590b0edd1d1682bb48bab8d3ac0c9",
+      "hash": "b179d94fb67b3a1530c9d7475d6479e2d504b5dabc0e908528fb8c326b0e055c",
       "authority": "accepted"
     },
     {
@@ -481,7 +481,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP007/episode-card.json",
-      "hash": "b9c593d278726c988279028b83b366ca9832ea9b0c434f77462378516ab9027c",
+      "hash": "5523e6c36e4817f1202aa96986288de23aa61adf56f4678ff158b4fe863c7204",
       "authority": "accepted"
     },
     {
@@ -553,7 +553,7 @@
     {
       "owner": "short-drama-write",
       "artifact": "剧集/EP008/episode-card.json",
-      "hash": "9da080acd805208cc7b16bd3099b866c3cac78347a223706240dfe150df8c610",
+      "hash": "1b72c937f95a1edc9223bd1fab567592c7d387a019a988ee5d5492ea07e8509a",
       "authority": "accepted"
     },
     {
@@ -627,55 +627,55 @@
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-GLOBAL-ASSET-SNAPSHOT"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP001-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP002-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP003-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP004-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP005-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP006-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP007-CHAIN-ACCEPTANCE"
     },
     {
       "owner": "creator",
       "artifact": "创作者决策/golden-production-acceptance.jsonl",
-      "hash": "6755757e1eb72c7110c6efb66910abff81a6e6de290466899997a0a7cb22f798",
+      "hash": "53b235369d3b9046cd628764d607e481ddc869e54a976dae75a50114212541f3",
       "record_id": "CD-EP008-CHAIN-ACCEPTANCE"
     }
   ],
