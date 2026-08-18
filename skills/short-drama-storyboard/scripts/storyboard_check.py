@@ -500,11 +500,84 @@ def _declared_target(project: Path | None) -> float | None:
     return float(value)
 
 
+# A screenplay line that no shot claims is a line nobody will film. A line two
+# shots claim is a line the edit will show twice. Neither is a taste judgment,
+# so both are checked here; whether the coverage is *good* stays with the agent.
+SCREENPLAY_HEADING = re.compile(r"^#{1,6}\s")
+SCREENPLAY_TAG = re.compile(r"^\[[^\]]+\]")
+
+
+def screenplay_lines(text: str) -> list[str]:
+    """The lines a shot can claim: not headings, not production tags, not blank."""
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or SCREENPLAY_HEADING.match(line) or SCREENPLAY_TAG.match(line):
+            continue
+        lines.append(line)
+    return lines
+
+
+def check_screenplay_coverage(
+    shots: list[dict[str, Any]], screenplay_path: Path | None
+) -> list[dict[str, Any]]:
+    if screenplay_path is None:
+        return []
+    try:
+        text = screenplay_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise CheckError(f"screenplay cannot be read: {error}") from error
+
+    wanted = screenplay_lines(text)
+    claims: dict[str, list[str]] = {line: [] for line in wanted}
+    unknown: list[dict[str, Any]] = []
+    for shot in shots:
+        shot_id = shot.get("shot_id")
+        for claimed in shot.get("source_lines") or []:
+            if not isinstance(claimed, str):
+                continue
+            key = claimed.strip()
+            if key in claims:
+                claims[key].append(shot_id)
+            else:
+                unknown.append({"shot_id": shot_id, "line": key})
+
+    findings = []
+    for line, owners in claims.items():
+        if not owners:
+            findings.append(
+                _finding(
+                    "SHT21_LINE_UNCLAIMED",
+                    "no shot claims this screenplay line",
+                    line=line,
+                )
+            )
+        elif len(owners) > 1:
+            findings.append(
+                _finding(
+                    "SHT21_LINE_CLAIMED_TWICE",
+                    "more than one shot claims the same screenplay line",
+                    line=line,
+                    shot_ids=owners,
+                )
+            )
+    for stray in unknown:
+        findings.append(
+            _finding(
+                "SHT21_LINE_NOT_IN_SCREENPLAY",
+                "a shot claims a line that is not in the screenplay",
+                **stray,
+            )
+        )
+    return findings
+
+
 def check(
     coverage_path: Path,
     shots_path: Path,
     keyframes_path: Path | None,
     project_path: Path | None,
+    screenplay_path: Path | None = None,
 ) -> dict[str, Any]:
     coverage = _load_json(coverage_path)
     if not isinstance(coverage, dict):
@@ -512,6 +585,7 @@ def check(
     _, shots = _load_jsonl(shots_path)
     findings = check_episode_duration(coverage, shots, _declared_target(project_path))
     findings.extend(check_boundary_entries(shots))
+    findings.extend(check_screenplay_coverage(shots, screenplay_path))
     keyframes: list[dict[str, Any]] | None = None
     if keyframes_path is not None:
         keyframe_sources, keyframes = _load_jsonl(keyframes_path)
@@ -536,6 +610,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--shots", type=Path, required=True)
     parser.add_argument("--keyframes", type=Path)
     parser.add_argument(
+        "--screenplay",
+        type=Path,
+        help="screenplay.md, so every line is claimed by exactly one shot",
+    )
+    parser.add_argument(
         "--project",
         type=Path,
         help="short-drama.json, so a declared per-episode target is compared",
@@ -546,7 +625,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        result = check(args.coverage, args.shots, args.keyframes, args.project)
+        result = check(
+            args.coverage, args.shots, args.keyframes, args.project, args.screenplay
+        )
     except CheckError as error:
         print(f"{type(error).__name__}: {error}", file=sys.stderr)
         return 2
