@@ -43,7 +43,7 @@ GPT_IMAGE_MIN_PIXELS = 655_360
 GPT_IMAGE_MAX_PIXELS = 8_294_400
 MINIMUM_PYTHON = (3, 9)
 if sys.version_info < MINIMUM_PYTHON:
-    raise SystemExit("provider_adapters.py requires Python 3.10 or newer")
+    raise SystemExit("provider_adapters.py requires Python 3.9 or newer")
 
 
 class AdapterFailure(RuntimeError):

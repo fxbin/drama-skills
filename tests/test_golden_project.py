@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -262,6 +263,28 @@ class GoldenProjectTests(unittest.TestCase):
                     self.assertIsInstance(json.loads(text), dict)
                 elif path.suffix == ".jsonl":
                     self.assertTrue(read_jsonl(path), relative)
+
+    def test_creator_acceptance_pins_the_bytes_the_sample_actually_ships(self) -> None:
+        # A/B Round 2: 86 of the sample's 102 `target_hashes` no longer matched
+        # the files they name. Nothing read the field, so the suite's own
+        # byte-pinned acceptance had been broken for several releases while the
+        # sample went on presenting itself as an accepted project.
+        pinned = 0
+        for record in read_jsonl(GOLDEN / "创作者决策/golden-production-acceptance.jsonl"):
+            targets = record.get("target_hashes")
+            if not isinstance(targets, dict):
+                continue
+            for relative, digest in targets.items():
+                path = GOLDEN / relative
+                with self.subTest(decision=record.get("decision_id"), path=relative):
+                    self.assertTrue(path.is_file(), relative)
+                    self.assertEqual(
+                        hashlib.sha256(path.read_bytes()).hexdigest(),
+                        digest,
+                        msg=f"{relative} changed after it was accepted",
+                    )
+                    pinned += 1
+        self.assertGreater(pinned, 0, "the sample pins no accepted bytes at all")
 
     def test_fixture_contains_no_sensitive_fields_placeholders_or_media(self) -> None:
         placeholder = re.compile(r"<[^>\n]+>")
