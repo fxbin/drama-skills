@@ -86,7 +86,7 @@
 这条绑定所在的文件在第一行声明它引用到的上游快照：
 
 ```json
-{"record_type":"sources","schema_version":"1.0.0","sources":{"keyframes":{"owner":"short-drama-storyboard","artifact":"剧集/EP001/storyboard/keyframes.jsonl","hash":"<sha256>"}}}
+{"record_type":"sources","schema_version":"1.0.0","sources":{"keyframes":{"owner":"short-drama-storyboard","artifact":"剧集/EP001/storyboard/keyframes.jsonl"}}}
 ```
 
 之后每条绑定只写快照键、记录 ID 和这一条自己的 `authority`：

@@ -18,7 +18,7 @@
 scene_handoff_capsule:
   authority: derived
   sources:
-    screenplay: {owner: short-drama-write, artifact: 剧集/<EP>/screenplay.md, hash: <sha256>}
+    screenplay: {owner: short-drama-write, artifact: 剧集/<EP>/screenplay.md}
   screenplay_ref: {src: screenplay}
   current_scene:
     scene_id: EPxxx-SCxxx

@@ -50,7 +50,7 @@ declaration plus the record it points at.
 A `.jsonl` file declares them on its first line:
 
 ```json
-{"record_type":"sources","schema_version":"1.0.0","sources":{"screenplay-index":{"owner":"short-drama-write","artifact":"剧集/EP001/screenplay-index.jsonl","hash":"<sha256>"}}}
+{"record_type":"sources","schema_version":"1.0.0","sources":{"screenplay-index":{"owner":"short-drama-write","artifact":"剧集/EP001/screenplay-index.jsonl"}}}
 ```
 
 A `.json` file uses a top-level `"sources"` object with the same entries. A reference is then:

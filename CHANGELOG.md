@@ -131,6 +131,16 @@
 
 ### 新增
 
+- **分镜覆盖对账改为按块 ID**。用 Golden Sample 实跑新加的覆盖检查，8 集全部报错、
+  共 77 处「未被认领」；查下来样例覆盖其实是满的（EP001：14 个块、14 次认领、零遗漏），
+  错的是检查本身——我按正文行比对，而镜头是通过 `source_refs` 的 `record_id` 绑定
+  screenplay-index 的块 ID，样例里根本没有 `source_lines` 这个字段。改为按块 ID 之后
+  8 集全过。这样也更稳：正文一直在改，块 ID 不变。`SHT21_LINE_*` 改为 `SHT21_BLOCK_*`。
+- **`sources` 的语义写进文档**：它只记录**派生来源**——本文件依赖、上游变了就可能要重做的
+  那些产物。同层互相指名不是派生（occurrence 指向它喂给的 decision，那个 decision 指回它
+  消费的 occurrence，两者都成立），**只有派生必须无环**。条目只有 `owner` 与 `artifact`；
+  各处文档里过时的 `"hash": "<sha256>"` 示例一并清掉。
+
 - **悬空语义引用测试**（`tests/test_reference_integrity.py`）。引用指向的文件存在，不等于
   它指向的**东西**存在：`field` 可以指向记录里没有的键，`projected_fields` 可以指向已被
   删掉的契约字段，`source_step_pointer` 可以指向不存在的因果步。上一轮缩表就留下了八处

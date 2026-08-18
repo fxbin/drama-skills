@@ -104,7 +104,7 @@ diff，让创作者明确选择 authority 迁移，将 standalone 契约标记 s
 
 引用这样写：文件首行的 `{"record_type": "sources", "schema_version": "1.0.0",
 "sources": {...}}` 记录把每个上游快照声明一次，`sources` 的每个短键映射到
-`{"owner": ..., "artifact": ..., "hash": ...}`；每条引用写
+`{"owner": ..., "artifact": ...}`；每条引用写
 `{"src": "<sources 键>", "record_id": "<记录 ID>"}`，需要时再加 `field` 指向该记录内
 的 JSON pointer。指向整个 artifact 时只写 `{"src": "<sources 键>"}`。同一份文件里
 同一个键始终指同一个快照。`.json` 文件把同样的 `sources` 对象写在顶层。
