@@ -18,4 +18,4 @@ maintainers/evals/
 /demo/
 
 # 项目锁是运行时产物，不随参考运行分发。
-.short-drama/project.lock
+**/.short-drama/project.lock

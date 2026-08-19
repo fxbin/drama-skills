@@ -1,23 +1,13 @@
 """The main-workflow evaluation: one real novel, run end to end, checked here.
 
-`examples/golden-project` is a curated sample -- small, hand-shaped, and useful
-for showing what a finished project looks like. It cannot tell us whether the
-suite still works on a real book, because nothing in it came from one. Three
-defects shipped past it: a duration estimate that timed voice-over at zero, a
-voice sheet that could not hold a voice-over line at all, and a rebuild path
-that renumbered blocks in silence. None of those are visible in a fixture with
-no voice-over, no full-length source and no revision history.
+`evaluations/让你管账号/reference-run` is the recorded output of the documented
+workflow against a 147 KB novel. Why it exists alongside `examples/` -- and what
+it deliberately carries that the hand-shaped samples do not -- is in
+`evaluations/README.md`; this module is the gate that holds it to that bar.
 
-`evaluations/让你管账号/reference-run` is the other kind of fixture: the recorded
-output of the documented workflow, run against a 147 KB novel, carrying the
-things the curated sample happens not to have -- `[VO]` and `[OS]` lines, a
-complete voice sheet, a 20-chapter source index, and a screenplay that has been
-revised once. This module holds it to the same bar every release.
-
-It is a regression gate, not a quality judgement: it asserts that the checkers
-still pass and that the derived layers still reproduce from their sources. What
-the episode is worth as drama is a creative review, and the procedure for that
-is in the directory's README.
+It asserts that the checkers still pass and that the derived layers still
+reproduce from their sources. Whether the episode is any good as drama is a
+creative review, and the procedure for that is in the same README.
 """
 
 from __future__ import annotations
@@ -103,87 +93,92 @@ class SourceMaterialTests(unittest.TestCase):
 
 
 class CheckerSweepTests(unittest.TestCase):
-    """Every checker the documented workflow runs, over the recorded output."""
+    """Every checker the documented workflow runs, over the recorded output.
 
-    def test_asset_bible_passes(self) -> None:
-        report = run_json(
-            [
-                str(script("short-drama-assets/scripts/asset_check.py")),
-                "--characters",
-                "设定集/characters.jsonl",
-                "--looks",
-                "设定集/looks.jsonl",
-            ]
-        )
-        self.assertEqual(report["status"], "valid")
+    Kept as one table so adding a stage means adding a row, not another method
+    that differs only in its argv.
+    """
 
-    def test_image_prompt_specs_pass(self) -> None:
-        report = run_json(
+    # (label, argv, expected status, keys that must come back empty)
+    CHECKS = (
+        (
+            "asset bible",
             [
-                str(script("short-drama-image-prompts/scripts/image_prompt_check.py")),
+                "short-drama-assets/scripts/asset_check.py",
+                "--characters", "设定集/characters.jsonl",
+                "--looks", "设定集/looks.jsonl",
+            ],
+            "valid",
+            (),
+        ),
+        (
+            "image prompts",
+            [
+                "short-drama-image-prompts/scripts/image_prompt_check.py",
                 "剧集/EP001/assets/image-prompt-specs.jsonl",
-            ]
-        )
-        self.assertEqual(report["status"], "valid")
-
-    def test_storyboard_covers_every_block(self) -> None:
-        report = run_json(
+            ],
+            "valid",
+            (),
+        ),
+        (
+            "storyboard coverage",
             [
-                str(script("short-drama-storyboard/scripts/storyboard_check.py")),
+                "short-drama-storyboard/scripts/storyboard_check.py",
                 "剧集/EP001/storyboard/coverage.json",
-                "--shots",
-                "剧集/EP001/storyboard/shots.jsonl",
-                "--keyframes",
-                "剧集/EP001/storyboard/keyframes.jsonl",
-                "--screenplay-index",
-                "剧集/EP001/screenplay-index.jsonl",
-                "--project",
-                "short-drama.json",
-            ]
-        )
-        self.assertEqual(report["findings"], [])
-        self.assertEqual(report["status"], "pass")
-
-    def test_delivery_containers_pack_the_whole_episode(self) -> None:
-        report = run_json(
+                "--shots", "剧集/EP001/storyboard/shots.jsonl",
+                "--keyframes", "剧集/EP001/storyboard/keyframes.jsonl",
+                "--screenplay-index", "剧集/EP001/screenplay-index.jsonl",
+                "--project", "short-drama.json",
+            ],
+            "pass",
+            ("findings",),
+        ),
+        (
+            "delivery containers",
             [
-                str(script("short-drama-video-prompts/scripts/container_check.py")),
+                "short-drama-video-prompts/scripts/container_check.py",
                 "剧集/EP001/storyboard/containers.jsonl",
-                "--shots",
-                "剧集/EP001/storyboard/shots.jsonl",
-            ]
-        )
-        self.assertEqual(report["status"], "pass")
-        self.assertEqual(report["loose_shots"], [])
-
-    def test_motion_timing_passes(self) -> None:
-        report = run_json(
+                "--shots", "剧集/EP001/storyboard/shots.jsonl",
+            ],
+            "pass",
+            ("findings", "loose_shots", "unmeasured_shots"),
+        ),
+        (
+            "motion timing",
             [
-                str(script("short-drama-video-prompts/scripts/motion_timing_check.py")),
+                "short-drama-video-prompts/scripts/motion_timing_check.py",
                 "剧集/EP001/storyboard/motion-specs.jsonl",
-                "--shots",
-                "剧集/EP001/storyboard/shots.jsonl",
-            ]
-        )
-        self.assertEqual(report["status"], "pass")
-
-    def test_music_specs_pass(self) -> None:
-        report = run_json(
+                "--shots", "剧集/EP001/storyboard/shots.jsonl",
+            ],
+            "pass",
+            ("findings", "unmeasured_specs"),
+        ),
+        (
+            "music specs",
             [
-                str(script("short-drama-video-prompts/scripts/music_spec_check.py")),
+                "short-drama-video-prompts/scripts/music_spec_check.py",
                 "剧集/EP001/storyboard/music-specs.jsonl",
-            ]
-        )
-        self.assertEqual(report["status"], "valid")
+            ],
+            "valid",
+            (),
+        ),
+    )
+
+    def test_every_checker_passes(self) -> None:
+        for label, argv, status, empty in self.CHECKS:
+            with self.subTest(checker=label):
+                report = run_json([str(script(argv[0])), *argv[1:]])
+                self.assertEqual(report["status"], status)
+                for key in empty:
+                    self.assertEqual(report[key], [], f"{label}: {key}")
 
 
 class VoiceOverCoverageTests(unittest.TestCase):
-    """The coverage the curated sample does not have.
+    """Voice-over: eight lines here, none anywhere in `examples/`.
 
-    `examples/golden-project` carries no `[VO]` or `[OS]` line in any of its
-    eight episodes and no voice sheet at all, so two defects lived there without
-    a failing test: voice-over timed at zero seconds, and a voice sheet that
-    could not project a voice-over block. This episode carries eight of them.
+    Two defects lived without a failing test because no sample exercised this
+    path -- voice-over timed at zero seconds, and a voice sheet that could not
+    project a voice-over block.
     """
 
     def test_the_episode_actually_exercises_voice_over(self) -> None:
