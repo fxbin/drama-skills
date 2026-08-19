@@ -776,6 +776,10 @@ def _build_status(
 ) -> dict[str, Any]:
     counts: dict[str, int] = {}
     artifacts: dict[str, str] = {}
+    # Which stage produced each file. The state already knows; without it every
+    # reader has to guess from the path, and a stage added later reads as
+    # "unrecognised" until someone updates that reader's own list of names.
+    ownership: dict[str, str] = {}
     records = state.get("artifacts", {})
     if isinstance(records, Mapping):
         for artifact_id, record in records.items():
@@ -784,6 +788,12 @@ def _build_status(
             value = artifact_state(record)
             artifacts[artifact_id] = value
             counts[value] = counts.get(value, 0) + 1
+            owner = record.get("owner")
+            if not isinstance(owner, str) or not owner:
+                continue
+            for output in record.get("outputs", []) or []:
+                if isinstance(output, str) and output:
+                    ownership[output] = owner
     languages = project_languages(project)
     return {
         "project_id": project.get("project_id"),
@@ -795,6 +805,7 @@ def _build_status(
         "layout": dict(layout),
         "artifact_states": counts,
         "artifacts": artifacts,
+        "ownership": ownership,
         "authority": _authority_report(project, state),
         "lifecycle": {"artifact_state": counts},
     }
