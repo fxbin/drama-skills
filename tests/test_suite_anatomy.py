@@ -735,3 +735,76 @@ class DiagnosticCatalogueTests(unittest.TestCase):
                     [],
                     f"{skill.name} emits codes no reference document lists",
                 )
+
+
+class MarkdownBoldRunTests(unittest.TestCase):
+    """A bold run must actually render as bold on GitHub.
+
+    CommonMark closes `**` only when the run is right-flanking: a `**` preceded
+    by punctuation must be followed by whitespace or punctuation. `**文本。**后续`
+    fails both halves of that -- preceded by `。`, followed by a letter -- so the
+    markers render literally. It reads fine in an editor and breaks on the
+    release page, which is where the v0.5.0 notes were caught.
+
+    The fix is to put the punctuation outside the run: `**文本**。后续`.
+    """
+
+    # Delimiters are paired in document order rather than matched by a regex:
+    # a pattern spanning `**A**。 prose：**B**` reads the close of one run and the
+    # open of the next as a pair and reports a false positive.
+    CLOSING_PUNCTUATION = "。：；？！"
+    SAFE_AFTER = set(" \t\n*，。、；：？！）】」』`）")
+
+    # Recorded creator prose, not shipped documentation. The reference run is a
+    # record of what one run produced; its wording is not this suite's to edit.
+    EXCLUDED = ("evaluations/让你管账号/reference-run",)
+
+    def shipped_markdown(self) -> list[Path]:
+        files = [
+            SUITE / name
+            for name in (
+                "README.md", "README_EN.md", "CHANGELOG.md",
+                "CONTRIBUTING.md", "DESIGN.md",
+            )
+        ]
+        for root in ("skills", "evaluations", "examples", "docs", "maintainers"):
+            files.extend(sorted((SUITE / root).rglob("*.md")))
+        return [
+            path
+            for path in files
+            if path.is_file()
+            and not any(part in str(path) for part in self.EXCLUDED)
+        ]
+
+    def unclosable_runs(self, text: str) -> list[str]:
+        broken: list[str] = []
+        for line in text.splitlines():
+            positions = []
+            index = line.find("**")
+            while index != -1:
+                positions.append(index)
+                index = line.find("**", index + 2)
+            # Even positions open a run, odd positions close it.
+            for opening, closing in zip(positions[::2], positions[1::2]):
+                content = line[opening + 2:closing]
+                after = line[closing + 2:closing + 3]
+                if (
+                    content
+                    and content[-1] in self.CLOSING_PUNCTUATION
+                    and after
+                    and after not in self.SAFE_AFTER
+                ):
+                    broken.append(line[opening:closing + 8])
+        return broken
+
+    def test_no_shipped_document_carries_an_unclosable_bold_run(self) -> None:
+        for path in self.shipped_markdown():
+            broken = self.unclosable_runs(path.read_text(encoding="utf-8"))
+            with self.subTest(path=str(path.relative_to(SUITE))):
+                self.assertEqual(
+                    broken,
+                    [],
+                    f"{path.relative_to(SUITE)}: a bold run ends with punctuation "
+                    f"inside the markers, so it renders literally on GitHub; move "
+                    f"the punctuation outside",
+                )
