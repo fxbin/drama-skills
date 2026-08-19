@@ -22,10 +22,15 @@ python3 {技能目录}/scripts/screenplay_index.py <screenplay.md> --output <scr
 写完一集后，可以按**项目自己声明的速率**估算它有多长。套件不带跨项目速率，也不设容差带：
 
 ```bash
-python3 {技能目录}/scripts/duration_estimate.py <screenplay.md> --project <short-drama.json>
+python3 {技能目录}/scripts/duration_estimate.py <screenplay.md> \
+  --index <screenplay-index.jsonl> --project <short-drama.json>
 ```
 
-脚本见 [duration_estimate.py](scripts/duration_estimate.py)。速率写在 `short-drama.json` 的
+脚本见 [duration_estimate.py](scripts/duration_estimate.py)。**它不自己读剧本格式**：哪一段是
+台词、哪一段是动作、哪一行是注释，全部按 `screenplay-index.jsonl` 的分块来，所以先建索引再估算。
+一个格式两个读法就是两套答案——此前它自带的那套把 `[VO]` 计零秒、把 Markdown 注释当台词计时、
+把带冒号的动作段读成对白、把一个多行动作段按行数重复计算。索引与剧本字节对不上时脚本拒绝估算；
+索引里还有没归类的文本时，报告里会多出 `incomplete`，说明这个秒数没覆盖全篇。速率写在 `short-drama.json` 的
 `format.pacing`（`spoken_characters_per_second` 与 `seconds_per_action_paragraph`），
 由创作者按本项目的戏来定——密集争辩和沉默劳作不是同一个折算比。没有声明速率时，脚本只报
 台词字数与动作段数，不猜秒数。
@@ -152,8 +157,13 @@ python3 <skill-dir>/scripts/screenplay_index.py 剧集/EP001/screenplay.md \
 ```
 
 由 write owner 阅读当前剧本后，把本集实际说话者逐个传给 `--speaker`；索引器只做精确
-标签核对，不用冒号正则猜人物。未登记的 `前缀：内容` 写成
-`ambiguous_dialogue_or_action`，由 agent 判断应保留为动作、改用 `[画面文字]`，还是补入说话者清单。
+标签核对，不用冒号正则猜人物。未登记的 `前缀：内容` 写成 `ambiguous_dialogue_or_action`。
+
+**它不会作为块进入索引**，所以覆盖、时长与配音本都看不到它——必须处理掉，不能留着。
+三种处理方式：补入说话者清单（它确实是台词）、改用 `[画面文字]` 等生产标签、或改写这一行
+让它不再是「前缀：内容」的形状（动作段里的全角冒号可以改成破折号或拆成两句）。
+留着不处理时，分镜阶段的覆盖检查会报 `SHT01_SCREENPLAY_IS_NOT_FULLY_INDEXED`，
+时长估算的报告会带上 `incomplete`。
 
 规范化预览尚未获 creator acceptance 时加 `--authority candidate`，使 meta、block 与
 source issue 的 refs 都保持 candidate；accepted 剧本发布后再以默认 accepted authority
@@ -174,6 +184,11 @@ python3 <skill-dir>/scripts/screenplay_index.py 剧集/EP001/screenplay.md \
 `mapping_review_request`，必须显式重映射。
 **场景标题是例外**：它按 `scene_id` 保 ID，改写标题不换 ID（同一场戏仍是同一场，内容由标题下面
 的块承载）。说话者清单从上一版索引读回，与这次传的 `--speaker` 取并集，修订时只传新增的人即可。
+
+**退役是永久的，不只是对下一版。**索引 meta 里的 `block_id_high_water` 记着每个场景、每种块
+用到过的最大编号，逐版往下传。没有它时，编号只从上一版索引推：某个场景里某一类块一旦全部消失，
+下一版就从 01 重新发号，把一个曾经属于别的内容的编号发给新块——下游引用照样解析得开，
+指的却是另一段戏。
 
 **输出路径上已经有索引、却没有告诉索引器上一版是什么时，命令会指名该文件并停下。**
 这一条不是礼貌提示：不带上一版重建，ID 按位置重新发放，被改写的块会拿回前一个块退役的编号，

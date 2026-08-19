@@ -132,6 +132,15 @@ S1–S5 的 Agent 创作产物同样先写到 `source-analysis/_work/`，完成�
 原子替换正式文件。不要用半成品覆盖 `_index.json`、`_progress.md`、`chapters/*.md` 或聚合产物。
 `_work/` 是候选工作区，不是权威分析层，也不进入交付包。
 
+**并发子代理写 `_work/`，主线程发布到正式路径。**子代理只落
+`_work/chapters/ch-<N>-extract.md`，主线程跑完机械自检后再发布到 `chapters/`。
+覆盖率闸门按正式路径 `chapters/` 匹配文件名——发布之前跑，每一章都会进
+`unmatched_files`，那不是缺陷，只是跑早了。
+
+`_progress.md` 每个阶段都会重写，而发布要求一个路径只有一个 owner，所以它用一个固定
+artifact-id：`source-analysis:progress`，owner 是 `short-drama-novel-analyze`，
+S0–S5 每次停靠都用同一个 id 重新发布。
+
 ### S2 逐章功能提取
 
 按 [章节提取](references/chapter-extraction.md) 处理每一章。能并发子代理就分批并发

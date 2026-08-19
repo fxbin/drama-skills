@@ -941,3 +941,101 @@ class SimpleLifecycleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AcceptedBytesAreTheAcceptedBytesTests(unittest.TestCase):
+    """Editing an accepted artifact behind the tool's back must un-accept it.
+
+    This is the promise the whole publish/accept lifecycle rests on, and it had
+    no test in either implementation. Both `_artifact_state` comparisons against
+    the live hashes could be deleted and all 321 tests stayed green, which is
+    also how the two transcriptions of these rules were free to drift -- the
+    dashboard renders the directory-fd one.
+    """
+
+    def make_accepted_project(self, directory: str) -> Path:
+        root = Path(directory) / "project"
+        project_tool.initialize_project(
+            root,
+            title="轻量短剧",
+            language="zh-CN",
+            aspect_ratio="9:16",
+            suite_root=SKILL,
+        )
+        project_tool.publish_candidate(
+            root,
+            owner="short-drama-write",
+            artifact_id="EP001:script",
+            outputs={"剧集/EP001/screenplay.md": "# 第一集\n"},
+            inputs=[],
+        )
+        project_tool.record_creator_acceptance(
+            root, artifact_id="EP001:script", decision="accepted"
+        )
+        return root
+
+    def states(self, root: Path) -> dict[str, str]:
+        return dict(project_tool.project_status(root)["artifacts"])
+
+    def test_editing_an_accepted_output_returns_it_to_update_needed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_accepted_project(directory)
+            self.assertEqual(self.states(root), {"EP001:script": "accepted"})
+
+            (root / "剧集/EP001/screenplay.md").write_text(
+                "# 第一集\n\n有人在工具之外改了这一行。\n", encoding="utf-8"
+            )
+            self.assertEqual(self.states(root), {"EP001:script": "update_needed"})
+
+    def test_deleting_an_accepted_output_returns_it_to_update_needed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_accepted_project(directory)
+            (root / "剧集/EP001/screenplay.md").unlink()
+            self.assertEqual(self.states(root), {"EP001:script": "update_needed"})
+
+    def test_both_implementations_agree_on_every_state(self) -> None:
+        """The path reader and the fd reader are one state machine, not two."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_accepted_project(directory)
+            screenplay = root / "剧集/EP001/screenplay.md"
+            state_path = root / ".short-drama/state.json"
+
+            def both() -> tuple[str, str]:
+                record = json.loads(state_path.read_text(encoding="utf-8"))[
+                    "artifacts"
+                ]["EP001:script"]
+                directory_fd = os.open(root, os.O_RDONLY)
+                try:
+                    return (
+                        project_tool._artifact_state(root, record),
+                        project_tool._artifact_state_at(directory_fd, record),
+                    )
+                finally:
+                    os.close(directory_fd)
+
+            by_path, by_fd = both()
+            self.assertEqual((by_path, by_fd), ("accepted", "accepted"))
+
+            screenplay.write_text("# 第一集\n\n改过了。\n", encoding="utf-8")
+            by_path, by_fd = both()
+            self.assertEqual((by_path, by_fd), ("update_needed", "update_needed"))
+
+            screenplay.unlink()
+            by_path, by_fd = both()
+            self.assertEqual((by_path, by_fd), ("update_needed", "update_needed"))
+
+    def test_only_the_two_documented_decisions_are_recorded(self) -> None:
+        """A decision outside the whitelist would strand the artifact forever.
+
+        It is written into state, matches neither `accepted` nor `rejected`, and
+        leaves the artifact in `update_needed` with no way back.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_accepted_project(directory)
+            with self.assertRaises(ValueError):
+                project_tool.record_creator_acceptance(
+                    root, artifact_id="EP001:script", decision="TOTALLY_BOGUS"
+                )
+            self.assertEqual(self.states(root), {"EP001:script": "accepted"})

@@ -291,41 +291,182 @@ class ReferenceIntegrityTests(unittest.TestCase):
         self.assertGreater(checked, 0, "no record references were checked")
 
 
+# Artifact basename -> the shipped file that defines that artifact's schema.
+# The episode path in a pointer is a placeholder (`剧集/EP001/...`), but the
+# schema behind it is fixed and ships here, so the basename is what identifies
+# it. Adding a stage means adding a row; a target with no row is reported below
+# rather than skipped, so this table cannot quietly fall behind.
+SCHEMA_TEMPLATES = {
+    "episode-map.jsonl": "short-drama-develop/assets/episode-map.jsonl",
+    "short-drama.json": "short-drama/assets/project-template/short-drama.json",
+    "shots.jsonl": "short-drama-storyboard/assets/shot-template.jsonl",
+    "props.jsonl": "short-drama-assets/assets/prop-state.example.jsonl",
+    "location-views.jsonl": "short-drama-assets/assets/location-view.example.jsonl",
+    # Creator decisions are named after the artifact they accept, so they are
+    # matched by their directory rather than by a fixed basename.
+    "创作者决策/": "short-drama/assets/creator-decision.example.jsonl",
+}
+# A second source of truth for the same artifacts: a real, accepted project.
+# Several of these files legitimately hold more than one record shape -- a
+# shipped example shows one of them -- so a pointer valid against the other
+# shape would read as removed if the template were consulted alone. A field
+# present in neither the template nor a real accepted artifact is what a
+# genuinely removed field looks like.
+REAL_PROJECT = SUITE / "evaluations/让你管账号/reference-run"
+REAL_ARTIFACTS = {
+    "episode-map.jsonl": "项目开发/episode-map.jsonl",
+    "short-drama.json": "short-drama.json",
+    "shots.jsonl": "剧集/EP001/storyboard/shots.jsonl",
+    "props.jsonl": "设定集/props.jsonl",
+    "location-views.jsonl": "设定集/location-views.jsonl",
+    "创作者决策/": "创作者决策/decisions.jsonl",
+}
+# Targets that genuinely have no shipped schema: they are produced by a script
+# rather than copied from a template, so there is nothing here to check against.
+GENERATED_TARGETS = {
+    "screenplay-index.jsonl",
+    "<project-relative-text-artifact>",
+}
+
+
 class ShippedTemplateReferenceTests(unittest.TestCase):
     """Templates that name a real schema path must resolve against it.
 
     The golden-project tests skip templates because their ``剧集/<EP>/...``
     references are placeholders that resolve to nothing by design. That excuse
-    does not cover a pointer into ``项目开发/episode-map.jsonl`` -- a fixed path
-    whose schema ships in this repository. SKILL.md tells the writer to copy the
-    template, so a pointer that names a removed field is not a placeholder, it is
-    an instruction to produce a dangling reference.
+    does not cover the schema those placeholders point into, which is fixed and
+    ships in this repository. SKILL.md tells the writer to copy the template, so
+    a pointer naming a removed field is not a placeholder, it is an instruction
+    to produce a dangling reference.
+
+    This was written for one artifact and hard-coded its name, leaving every
+    other shipped pointer unchecked -- four of which were then shown to be
+    breakable with the whole suite green.
     """
 
-    def episode_map_keys(self) -> set[str]:
-        template = SUITE / "skills/short-drama-develop/assets/episode-map.jsonl"
-        for line in template.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                return set(json.loads(line))
-        self.fail("the episode-map template carries no record")
+    def top_level_keys(self, relative: str) -> set[str]:
+        """Every key the template shows, across all of its record variants.
+
+        Reading only the first record misses the others: the creator-decision
+        example carries an acceptance variant on a later line, and a pointer
+        into it read as naming a removed field.
+        """
+
+        path = SUITE / "skills" / relative
+        text = path.read_text(encoding="utf-8")
+        if path.suffix == ".json":
+            return set(json.loads(text))
+        found: set[str] = set()
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("record_type") == "sources":
+                continue
+            found |= set(record)
+        if not found:
+            self.fail(f"{relative} carries no record")
+        return found
+
+    def schema_name(self, artifact: str) -> str | None:
+        """Which schema row an artifact belongs to, by basename or directory."""
+
+        name = artifact.rsplit("/", 1)[-1]
+        if name in SCHEMA_TEMPLATES:
+            return name
+        for key in SCHEMA_TEMPLATES:
+            if key.endswith("/") and artifact.startswith(key):
+                return key
+        return None
+
+    def real_documents(self, name: str) -> list[Any]:
+        relative = REAL_ARTIFACTS.get(name)
+        path = REAL_PROJECT / relative if relative else None
+        if path is None or not path.is_file():
+            return []
+        return data_records(path)
+
+    def real_keys(self, name: str) -> set[str]:
+        relative = REAL_ARTIFACTS.get(name)
+        path = REAL_PROJECT / relative if relative else None
+        if path is None or not path.is_file():
+            return set()
+        found: set[str] = set()
+        text = path.read_text(encoding="utf-8")
+        if path.suffix == ".json":
+            return set(json.loads(text))
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("record_type") == "sources":
+                continue
+            found |= set(record)
+        return found
 
     def test_shipped_templates_do_not_project_removed_fields(self) -> None:
-        keys = self.episode_map_keys()
+        keys = {
+            name: self.top_level_keys(relative) | self.real_keys(name)
+            for name, relative in SCHEMA_TEMPLATES.items()
+        }
+        real = {name: self.real_documents(name) for name in SCHEMA_TEMPLATES}
+        template_docs = {
+            name: data_records(SUITE / "skills" / relative)
+            for name, relative in SCHEMA_TEMPLATES.items()
+        }
         checked = 0
+        unknown: set[str] = set()
         for path in sorted((SUITE / "skills").rglob("assets/*")):
             if not path.is_file() or path.suffix not in {".json", ".jsonl"}:
                 continue
             for location, artifact, _record_id, pointer in iter_pointer_claims(path):
-                if not artifact.endswith("episode-map.jsonl"):
+                if artifact.rsplit("/", 1)[-1] in GENERATED_TARGETS:
                     continue
-                checked += 1
-                head = pointer.lstrip("/").split("/")[0]
-                self.assertIn(
-                    head,
-                    keys,
-                    f"{path.relative_to(SUITE)}:{location}: {pointer} names a field "
-                    f"the episode map no longer carries",
-                )
+                name = self.schema_name(artifact)
+                if name is None:
+                    unknown.add(f"{path.relative_to(SUITE)}:{location} -> {artifact}")
+                    continue
+                # A template may offer a menu -- `/start_boundary | /end_boundary`
+                # -- so every alternative is checked rather than the whole
+                # string being treated as one pointer.
+                for alternative in pointer.split("|"):
+                    target = alternative.strip()
+                    head = target.lstrip("/").split("/")[0]
+                    if not head:
+                        continue
+                    checked += 1
+                    # Where a real accepted artifact exists, the whole pointer is
+                    # walked: checking only the first segment let a broken leaf
+                    # such as `/creator_authority/visual_direction_GONE` pass.
+                    # Either source may legitimately lack the other's records:
+                    # the shipped example shows one variant, and the reference
+                    # run only exercises the features that run used. A pointer
+                    # resolving in neither is what a removed field looks like.
+                    concrete = real[name] + template_docs[name]
+                    if concrete:
+                        self.assertTrue(
+                            any(
+                                pointer_resolves(document, target)
+                                for document in concrete
+                            ),
+                            f"{path.relative_to(SUITE)}:{location}: {target} "
+                            f"resolves in no {name} record, in the shipped "
+                            f"template or in the reference run",
+                        )
+                        continue
+                    self.assertIn(
+                        head,
+                        keys[name],
+                        f"{path.relative_to(SUITE)}:{location}: {target} "
+                        f"names a field {name} no longer carries",
+                    )
+        self.assertEqual(
+            unknown,
+            set(),
+            "a shipped pointer names an artifact with no entry in "
+            "SCHEMA_TEMPLATES; add its schema there rather than leaving the "
+            "pointer unchecked",
+        )
         self.assertGreater(checked, 0, "no template pointers were checked")
 
 

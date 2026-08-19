@@ -25,7 +25,7 @@
 | assets | `pending` 不在验收状态枚举内 | 改成 `proposed`；各阶段状态词不一致，见下 |
 | image-prompts | `location_plate` 也必须有 `variant_ref` | 补建 `设定集/location-views.jsonl` |
 | storyboard（编辑测试） | 4 个新块无人认领 | 重切末段，新增两镜 |
-| storyboard（本次修订） | `SHT21_BLOCK_NOT_IN_SCREENPLAY`，点名 `SHOT-EP001-017` | 改写倒计时字幕后旧块号退役，把 4 处下游引用重指到新块号——**这正是索引机制该有的表现** |
+| storyboard（本次修订） | `SHT21_BLOCK_NOT_IN_SCREENPLAY`（v0.5.0 起改称 `SHT01_BLOCK_NOT_IN_SCREENPLAY`），点名 `SHOT-EP001-017` | 改写倒计时字幕后旧块号退役，把 4 处下游引用重指到新块号——**这正是索引机制该有的表现** |
 | write | `invalid_voice_tag_syntax` | 见上表第 5 条 |
 
 ## 仍未处理的观察

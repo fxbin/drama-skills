@@ -287,8 +287,50 @@ def check(
                 )
             )
             continue
+        # The channel decides how the line is booked, and off-camera and
+        # on-camera carry completely different room for change. It was checked
+        # against the enum and never against the block it projects, so a [VO]
+        # line could be booked `sync` and go to the booth under lip-sync
+        # constraints. `_is_voiced` already reads the block's tag; this compares.
+        expected = block.get("tag") if block.get("kind") == "production_tag" else "on_camera"
+        if expected in VOICED_TAGS and channel not in {expected, "dubbed"}:
+            findings.append(
+                _finding(
+                    "VOICE_CHANNEL_DISAGREES_WITH_BLOCK",
+                    "an off-camera block must be booked on its own channel",
+                    line_id=line_id,
+                    record_id=record_id,
+                    channel=channel,
+                    tag=expected,
+                )
+            )
+        elif expected == "on_camera" and channel in VOICED_TAGS:
+            findings.append(
+                _finding(
+                    "VOICE_CHANNEL_DISAGREES_WITH_BLOCK",
+                    "an on-camera dialogue block must not be booked as VO or OS",
+                    line_id=line_id,
+                    record_id=record_id,
+                    channel=channel,
+                )
+            )
+
         raw = screenplay[start:end]
-        body = VOICE_TAG_PREFIX.sub("", raw.decode("utf-8").strip())
+        try:
+            decoded = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # A span that begins or ends mid-character is a stale offset. It was
+            # crashing the whole check instead of reporting the one line.
+            findings.append(
+                _finding(
+                    "VOICE_BLOCK_SPAN_INVALID",
+                    "the indexed block span does not start and end on characters",
+                    line_id=line_id,
+                    record_id=record_id,
+                )
+            )
+            continue
+        body = VOICE_TAG_PREFIX.sub("", decoded.strip())
         match = DIALOGUE.match(body)
         if match is None:
             findings.append(
