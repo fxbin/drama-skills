@@ -313,48 +313,113 @@ class ContainerReconciliationTests(unittest.TestCase):
 
 
 class SpokenDurationTests(unittest.TestCase):
-    """`[VO]` and `[OS]` are performed lines, and the estimate has to time them.
+    """The estimate reads the index; it has no reader of its own.
 
-    An episode that carries its interiority in voice-over reported a third of its
-    running time as zero, so the estimate read as a large deficit against the
-    target and invited the writer to pad an episode that was already the right
-    length.
+    Two readers of one format give two answers. This script used to carry its
+    own, and it timed `[VO]` at zero, billed a Markdown comment as speech, read
+    an action paragraph as dialogue whenever it contained a colon, and counted
+    one multi-line paragraph once per line. Every case below is measured through
+    `screenplay_index`, because that is the only way the two cannot disagree.
     """
 
     PROJECT = {"format": {"pacing": {
         "spoken_characters_per_second": 5.0, "seconds_per_action_paragraph": 2.5}}}
 
+    def measure(self, body: str, speakers: list[str] | None = None) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            screenplay = root / "screenplay.md"
+            index_path = root / "screenplay-index.jsonl"
+            screenplay.write_text(
+                "# EP001\n\n## EP001-SC001 内 · 值班室 · 夜\n\n" + body,
+                encoding="utf-8",
+            )
+            screenplay_index.build_index(
+                screenplay,
+                index_path,
+                source_ref="剧集/EP001/screenplay.md",
+                speakers=speakers or ["葛晴", "船员"],
+            )
+            records = [
+                json.loads(line)
+                for line in index_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            source = screenplay.read_bytes()
+            blocks, review = duration_estimate.index_blocks(records, source)
+            return duration_estimate.estimate(source, blocks, self.PROJECT, review)
+
     def test_a_voice_over_line_is_timed_as_speech(self) -> None:
-        screenplay = "## EP001-SC001 内 · 值班室 · 夜\n\n[VO] 葛晴：十二个字的台词在这里。\n"
-        report = duration_estimate.estimate(screenplay, self.PROJECT)
+        report = self.measure("[VO] 葛晴：十二个字的台词在这里。\n")
         self.assertEqual(report["counts"]["dialogue_lines"], 1)
         self.assertEqual(report["counts"]["production_tag_lines"], 0)
         self.assertEqual(report["counts"]["dialogue_characters"], 11)
 
     def test_an_off_screen_line_is_timed_as_speech(self) -> None:
-        screenplay = "## EP001-SC001 内 · 值班室 · 夜\n\n[OS] 船员：关窗，水进来了！\n"
-        report = duration_estimate.estimate(screenplay, self.PROJECT)
+        report = self.measure("[OS] 船员：关窗，水进来了！\n")
         self.assertEqual(report["counts"]["dialogue_lines"], 1)
         self.assertEqual(report["counts"]["dialogue_characters"], 8)
 
     def test_tags_that_are_not_speech_still_carry_no_duration(self) -> None:
-        screenplay = (
-            "## EP001-SC001 内 · 值班室 · 夜\n\n"
+        report = self.measure(
             "[SFX] 远处传来一声短促汽笛。\n\n"
             "[画面文字] 票面日期：11月6日\n\n"
             "[连续性] 钥匙交到左手。\n"
         )
-        report = duration_estimate.estimate(screenplay, self.PROJECT)
         self.assertEqual(report["counts"]["dialogue_lines"], 0)
         self.assertEqual(report["counts"]["production_tag_lines"], 3)
 
-    def test_a_voice_tag_without_a_speaker_is_a_tag(self) -> None:
-        """The grammar the index enforces is the grammar timed here."""
+    def test_one_action_paragraph_is_one_paragraph_however_many_lines(self) -> None:
+        """`screenplay-format.md` lets an action paragraph run several lines.
 
-        screenplay = "## EP001-SC001 内 · 值班室 · 夜\n\n[VO] 没有说话人的一行字\n"
-        report = duration_estimate.estimate(screenplay, self.PROJECT)
+        Counting per line inflated every such paragraph by its own line count,
+        at 2.5 seconds a line.
+        """
+
+        report = self.measure("他站起来，\n走到窗边，\n把窗帘拉开。\n")
+        self.assertEqual(report["counts"]["action_paragraphs"], 1)
+        self.assertEqual(report["seconds"], 2.5)
+
+    def test_a_colon_line_is_never_guessed_into_dialogue(self) -> None:
+        """The index checks the speaker against the roster instead of guessing.
+
+        `screenplay-format.md` §3.2 is explicit that the tooling does not infer a
+        speaker from a colon prefix. The private parser did, and turned an action
+        paragraph into three characters of speech. The index refuses either
+        reading and raises it for review, so nothing is billed on a guess.
+        """
+
+        report = self.measure("他在纸上写下两个字：军宣。\n")
         self.assertEqual(report["counts"]["dialogue_lines"], 0)
-        self.assertEqual(report["counts"]["production_tag_lines"], 1)
+        self.assertEqual(report["counts"]["dialogue_characters"], 0)
+        self.assertIn("incomplete", report)
+
+    def test_a_comment_is_not_production_content(self) -> None:
+        """A Markdown comment matched the dialogue grammar and billed as speech."""
+
+        report = self.measure("<!-- 待确认：这一段的转场是否保留。 -->\n")
+        self.assertEqual(report["counts"]["dialogue_lines"], 0)
+        self.assertEqual(report["counts"]["dialogue_characters"], 0)
+        self.assertEqual(report["counts"]["action_paragraphs"], 0)
+
+    def test_material_the_index_could_not_classify_is_reported(self) -> None:
+        """An estimate over part of a screenplay must not read as the whole.
+
+        A `[VO]` line with no speaker is a source issue, not a block. Timing what
+        is left and staying silent would report a short episode as a fact.
+        """
+
+        report = self.measure("[VO] 没有说话人的一行字\n")
+        self.assertIn("incomplete", report)
+        self.assertEqual(report["incomplete"]["source_issue_count"], 1)
+        self.assertEqual(report["incomplete"]["index_review_status"], "review_required")
+
+    def test_an_index_built_from_other_bytes_is_refused(self) -> None:
+        """Stale spans land on text the index never classified."""
+
+        stale = [{"record_type": "screenplay_index_meta", "source_byte_length": 10}]
+        with self.assertRaises(duration_estimate.StaleIndex):
+            duration_estimate.index_blocks(stale, b"a much longer screenplay")
 
 
 class VoiceSheetCheckTests(unittest.TestCase):

@@ -22,10 +22,15 @@ python3 {技能目录}/scripts/screenplay_index.py <screenplay.md> --output <scr
 写完一集后，可以按**项目自己声明的速率**估算它有多长。套件不带跨项目速率，也不设容差带：
 
 ```bash
-python3 {技能目录}/scripts/duration_estimate.py <screenplay.md> --project <short-drama.json>
+python3 {技能目录}/scripts/duration_estimate.py <screenplay.md> \
+  --index <screenplay-index.jsonl> --project <short-drama.json>
 ```
 
-脚本见 [duration_estimate.py](scripts/duration_estimate.py)。速率写在 `short-drama.json` 的
+脚本见 [duration_estimate.py](scripts/duration_estimate.py)。**它不自己读剧本格式**：哪一段是
+台词、哪一段是动作、哪一行是注释，全部按 `screenplay-index.jsonl` 的分块来，所以先建索引再估算。
+一个格式两个读法就是两套答案——此前它自带的那套把 `[VO]` 计零秒、把 Markdown 注释当台词计时、
+把带冒号的动作段读成对白、把一个多行动作段按行数重复计算。索引与剧本字节对不上时脚本拒绝估算；
+索引里还有没归类的文本时，报告里会多出 `incomplete`，说明这个秒数没覆盖全篇。速率写在 `short-drama.json` 的
 `format.pacing`（`spoken_characters_per_second` 与 `seconds_per_action_paragraph`），
 由创作者按本项目的戏来定——密集争辩和沉默劳作不是同一个折算比。没有声明速率时，脚本只报
 台词字数与动作段数，不猜秒数。

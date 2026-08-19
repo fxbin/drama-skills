@@ -254,15 +254,32 @@ class VoiceOverCoverageTests(unittest.TestCase):
             )
 
     def test_voice_over_is_timed_as_speech(self) -> None:
+        """The recorded run's length is asserted as a number, not as not-None.
+
+        `assertIsNotNone` was the whole assertion here once, and it held while
+        the estimate was wrong by thirty seconds. A concrete figure is the only
+        form of this test that a mis-measurement can fail.
+        """
+
         report = run_json(
             [
                 str(script("short-drama-write/scripts/duration_estimate.py")),
                 "剧集/EP001/screenplay.md",
+                "--index",
+                "剧集/EP001/screenplay-index.jsonl",
                 "--project",
                 "short-drama.json",
             ]
         )
-        self.assertIsNotNone(report["seconds"])
+        self.assertNotIn(
+            "incomplete",
+            report,
+            "the index left part of the recorded screenplay unclassified",
+        )
+        self.assertEqual(report["counts"]["dialogue_lines"], 18)
+        self.assertEqual(report["counts"]["dialogue_characters"], 274)
+        self.assertEqual(report["counts"]["action_paragraphs"], 16)
+        self.assertEqual(report["seconds"], 94.8)
         self.assertLessEqual(
             abs(report["delta_ratio"]),
             0.15,
