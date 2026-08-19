@@ -118,6 +118,9 @@ with their image prompts, storyboard, motion prompts. The verifiable eight-episo
 [Golden Sample, *Kindness Is Not a Debt*](examples/golden-project/), demonstrates
 the full path from development and byte-stable screenplay indexes through assets,
 image prompts, storyboards, keyframes, motion prompts, and review.
+To walk the ten skills as one comic-drama production line, with per-step commands,
+outputs, and common pitfalls, see the
+[comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
 
 ## The ten skills
 
