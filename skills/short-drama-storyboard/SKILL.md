@@ -52,6 +52,8 @@ python3 {技能目录}/scripts/storyboard_check.py <coverage.json> --shots <shot
 
 - 竖屏多人、单房对白、证据揭示、群体轴线或门内外视角：
   [blocking-playbooks.md](references/blocking-playbooks.md)
+- 视觉方向已接受为漫剧 / 二维漫画形态，需要为关键帧挑选稳定的风格词与质量词时：
+  [comic-keyframe-lexicon.md](references/comic-keyframe-lexicon.md)
 - 需要查看“剧本 → 原文落实 → 镜头 → 关键帧”的完整正例，或对白表演括注
   `（情绪）` 怎样同源投影到本镜表演状态与下游 `delivery`：
   [screenplay-to-keyframe-example.md](references/screenplay-to-keyframe-example.md)
