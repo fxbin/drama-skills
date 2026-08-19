@@ -4,6 +4,7 @@ import hashlib
 import http.client
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -797,6 +798,96 @@ class ProjectStoreTests(unittest.TestCase):
             collect(tree["tree"])
             self.assertEqual(files["剧集/EP001/制作成果/tts/LINE001.wav"]["type"], "media")
             self.assertEqual(store.media_info(project_id, "剧集/EP001/制作成果/tts/LINE001.wav")["kind"], "audio")
+
+
+class ArtifactOwnershipTests(unittest.TestCase):
+    """Status carries which stage produced each file, so readers stop guessing.
+
+    Grouping by filename means every reader keeps its own list of names, and a
+    stage added later shows up as unrecognised until someone remembers to update
+    that list. The novel-analysis stage sat unlabelled in the dashboard for two
+    releases for exactly that reason.
+    """
+
+    def status_for(self, root: Path) -> dict:
+        canonical = dashboard_server.load_project_tool(SKILL)
+        return canonical.project_status(root)
+
+    def start_project(self, root: Path):
+        canonical = dashboard_server.load_project_tool(SKILL)
+        canonical.initialize_project(
+            root,
+            title="测试短剧",
+            language="zh-CN",
+            aspect_ratio="9:16",
+            suite_root=SKILL,
+        )
+        return canonical
+
+    def test_status_reports_the_owner_of_every_published_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            canonical = self.start_project(root)
+            canonical.publish_candidate(
+                root,
+                owner="short-drama-write",
+                artifact_id="EP001:script",
+                outputs={"剧集/EP001/screenplay.md": "# 一句正文\n"},
+            )
+            status = self.status_for(root)
+
+        self.assertEqual(
+            status["ownership"].get("剧集/EP001/screenplay.md"),
+            "short-drama-write",
+        )
+
+    def test_ownership_is_empty_for_a_project_with_nothing_published(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "project"
+            self.start_project(root)
+            self.assertEqual(self.status_for(root)["ownership"], {})
+
+
+class DashboardSectionVocabularyTests(unittest.TestCase):
+    """Every stage that can own a file must map to a place to show it.
+
+    This is the half that keeps the grouping self-maintaining: add a stage skill
+    and this fails until the dashboard knows where its outputs belong, instead of
+    quietly dropping them into 其他内容.
+    """
+
+    APP = SKILL / "assets/dashboard/app.js"
+
+    def owner_sections(self) -> dict[str, str]:
+        source = self.APP.read_text(encoding="utf-8")
+        block = source[source.index("const OWNER_SECTIONS = {"):]
+        block = block[: block.index("};")]
+        return dict(re.findall(r'"([^"]+)":\s*"([^"]+)"', block))
+
+    def test_every_stage_skill_has_a_section(self) -> None:
+        mapped = self.owner_sections()
+        stages = {
+            path.name
+            for path in (SUITE / "skills").iterdir()
+            if path.is_dir() and path.name.startswith("short-drama")
+        }
+        # The review stage records verdicts rather than owning creative files.
+        stages.discard("short-drama-review")
+        missing = sorted(stages - set(mapped))
+        self.assertEqual(
+            missing,
+            [],
+            f"dashboard OWNER_SECTIONS has no home for {missing}; their outputs "
+            f"would fall into 其他内容",
+        )
+
+    def test_every_section_it_names_is_a_real_section(self) -> None:
+        source = self.APP.read_text(encoding="utf-8")
+        order = re.search(r"const SECTION_ORDER = \[(.*?)\];", source, re.S).group(1)
+        known = set(re.findall(r'"([^"]+)"', order))
+        for owner, section in self.owner_sections().items():
+            with self.subTest(owner=owner):
+                self.assertIn(section, known)
 
 
 class DashboardEntrypointTests(unittest.TestCase):
