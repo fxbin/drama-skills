@@ -31,9 +31,47 @@ FENCED_RECORD = re.compile(r"```jsonl?\n(\{.*?\})\n```", re.S)
 FRAGMENT_SUFFIX = ".fragment.json"
 
 
+LINK_RE = re.compile(r"\[[^]]+\]\(([^)#]+)(?:#([^)]+))?\)")
+
+
 def local_markdown_targets(markdown: Path) -> list[str]:
-    pattern = re.compile(r"\[[^]]+\]\(([^)#]+)(?:#[^)]+)?\)")
-    return [target for target in pattern.findall(markdown.read_text(encoding="utf-8")) if "://" not in target]
+    text = markdown.read_text(encoding="utf-8")
+    return [
+        target for target, _fragment in LINK_RE.findall(text) if "://" not in target
+    ]
+
+
+def local_markdown_anchors(markdown: Path) -> list[tuple[str, str]]:
+    """(target, fragment) for every local link that names a heading."""
+
+    text = markdown.read_text(encoding="utf-8")
+    return [
+        (target, fragment)
+        for target, fragment in LINK_RE.findall(text)
+        if fragment and "://" not in target
+    ]
+
+
+def heading_anchors(markdown: Path) -> set[str]:
+    """GitHub-style anchors for a file's headings.
+
+    Lowercased, spaces to hyphens, punctuation dropped. CJK headings keep their
+    characters, which is how a link to a Chinese heading is written.
+    """
+
+    anchors: set[str] = set()
+    for line in markdown.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("#"):
+            continue
+        title = line.lstrip("#").strip()
+        slug = "".join(
+            character
+            for character in title.lower().replace(" ", "-")
+            if character.isalnum() or character in {"-", "_"}
+        )
+        if slug:
+            anchors.add(slug)
+    return anchors
 
 
 def shipped_records(path: Path) -> list[Any]:
@@ -160,6 +198,28 @@ class SuiteAnatomyTests(unittest.TestCase):
         for markdown in (SUITE / "skills").glob("*/SKILL.md"):
             for target in local_markdown_targets(markdown):
                 self.assertTrue((markdown.parent / target).is_file(), f"{markdown}: {target}")
+
+    def test_markdown_link_anchors_name_a_real_heading(self) -> None:
+        """The fragment was stripped before checking, so anchors never resolved.
+
+        `short-drama/SKILL.md` linked `contract-and-ownership.md#输出语言契约`
+        from the day that file was written; the file is in English and its
+        heading is `## Output language contract`. The link resolved to the file
+        and landed nowhere.
+        """
+
+        for markdown in sorted((SUITE / "skills").rglob("*.md")):
+            for target, fragment in local_markdown_anchors(markdown):
+                destination = markdown.parent / target
+                if not destination.is_file() or destination.suffix != ".md":
+                    continue
+                with self.subTest(source=str(markdown.relative_to(SUITE)), link=target):
+                    self.assertIn(
+                        fragment.lower(),
+                        heading_anchors(destination),
+                        f"{markdown.relative_to(SUITE)} links #{fragment} in "
+                        f"{target}, which has no such heading",
+                    )
 
     def test_deterministic_validators_are_linked_from_their_owning_skills(self) -> None:
         expected = {

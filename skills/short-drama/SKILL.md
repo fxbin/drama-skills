@@ -19,7 +19,7 @@ python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例�
 
 创作者可读内容使用 `short-drama.json#/language`；交给图片或视频生成器的提示词正文使用
 `#/format/prompt_language`。两者互不推断，详见
-[contract-and-ownership.md](references/contract-and-ownership.md#输出语言契约)。
+[contract-and-ownership.md](references/contract-and-ownership.md#output-language-contract)。
 
 ## 每次请求的起点
 
