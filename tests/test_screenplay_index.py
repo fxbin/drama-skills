@@ -716,3 +716,62 @@ class EpisodeIdentifierAgreementTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RetiredIdsStayRetiredTests(unittest.TestCase):
+    """A retired block ID must never be handed to different content.
+
+    Retirement was one generation deep: the counter was seeded from the previous
+    index alone, so once every block of one kind in a scene was gone, the next
+    revision restarted numbering at 01 and reissued an ID that used to mean
+    something else. Downstream artifacts cite these IDs bare, so the stale
+    reference resolves cleanly and silently points at new content -- resolving
+    cleanly is exactly what is supposed to rule that out.
+    """
+
+    HEAD = "# EP001\n\n## EP001-SC001 内 · 房间 · 日\n\n"
+
+    def revise(self, root: Path, name: str, body: str, previous: "str | None") -> "list[str]":
+        source = root / f"{name}.md"
+        source.write_text(self.HEAD + body, encoding="utf-8")
+        index_path = root / f"{name}.jsonl"
+        screenplay_index.build_index(
+            source,
+            index_path,
+            source_ref="剧集/EP001/screenplay.md",
+            speakers=["甲"],
+            previous_index_path=root / f"{previous}.jsonl" if previous else None,
+            previous_source_path=root / f"{previous}.md" if previous else None,
+            no_previous=previous is None,
+        )
+        return [
+            record["block_id"]
+            for record in read_jsonl(index_path)
+            if record.get("kind") == "dialogue"
+        ]
+
+    def test_an_id_is_not_reissued_after_its_whole_kind_disappears(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = self.revise(root, "v1", "甲：第一句。\n\n甲：第二句。\n", None)
+            self.revise(root, "v2", "甲：完全不同的台词。\n", "v1")
+            self.revise(root, "v3", "他关上门。\n", "v2")
+            last = self.revise(root, "v4", "他关上门。\n\n甲：全新的一句话。\n", "v3")
+
+        self.assertEqual(len(first), 2)
+        self.assertEqual(len(last), 1)
+        self.assertNotIn(
+            last[0],
+            first,
+            f"{last[0]} was retired in an earlier revision and has been reissued "
+            f"to different content",
+        )
+
+    def test_the_high_water_mark_survives_a_revision_that_uses_none_of_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.revise(root, "v1", "甲：第一句。\n\n甲：第二句。\n", None)
+            self.revise(root, "v2", "他关上门。\n", "v1")
+            meta = read_jsonl(root / "v2.jsonl")[0]
+
+        self.assertEqual(meta["block_id_high_water"].get("EP001-SC001|D"), 2)
