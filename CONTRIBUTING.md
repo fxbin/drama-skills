@@ -71,6 +71,18 @@ uv venv --python 3.9 /tmp/floor && \
 
 每个 `skills/*` 目录独立维护，可以单独安装。改一个技能时，改动应当只落在它自己的目录里。
 
+## 发布前必跑
+
+除上面的测试与 lint 之外，发布候选还要过一次主工作流评估：
+
+```bash
+python3 -m unittest tests.test_workflow_evaluation
+```
+
+它只判定「没有退步」。判定「流程还顺不顺」要按 [evaluations/README.md](evaluations/README.md)
+的做法人工实跑一次——上一轮最重的一个缺陷（文档写的重建方式与脚本实际行为不一致）
+所有测试都是绿的，只有实跑能看见。
+
 ## 更新日志
 
 面向创作者可见的改动要写进 `CHANGELOG.md` 的 `[未发布]` 段。按约束力归类：
