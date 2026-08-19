@@ -52,7 +52,7 @@
 |---|---|
 | `source_ref` | 剧本改一句而表没跟上，录出来的是旧词；绑定了块 ID 才能切出剧本原字节逐字比对 |
 | `speaker` 与 `speaker_display` | 前者是资产身份用于绑定，后者是剧本里逐字写的名字；只留一个就必然有一处对不上 |
-| `channel` 与 `lip_sync_constrained` | 同期与配音、画内与 VO 的可改余地完全不同，混在一起就只能按最严的来 |
+| `channel` 与 `lip_sync_constrained` | 同期与配音、画内与 VO 的可改余地完全不同，混在一起就只能按最严的来。`channel` 必须与它投影的块一致：`[VO]` / `[OS]` 块只能记为同名声道或 `dubbed`，画内对白块不能记成 VO/OS——校验器判定，诊断码 `VOICE_CHANNEL_DISAGREES_WITH_BLOCK` |
 | `addressed_to` / `preceding_line_id` | 集中录制时配音者不知道在对谁说、接谁的话，语气只能靠猜 |
 | `speaker_knows_now` | 同一句话在"已经知道"和"还不知道"下是两种读法，这是最常见的重录原因 |
 | `tactic` | 情绪词（"愤怒"）不可执行；策略可执行。见对白工艺的策略库 |
