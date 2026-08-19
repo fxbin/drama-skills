@@ -291,7 +291,15 @@ def validate_records(records: list[dict[str, Any]], verdict: dict[str, Any]) -> 
         "findings": len(findings),
         "open_blockers": len(blockers),
         "verdict": decision,
-        "checks": ["finding_shape", "evidence_refs", "blocker_count", "verdict_consistency"],
+        # `evidence_declaration`: each evidence reference names a snapshot the
+        # findings file declares. The records it points at live in artifacts
+        # this checker never opens.
+        "checks": [
+            "finding_shape",
+            "evidence_declaration",
+            "blocker_count",
+            "verdict_consistency",
+        ],
     }
 
 

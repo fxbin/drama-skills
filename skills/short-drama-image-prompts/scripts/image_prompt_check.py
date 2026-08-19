@@ -407,7 +407,10 @@ def validate_records(
         "checks": [
             "unique_ids",
             "accepted_bindings",
-            "source_resolution",
+            # Named for what it does: every reference names a snapshot this
+            # file declares. Whether that record exists in the target artifact
+            # is not knowable here -- the checker is handed this file only.
+            "source_declaration",
             "reference_slots",
             "prompt_hygiene",
         ],
