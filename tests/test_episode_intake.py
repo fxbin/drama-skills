@@ -388,3 +388,40 @@ class WorkflowContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnmappedSpanScopeTests(unittest.TestCase):
+    """What `unmapped_spans` can and cannot report, asserted rather than assumed.
+
+    The reference document promised it would mark inter-episode notes and end
+    matter. It cannot: episode spans run from one heading to the next, so no gap
+    exists between them for such material to fall into. The promise is now
+    written to match, and this test holds both halves in place -- the half that
+    works, and the boundary that makes the other half impossible.
+    """
+
+    SOURCE = (
+        "前言：这是一份说明，不属于任何一集。\n\n"
+        "第1集 开场\n\n正文一。\n\n"
+        "—— 集间说明：以下为第二部分。 ——\n\n"
+        "第2集 反转\n\n正文二。\n\n"
+        "尾注：全剧终。\n"
+    )
+
+    def index(self) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "episodes.md"
+            source.write_text(self.SOURCE, encoding="utf-8")
+            return episode_intake.build_index(source)
+
+    def test_material_before_the_first_episode_is_reported(self) -> None:
+        spans = self.index()["unmapped_spans"]
+        self.assertEqual(len(spans), 1)
+        self.assertEqual(spans[0]["line_start"], 1)
+
+    def test_episode_spans_leave_no_gap_for_anything_else_to_land_in(self) -> None:
+        """The mechanical reason the other half of the promise was unkeepable."""
+
+        episodes = self.index()["episodes"]
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(episodes[0]["byte_end"], episodes[1]["byte_start"])
