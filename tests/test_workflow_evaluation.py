@@ -137,7 +137,7 @@ class CheckerSweepTests(unittest.TestCase):
             "delivery containers",
             [
                 "short-drama-video-prompts/scripts/container_check.py",
-                "剧集/EP001/storyboard/containers.jsonl",
+                "剧集/EP001/storyboard/delivery-containers.jsonl",
                 "--shots", "剧集/EP001/storyboard/shots.jsonl",
             ],
             "pass",
@@ -171,6 +171,62 @@ class CheckerSweepTests(unittest.TestCase):
                 self.assertEqual(report["status"], status)
                 for key in empty:
                     self.assertEqual(report[key], [], f"{label}: {key}")
+
+
+class CanonicalPathTests(unittest.TestCase):
+    """The reference run must use the filenames the skills document.
+
+    A reference run is read as an example, so a path it invents is a path people
+    copy. This fixture shipped `voice-sheet.jsonl` and `storyboard/containers.jsonl`
+    while the skills document `voice-record-sheet.jsonl` and
+    `storyboard/delivery-containers.jsonl` -- close enough to look right, wrong
+    enough that the dashboard did not recognise either file.
+
+    Each row is checked twice: the file is where the fixture puts it, and the
+    name still appears in the SKILL.md that owns it. The second half is what
+    catches a rename on the skill side.
+    """
+
+    # (path under the episode/project root, owning skill)
+    CANONICAL = (
+        ("剧集/EP001/screenplay.md", "short-drama-write"),
+        ("剧集/EP001/screenplay-index.jsonl", "short-drama-write"),
+        ("剧集/EP001/episode-card.json", "short-drama-write"),
+        ("剧集/EP001/beats.jsonl", "short-drama-write"),
+        ("剧集/EP001/voice-record-sheet.jsonl", "short-drama-write"),
+        ("剧集/EP001/storyboard/shots.jsonl", "short-drama-storyboard"),
+        ("剧集/EP001/storyboard/coverage.json", "short-drama-storyboard"),
+        ("剧集/EP001/storyboard/keyframes.jsonl", "short-drama-storyboard"),
+        ("剧集/EP001/storyboard/motion-specs.jsonl", "short-drama-video-prompts"),
+        ("剧集/EP001/storyboard/delivery-containers.jsonl", "short-drama-video-prompts"),
+        ("剧集/EP001/storyboard/music-specs.jsonl", "short-drama-video-prompts"),
+        ("项目开发/episode-map.jsonl", "short-drama-develop"),
+        ("项目开发/adaptation-map.jsonl", "short-drama-develop"),
+        ("项目开发/source-analysis/episode-candidates.jsonl", "short-drama-novel-analyze"),
+        ("设定集/characters.jsonl", "short-drama-assets"),
+        ("设定集/props.jsonl", "short-drama-assets"),
+    )
+
+    def test_the_fixture_uses_the_documented_filenames(self) -> None:
+        for relative, owner in self.CANONICAL:
+            with self.subTest(path=relative):
+                self.assertTrue(
+                    (RUN / relative).is_file(),
+                    f"{relative} is missing from the reference run",
+                )
+                name = relative.rsplit("/", 1)[-1]
+                # Some stages name their outputs in SKILL.md, others only in the
+                # `destination` of a shipped example, so search the whole skill.
+                documented = any(
+                    name in doc.read_text(encoding="utf-8", errors="ignore")
+                    for doc in (SKILLS / owner).rglob("*")
+                    if doc.is_file() and doc.suffix in {".md", ".json", ".jsonl"}
+                )
+                self.assertTrue(
+                    documented,
+                    f"nothing in skills/{owner}/ mentions {name}; the fixture and "
+                    f"the skill have drifted apart",
+                )
 
 
 class VoiceOverCoverageTests(unittest.TestCase):
@@ -218,7 +274,7 @@ class VoiceOverCoverageTests(unittest.TestCase):
         report = run_json(
             [
                 str(script("short-drama-write/scripts/voice_sheet_check.py")),
-                "剧集/EP001/voice-sheet.jsonl",
+                "剧集/EP001/voice-record-sheet.jsonl",
                 "--index",
                 "剧集/EP001/screenplay-index.jsonl",
                 "--screenplay",

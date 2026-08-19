@@ -146,11 +146,11 @@
     },
     "EP001:video-prompts": {
       "acceptance": {
-        "at": "2026-08-19T07:46:35.672972Z",
+        "at": "2026-08-19T08:15:07.577736Z",
         "decision": "accepted",
         "note": "",
         "outputs": {
-          "剧集/EP001/storyboard/containers.jsonl": "1899106f660f17a9f72ab30f6949a50be169fd8769b224dfc5249fa9771716ed",
+          "剧集/EP001/storyboard/delivery-containers.jsonl": "1899106f660f17a9f72ab30f6949a50be169fd8769b224dfc5249fa9771716ed",
           "剧集/EP001/storyboard/motion-specs.jsonl": "b411abe4c0571e7d5e0c8cf446708e9401bcf126344d5da822ac2dc77e5308fd",
           "剧集/EP001/storyboard/music-specs.jsonl": "391831d7be45f52204ab2db9235a4e04f68437804f42690ec8fe575c18f3ce07"
         }
@@ -162,21 +162,21 @@
         "设定集/characters.jsonl": "406b1d08a7c156d8a4bdec945c6df33a3e40c0fdf555c285cee98b39223cde88"
       },
       "outputs": [
-        "剧集/EP001/storyboard/containers.jsonl",
+        "剧集/EP001/storyboard/delivery-containers.jsonl",
         "剧集/EP001/storyboard/motion-specs.jsonl",
         "剧集/EP001/storyboard/music-specs.jsonl"
       ],
       "owner": "short-drama-video-prompts",
       "review": null,
-      "updated_at": "2026-08-19T07:46:35.673116Z"
+      "updated_at": "2026-08-19T08:15:07.577921Z"
     },
     "EP001:voice-sheet": {
       "acceptance": {
-        "at": "2026-08-19T07:46:35.776897Z",
+        "at": "2026-08-19T08:15:07.466687Z",
         "decision": "accepted",
         "note": "",
         "outputs": {
-          "剧集/EP001/voice-sheet.jsonl": "359ac0c69e4f59a309a51852aabb0aec6a80edf9ee18c2948701bb765326c220"
+          "剧集/EP001/voice-record-sheet.jsonl": "359ac0c69e4f59a309a51852aabb0aec6a80edf9ee18c2948701bb765326c220"
         }
       },
       "inputs": {
@@ -184,11 +184,11 @@
         "设定集/characters.jsonl": "406b1d08a7c156d8a4bdec945c6df33a3e40c0fdf555c285cee98b39223cde88"
       },
       "outputs": [
-        "剧集/EP001/voice-sheet.jsonl"
+        "剧集/EP001/voice-record-sheet.jsonl"
       ],
       "owner": "short-drama-write",
       "review": null,
-      "updated_at": "2026-08-19T07:46:35.777058Z"
+      "updated_at": "2026-08-19T08:15:07.466847Z"
     },
     "assets:bible": {
       "acceptance": {
@@ -561,5 +561,5 @@
   "project_id": "SD-40F82968AD87",
   "project_layout_mode": "canonical",
   "schema_version": "2.0",
-  "updated_at": "2026-08-19T08:06:23.928523Z"
+  "updated_at": "2026-08-19T08:15:07.577926Z"
 }
