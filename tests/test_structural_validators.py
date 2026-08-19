@@ -38,6 +38,9 @@ container_check = _module(
 voice_sheet_check = _module(
     "sd_voice_sheet_check", "short-drama-write/scripts/voice_sheet_check.py"
 )
+duration_estimate = _module(
+    "sd_duration_estimate", "short-drama-write/scripts/duration_estimate.py"
+)
 screenplay_index = _module(
     "sd_screenplay_index", "short-drama-write/scripts/screenplay_index.py"
 )
@@ -309,6 +312,51 @@ class ContainerReconciliationTests(unittest.TestCase):
         self.assertIn("VID15_MEMBER_SHOT_HAS_NO_DURATION", codes(result["findings"]))
 
 
+class SpokenDurationTests(unittest.TestCase):
+    """`[VO]` and `[OS]` are performed lines, and the estimate has to time them.
+
+    An episode that carries its interiority in voice-over reported a third of its
+    running time as zero, so the estimate read as a large deficit against the
+    target and invited the writer to pad an episode that was already the right
+    length.
+    """
+
+    PROJECT = {"format": {"pacing": {
+        "spoken_characters_per_second": 5.0, "seconds_per_action_paragraph": 2.5}}}
+
+    def test_a_voice_over_line_is_timed_as_speech(self) -> None:
+        screenplay = "## EP001-SC001 内 · 值班室 · 夜\n\n[VO] 葛晴：十二个字的台词在这里。\n"
+        report = duration_estimate.estimate(screenplay, self.PROJECT)
+        self.assertEqual(report["counts"]["dialogue_lines"], 1)
+        self.assertEqual(report["counts"]["production_tag_lines"], 0)
+        self.assertEqual(report["counts"]["dialogue_characters"], 11)
+
+    def test_an_off_screen_line_is_timed_as_speech(self) -> None:
+        screenplay = "## EP001-SC001 内 · 值班室 · 夜\n\n[OS] 船员：关窗，水进来了！\n"
+        report = duration_estimate.estimate(screenplay, self.PROJECT)
+        self.assertEqual(report["counts"]["dialogue_lines"], 1)
+        self.assertEqual(report["counts"]["dialogue_characters"], 8)
+
+    def test_tags_that_are_not_speech_still_carry_no_duration(self) -> None:
+        screenplay = (
+            "## EP001-SC001 内 · 值班室 · 夜\n\n"
+            "[SFX] 远处传来一声短促汽笛。\n\n"
+            "[画面文字] 票面日期：11月6日\n\n"
+            "[连续性] 钥匙交到左手。\n"
+        )
+        report = duration_estimate.estimate(screenplay, self.PROJECT)
+        self.assertEqual(report["counts"]["dialogue_lines"], 0)
+        self.assertEqual(report["counts"]["production_tag_lines"], 3)
+
+    def test_a_voice_tag_without_a_speaker_is_a_tag(self) -> None:
+        """The grammar the index enforces is the grammar timed here."""
+
+        screenplay = "## EP001-SC001 内 · 值班室 · 夜\n\n[VO] 没有说话人的一行字\n"
+        report = duration_estimate.estimate(screenplay, self.PROJECT)
+        self.assertEqual(report["counts"]["dialogue_lines"], 0)
+        self.assertEqual(report["counts"]["production_tag_lines"], 1)
+
+
 class VoiceSheetCheckTests(unittest.TestCase):
     SCREENPLAY = (
         "## EP001-SC001 内 · 值班室 · 夜\n\n"
@@ -388,6 +436,44 @@ class VoiceSheetCheckTests(unittest.TestCase):
         )
         result = voice_sheet_check.check([self.line(action)], index, source)
         self.assertIn("VOICE_SOURCE_IS_NOT_DIALOGUE", codes(result["findings"]))
+
+    VOICE_OVER = (
+        "## EP001-SC001 内 · 值班室 · 夜\n\n"
+        "他推开门。\n\n"
+        "葛晴（压着嗓子）：你把本子放下。\n\n"
+        "[VO] 葛晴：我那时还不知道，本子是空的。\n"
+    )
+
+    def test_a_voice_over_line_can_be_recorded(self) -> None:
+        """The VO channel the schema offers has to be reachable."""
+
+        index, source, _block_id = self.build(self.VOICE_OVER)
+        vo = next(
+            record["block_id"]
+            for record in index
+            if record.get("kind") == "production_tag" and record.get("tag") == "VO"
+        )
+        result = voice_sheet_check.check(
+            [
+                self.line(
+                    vo,
+                    line_id="VLINE-VO",
+                    channel="VO",
+                    line_text="我那时还不知道，本子是空的。",
+                )
+            ],
+            index,
+            source,
+        )
+        self.assertEqual(result["status"], "pass")
+
+    def test_an_unrecorded_voice_over_line_shows_as_uncovered(self) -> None:
+        """A sheet missing the voice-over must not read as complete."""
+
+        index, source, block_id = self.build(self.VOICE_OVER)
+        result = voice_sheet_check.check([self.line(block_id)], index, source)
+        self.assertEqual(result["dialogue_blocks"], 2)
+        self.assertEqual(len(result["uncovered_dialogue_blocks"]), 1)
 
     def test_a_partial_sheet_reports_coverage_without_failing(self) -> None:
         """Splitting a sheet per actor or per scene is ordinary practice."""

@@ -57,8 +57,21 @@ def data_records(path: Path) -> list[Any]:
 
 
 def declared_sources(docs: list[Any]) -> dict[str, dict[str, Any]]:
+    """The ``sources`` block, in either shape the suite writes.
+
+    JSONL files open with a dedicated ``record_type: sources`` record; ``.json``
+    files put the same object at the top level. Accepting only the first shape
+    made every ``.json`` artifact resolve to zero declared sources, so its
+    pointers were skipped in silence -- which is how a shipped template kept six
+    pointers into fields that no longer exist.
+    """
     for document in docs:
         if isinstance(document, dict) and document.get("record_type") == "sources":
+            sources = document.get("sources")
+            if isinstance(sources, dict):
+                return sources
+    for document in docs:
+        if isinstance(document, dict) and document.get("record_type") is None:
             sources = document.get("sources")
             if isinstance(sources, dict):
                 return sources
@@ -276,6 +289,44 @@ class ReferenceIntegrityTests(unittest.TestCase):
             for index, document in enumerate(docs):
                 walk(document, f"#doc{index}")
         self.assertGreater(checked, 0, "no record references were checked")
+
+
+class ShippedTemplateReferenceTests(unittest.TestCase):
+    """Templates that name a real schema path must resolve against it.
+
+    The golden-project tests skip templates because their ``剧集/<EP>/...``
+    references are placeholders that resolve to nothing by design. That excuse
+    does not cover a pointer into ``项目开发/episode-map.jsonl`` -- a fixed path
+    whose schema ships in this repository. SKILL.md tells the writer to copy the
+    template, so a pointer that names a removed field is not a placeholder, it is
+    an instruction to produce a dangling reference.
+    """
+
+    def episode_map_keys(self) -> set[str]:
+        template = SUITE / "skills/short-drama-develop/assets/episode-map.jsonl"
+        for line in template.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                return set(json.loads(line))
+        self.fail("the episode-map template carries no record")
+
+    def test_shipped_templates_do_not_project_removed_fields(self) -> None:
+        keys = self.episode_map_keys()
+        checked = 0
+        for path in sorted((SUITE / "skills").rglob("assets/*")):
+            if not path.is_file() or path.suffix not in {".json", ".jsonl"}:
+                continue
+            for location, artifact, _record_id, pointer in iter_pointer_claims(path):
+                if not artifact.endswith("episode-map.jsonl"):
+                    continue
+                checked += 1
+                head = pointer.lstrip("/").split("/")[0]
+                self.assertIn(
+                    head,
+                    keys,
+                    f"{path.relative_to(SUITE)}:{location}: {pointer} names a field "
+                    f"the episode map no longer carries",
+                )
+        self.assertGreater(checked, 0, "no template pointers were checked")
 
 
 if __name__ == "__main__":

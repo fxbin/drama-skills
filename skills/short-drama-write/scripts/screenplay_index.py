@@ -849,6 +849,7 @@ def build_index(
     source_ref: str | None = None,
     authority: str = "accepted",
     speakers: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
+    no_previous: bool = False,
 ) -> dict[str, Any]:
     """Parse ``source_path`` and atomically publish its derived JSONL index."""
     source = Path(source_path)
@@ -857,6 +858,18 @@ def build_index(
         raise ValueError("output path must not be the screenplay source path")
     if (previous_index_path is None) != (previous_source_path is None):
         raise ValueError("--previous-index and --previous-source must be supplied together")
+    # Rebuilding over an existing index without naming a previous version
+    # renumbers every block from scratch. Surviving text keeps whatever ID its
+    # position now yields, so a rewritten block can reclaim the retired ID and
+    # every downstream reference to it silently resolves to different content --
+    # the exact failure the content-stable path exists to prevent. Refuse, and
+    # name the file, rather than produce that index quietly.
+    if previous_index_path is None and not no_previous and output.exists():
+        raise ValueError(
+            f"{output} already holds an index; pass --previous-index {output} "
+            f"--previous-source <the screenplay before this revision> to keep block "
+            f"IDs stable by content, or --no-previous to renumber from scratch"
+        )
     if authority not in {"accepted", "candidate"}:
         raise ValueError("authority must be accepted or candidate")
     raw_speakers = tuple(speakers or ())
@@ -978,6 +991,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--previous-index", type=Path)
     parser.add_argument("--previous-source", type=Path)
     parser.add_argument(
+        "--no-previous",
+        action="store_true",
+        help="renumber block IDs from scratch, abandoning the IDs downstream artifacts cite",
+    )
+    parser.add_argument(
         "--source-ref",
         help="portable project-relative source reference; defaults to the source basename",
     )
@@ -1013,6 +1031,7 @@ def main(argv: list[str] | None = None) -> int:
             source_ref=args.source_ref,
             authority=args.authority,
             speakers=args.speaker,
+            no_previous=args.no_previous,
         )
     except (OSError, UnicodeDecodeError, ValueError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
