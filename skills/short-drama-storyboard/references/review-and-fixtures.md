@@ -58,6 +58,7 @@
 | SHT01_DISPOSITION_REPEATED | structural_invariant | validator | error | storyboard | 同一个块写了多行处理 |
 | SHT01_DISPOSITION_NOT_IN_SCREENPLAY | structural_invariant | validator | error | storyboard | 处理点名的块不在剧本索引里 |
 | SHT01_DISPOSITION_HAS_NO_REASON | structural_invariant | validator | error | storyboard | 重复或省略是决定，必须写理由 |
+| SHT01_SCREENPLAY_IS_NOT_FULLY_INDEXED | structural_invariant | validator | error | storyboard | 剧本索引里还有没归类的行，覆盖检查看不到剧本的全部 |
 
 ## 不进这份目录的东西
 

@@ -532,13 +532,25 @@ def _declared_target(project: Path | None) -> float | None:
 # two shots claim is a block the edit will show twice. Shots bind to the
 # screenplay through the index -- stable block IDs -- not through the prose,
 # because the prose is edited constantly and the IDs survive that.
-def screenplay_block_ids(index_path: Path) -> list[str]:
+def screenplay_block_ids(index_path: Path) -> tuple[list[str], int]:
+    """The indexed blocks, and how much of the screenplay stayed unclassified.
+
+    A line the index could not classify is not a block, so it is invisible to
+    every check below: no shot can claim it, and nothing reports that it is
+    missing. Coverage measured against a partial index is not coverage of the
+    screenplay, so the count comes back with the IDs.
+    """
+
     _sources, records = _load_jsonl(index_path)
-    return [
+    blocks = [
         str(record["block_id"])
         for record in records
         if record.get("record_type") == "block" and isinstance(record.get("block_id"), str)
     ]
+    issues = sum(
+        1 for record in records if record.get("record_type") == "source_issue"
+    )
+    return blocks, issues
 
 
 # SKILL.md gives four dispositions, and three of them are not "one shot claims
@@ -662,14 +674,24 @@ def check_screenplay_coverage(
     if index_path is None:
         return []
     try:
-        wanted = screenplay_block_ids(index_path)
+        wanted, unclassified = screenplay_block_ids(index_path)
     except OSError as error:
         raise CheckError(f"screenplay index cannot be read: {error}") from error
 
     status_of: dict[str, str] = {}
     disposition_findings: list[dict[str, Any]] = []
+    if unclassified:
+        disposition_findings.append(
+            _finding(
+                "SHT01_SCREENPLAY_IS_NOT_FULLY_INDEXED",
+                "the screenplay index left lines unclassified, so this coverage "
+                "check cannot see all of the screenplay",
+                source_issue_count=unclassified,
+            )
+        )
     if coverage is not None:
-        status_of, disposition_findings = block_dispositions(coverage, set(wanted))
+        status_of, disposition_findings2 = block_dispositions(coverage, set(wanted))
+        disposition_findings.extend(disposition_findings2)
 
     claims: dict[str, list[str]] = {block_id: [] for block_id in wanted}
     unknown: list[dict[str, Any]] = []

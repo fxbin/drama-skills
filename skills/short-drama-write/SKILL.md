@@ -157,8 +157,13 @@ python3 <skill-dir>/scripts/screenplay_index.py 剧集/EP001/screenplay.md \
 ```
 
 由 write owner 阅读当前剧本后，把本集实际说话者逐个传给 `--speaker`；索引器只做精确
-标签核对，不用冒号正则猜人物。未登记的 `前缀：内容` 写成
-`ambiguous_dialogue_or_action`，由 agent 判断应保留为动作、改用 `[画面文字]`，还是补入说话者清单。
+标签核对，不用冒号正则猜人物。未登记的 `前缀：内容` 写成 `ambiguous_dialogue_or_action`。
+
+**它不会作为块进入索引**，所以覆盖、时长与配音本都看不到它——必须处理掉，不能留着。
+三种处理方式：补入说话者清单（它确实是台词）、改用 `[画面文字]` 等生产标签、或改写这一行
+让它不再是「前缀：内容」的形状（动作段里的全角冒号可以改成破折号或拆成两句）。
+留着不处理时，分镜阶段的覆盖检查会报 `SHT01_SCREENPLAY_IS_NOT_FULLY_INDEXED`，
+时长估算的报告会带上 `incomplete`。
 
 规范化预览尚未获 creator acceptance 时加 `--authority candidate`，使 meta、block 与
 source issue 的 refs 都保持 candidate；accepted 剧本发布后再以默认 accepted authority

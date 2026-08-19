@@ -111,6 +111,14 @@
 
 **`voice_sheet_check` 遇到落在半个字符上的块跨度时报出该行而非中断。**
 
+**索引未完全归类时，覆盖检查报出来。**一行被标为 `ambiguous_dialogue_or_action`
+的文本不会作为块进入索引，因此覆盖、时长与配音本都看不到它。新增
+`SHT01_SCREENPLAY_IS_NOT_FULLY_INDEXED`。`short-drama-write/SKILL.md` 同时改正：
+该情形的三种处理方式中，「保留为动作」此前写着可行，实际做不到。
+
+**资产接受记录的 `CD-` 前缀写进文档。**`creator_acceptance.decision_ref` 的
+`record_id` 必须以 `CD-` 开头，这条规则会拦下发布，而此前只存在于检查器的报错文本里。
+
 ### 新增
 
 **主工作流评估：`evaluations/让你管账号/`。**一部完整长篇（20 章 / 147 KB）
