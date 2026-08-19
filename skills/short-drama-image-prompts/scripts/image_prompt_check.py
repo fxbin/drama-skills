@@ -327,7 +327,11 @@ def validate_asset_spec(
         # policy is `no_readable_text` could ask for readable lettering and come
         # back `valid` -- inventing a name or a number the creator never accepted.
         source_mode = handling.get("source_mode")
-        allowed = ALLOWED_TREATMENTS.get(source_mode)
+        allowed = (
+            ALLOWED_TREATMENTS.get(source_mode)
+            if isinstance(source_mode, str)
+            else None
+        )
         mode = treatment.get("mode")
         if allowed is not None and mode not in allowed:
             raise ValidationError(
