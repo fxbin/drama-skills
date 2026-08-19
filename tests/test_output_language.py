@@ -148,5 +148,45 @@ class SkillWiringTests(unittest.TestCase):
                 self.assertEqual(found, [], f"{path.parent.name} hardcodes a language")
 
 
+# The copyable prompt body, named as a concrete language. A template is what a
+# model actually copies, so a language spelled out here overrides the contract
+# no matter what SKILL.md says about `#/format/prompt_language`.
+HARDCODED_PROMPT_BODY_RE = re.compile(
+    r"(自然中文正文|中文正文|翻译成自然中文|自然中文[，。]|natural Chinese|in Chinese)"
+)
+
+
+class ShippedPromptTemplateTests(unittest.TestCase):
+    """The template decides the language, because the template is what gets copied.
+
+    `SkillWiringTests` above reads `SKILL.md` and nothing else. Meanwhile the
+    image-prompt template said `<自然中文正文…>` unconditionally, so a project
+    declaring `prompt_language: en` produced seven accepted Chinese artifacts and
+    every test stayed green -- none of them had opened `assets/`.
+    """
+
+    def shipped_markdown(self, skill: str) -> list[Path]:
+        root = SUITE / "skills" / skill
+        return sorted(
+            path
+            for directory in ("assets", "references")
+            for path in (root / directory).rglob("*.md")
+        )
+
+    def test_no_shipped_template_fixes_the_prompt_body_language(self) -> None:
+        for skill in PROMPT_AUTHORING_SKILLS:
+            for path in self.shipped_markdown(skill):
+                with self.subTest(path=str(path.relative_to(SUITE))):
+                    found = HARDCODED_PROMPT_BODY_RE.findall(
+                        path.read_text(encoding="utf-8")
+                    )
+                    self.assertEqual(
+                        found,
+                        [],
+                        f"{path.relative_to(SUITE)} fixes the prompt-body language; "
+                        "it must defer to #/format/prompt_language",
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()

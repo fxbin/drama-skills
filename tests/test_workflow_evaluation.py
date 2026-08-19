@@ -370,3 +370,44 @@ class DerivedLayerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PromptLanguageTests(unittest.TestCase):
+    """The copyable prompt body follows the language the project declared.
+
+    The recorded run declares `prompt_language: en` and shipped seven accepted
+    Chinese prompt bodies, because the shipped template said `<自然中文正文…>`
+    unconditionally and a template is what gets copied. `test_output_language`
+    stayed green throughout: it read `SKILL.md` and never opened `assets/`.
+
+    Only `generic_prompt` is bound to this field. The spec's other fields are
+    read by the creator and follow `#/language`, and readable text inside the
+    image follows the accepted text policy -- which is why the two phone props
+    legitimately keep Chinese on their screens.
+    """
+
+    def test_prompt_bodies_are_in_the_declared_prompt_language(self) -> None:
+        project = json.loads((RUN / "short-drama.json").read_text(encoding="utf-8"))
+        self.assertEqual(project["format"]["prompt_language"], "en")
+
+        readable_text = {"剩余", "天", "失败", "撤销授予", "解除绑定"}
+        specs = [
+            record
+            for record in records(EPISODE / "assets/image-prompt-specs.jsonl")
+            if record.get("record_type") != "sources"
+        ]
+        self.assertEqual(len(specs), 7)
+        for spec in specs:
+            with self.subTest(spec_id=spec["spec_id"]):
+                body = spec["generic_prompt"]
+                for phrase in readable_text:
+                    body = body.replace(phrase, "")
+                stray = [
+                    character for character in body if "一" <= character <= "鿿"
+                ]
+                self.assertEqual(
+                    stray,
+                    [],
+                    "the prompt body carries prose in a language the project did "
+                    "not declare; only readable in-image text may differ",
+                )

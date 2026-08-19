@@ -53,11 +53,11 @@
     },
     "EP001:image-prompts": {
       "acceptance": {
-        "at": "2026-08-19T07:46:35.460286Z",
+        "at": "2026-08-19T09:48:54.509324Z",
         "decision": "accepted",
         "note": "",
         "outputs": {
-          "剧集/EP001/assets/image-prompt-specs.jsonl": "2bd6a38c6874534df96c655ae27d86c74a402d5b32b5f3b882b62a1f7528499a"
+          "剧集/EP001/assets/image-prompt-specs.jsonl": "bd527218e5247ea86bc1956df8f7b4f546c795bcd2cc80c27cfe642bd971957e"
         }
       },
       "inputs": {
@@ -73,7 +73,7 @@
       ],
       "owner": "short-drama-image-prompts",
       "review": null,
-      "updated_at": "2026-08-19T07:46:35.460447Z"
+      "updated_at": "2026-08-19T09:48:54.510451Z"
     },
     "EP001:script": {
       "acceptance": {
@@ -561,5 +561,5 @@
   "project_id": "SD-40F82968AD87",
   "project_layout_mode": "canonical",
   "schema_version": "2.0",
-  "updated_at": "2026-08-19T08:15:07.577926Z"
+  "updated_at": "2026-08-19T09:48:54.510453Z"
 }
