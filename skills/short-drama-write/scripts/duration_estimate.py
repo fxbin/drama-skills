@@ -33,9 +33,14 @@ if sys.version_info < MINIMUM_PYTHON:
     )
 
 
-# A production tag line carries no performed duration: it is an instruction to a
+# Most production tags carry no performed duration: they are instructions to a
 # later stage, not something an actor speaks or does on screen.
 TAG_LINE = re.compile(r"^\[[^\]]+\]")
+# [VO] and [OS] are the exception. The format contract writes them as
+# ``[VO] 角色：台词`` -- a real line, delivered off-camera. Timing them at zero
+# silently shortens every episode that carries its interiority in voice-over,
+# and the estimate reads as a deficit the writer then pads to fill.
+VOICE_TAG_LINE = re.compile(r"^\[(?:VO|OS)\]\s*(?P<body>.+)$")
 SCENE_HEADING = re.compile(r"^#{1,6}\s")
 # ``角色（提示）：台词`` -- the speaker label may carry a parenthesised direction.
 # Only the spoken half is timed; the direction is a note to the performer.
@@ -58,6 +63,18 @@ def measure(screenplay: str) -> dict[str, Any]:
     for raw in screenplay.splitlines():
         line = raw.strip()
         if not line or SCENE_HEADING.match(line):
+            continue
+        voiced = VOICE_TAG_LINE.match(line)
+        if voiced:
+            # A voice tag still has to name its speaker with a full-width colon;
+            # the index enforces that grammar. One that does not is a tag, not a
+            # line, and is timed as such rather than guessed at.
+            spoken = DIALOGUE.match(voiced.group("body"))
+            if spoken:
+                dialogue_lines += 1
+                dialogue_characters += _spoken_characters(spoken.group("line"))
+                continue
+            tag_lines += 1
             continue
         if TAG_LINE.match(line):
             tag_lines += 1

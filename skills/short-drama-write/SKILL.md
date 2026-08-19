@@ -159,16 +159,27 @@ python3 <skill-dir>/scripts/screenplay_index.py 剧集/EP001/screenplay.md \
 source issue 的 refs 都保持 candidate；accepted 剧本发布后再以默认 accepted authority
 重建，不得只手改状态字段。
 
-修订后照原样重跑同一条命令：输出路径上已有索引时，索引器把它当上一版读入，**正文块按内容保 ID**
-——内容没变的块保住自己的 ID，被改写的块直接换新 ID，于是指向它的下游引用会失败而不是静默改指。
+修订后**必须把上一版一起交给索引器**，两个参数成对出现：
+
+```bash
+python3 <skill-dir>/scripts/screenplay_index.py 剧集/EP001/screenplay.md \
+  --output 剧集/EP001/screenplay-index.jsonl \
+  --previous-index 剧集/EP001/screenplay-index.jsonl \
+  --previous-source <改稿前的剧本字节> \
+  --source-ref 剧集/EP001/screenplay.md --speaker 葛晴 --speaker 游森
+```
+
+这样**正文块按内容保 ID**——内容没变的块保住自己的 ID，被改写的块**换新 ID 并让旧 ID 退役**，
+于是指向它的下游引用会失败而不是静默改指。同时多一层拆分/合并识别：歧义写入
+`mapping_review_request`，必须显式重映射。
 **场景标题是例外**：它按 `scene_id` 保 ID，改写标题不换 ID（同一场戏仍是同一场，内容由标题下面
 的块承载）。说话者清单从上一版索引读回，与这次传的 `--speaker` 取并集，修订时只传新增的人即可。
 
-输出路径上那份索引不能作为上一版读入时（被截断、被手工改过、或那根本是另一部剧本的索引），
-命令会指名该文件并停下。删掉它，或加 `--no-previous` 从零重编 ID。
-
-再加 `--previous-source` 传入改稿前的剧本字节，就多一层拆分/合并识别：歧义写入
-`mapping_review_request`，必须显式重映射。没有那份字节时按内容对齐照常工作。
+**输出路径上已经有索引、却没有告诉索引器上一版是什么时，命令会指名该文件并停下。**
+这一条不是礼貌提示：不带上一版重建，ID 按位置重新发放，被改写的块会拿回前一个块退役的编号，
+指向它的下游引用于是解析得开、内容却换了一个——而解析得开正是正确引用的样子，下游看不出来。
+确实要从零重编 ID（下游引用还没建立，或准备整体重指）就加 `--no-previous`，
+让这件事成为一个明写出来的决定。
 
 索引器绝不改写 `screenplay.md`。
 

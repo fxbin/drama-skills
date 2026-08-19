@@ -24,6 +24,99 @@ def blocks(path: Path) -> list[dict[str, Any]]:
     return [row for row in read_jsonl(path) if row["record_type"] == "block"]
 
 
+class RebuildGuardTests(unittest.TestCase):
+    """Rebuilding over an existing index must not renumber blocks in silence.
+
+    Without a previous version the IDs are handed out by position, so a rewritten
+    block can reclaim the ID its predecessor retired. Every downstream reference
+    to that ID then resolves -- to different content. Nothing downstream can see
+    it, because a resolvable reference is exactly what a correct one looks like.
+    """
+
+    REVISED = (
+        "# EP001\n\n"
+        "## EP001-SC001 内 · 门厅 · 夜\n\n"
+        "她把伞收起来。\n\n"
+        "她把伞靠在墙边，没有回头。\n"
+    )
+    ORIGINAL = (
+        "# EP001\n\n"
+        "## EP001-SC001 内 · 门厅 · 夜\n\n"
+        "她把伞收起来。\n"
+    )
+
+    def test_rebuilding_over_an_existing_index_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "screenplay.md"
+            output = root / "screenplay-index.jsonl"
+            source.write_text(self.ORIGINAL, encoding="utf-8")
+            screenplay_index.build_index(source, output)
+
+            source.write_text(self.REVISED, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "already holds an index"):
+                screenplay_index.build_index(source, output)
+
+    def test_the_refusal_names_the_file_and_both_ways_forward(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "screenplay.md"
+            output = root / "screenplay-index.jsonl"
+            source.write_text(self.ORIGINAL, encoding="utf-8")
+            screenplay_index.build_index(source, output)
+            with self.assertRaises(ValueError) as caught:
+                screenplay_index.build_index(source, output)
+
+        message = str(caught.exception)
+        self.assertIn(str(output), message)
+        self.assertIn("--previous-index", message)
+        self.assertIn("--no-previous", message)
+
+    def test_an_explicit_renumber_is_still_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "screenplay.md"
+            output = root / "screenplay-index.jsonl"
+            source.write_text(self.ORIGINAL, encoding="utf-8")
+            screenplay_index.build_index(source, output)
+            source.write_text(self.REVISED, encoding="utf-8")
+            summary = screenplay_index.build_index(source, output, no_previous=True)
+
+        self.assertEqual(summary["review_status"], "clean")
+
+    def test_the_documented_path_retires_a_rewritten_block_id(self) -> None:
+        """The whole point: a rewritten block must not reclaim its own ID."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "screenplay.md"
+            first = root / "first.jsonl"
+            second = root / "second.jsonl"
+            source.write_text(self.ORIGINAL, encoding="utf-8")
+            screenplay_index.build_index(source, first)
+            before = {row["block_id"] for row in blocks(first)}
+            previous_source = root / "previous.md"
+            previous_source.write_text(self.ORIGINAL, encoding="utf-8")
+
+            source.write_text(
+                self.ORIGINAL.replace("她把伞收起来。", "她把伞丢在门口。"),
+                encoding="utf-8",
+            )
+            screenplay_index.build_index(
+                source,
+                second,
+                previous_index_path=first,
+                previous_source_path=previous_source,
+            )
+            after = {row["block_id"] for row in blocks(second)}
+
+        rewritten = before - after
+        self.assertTrue(
+            rewritten,
+            "the rewritten block kept its ID, so a stale reference would still resolve",
+        )
+
+
 class ScreenplayIndexTests(unittest.TestCase):
     def test_speaker_roster_rejects_non_text_and_empty_names(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

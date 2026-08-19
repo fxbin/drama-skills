@@ -17,6 +17,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 
@@ -126,6 +127,21 @@ def resolve_ref(
 
 SCHEMA_VERSION = "1.0.0"
 CHANNELS = {"sync", "dubbed", "VO", "OS"}
+# `[VO]` and `[OS]` are spoken lines that happen to be delivered off-camera, and
+# the index already records them with a `tag` and a `speaker`. Projecting only
+# `dialogue` blocks made the VO and OS channels above unreachable, so an episode
+# that carries its interiority in voice-over reported a clean sheet while the
+# recording list was missing every one of those lines.
+VOICED_TAGS = {"VO", "OS"}
+# `[VO] 角色：台词` — the tag is stripped before the line grammar is applied.
+VOICE_TAG_PREFIX = re.compile(r"^\[(?:VO|OS)\]\s*")
+
+
+def _is_voiced(block: Mapping[str, Any]) -> bool:
+    kind = block.get("kind")
+    if kind == "dialogue":
+        return True
+    return kind == "production_tag" and block.get("tag") in VOICED_TAGS
 # The resolver speaks the suite-wide reference vocabulary; this checker reports
 # in its own.
 REF_FINDING_CODES = {
@@ -244,11 +260,11 @@ def check(
                 )
             )
             continue
-        if block.get("kind") != "dialogue":
+        if not _is_voiced(block):
             findings.append(
                 _finding(
                     "VOICE_SOURCE_IS_NOT_DIALOGUE",
-                    "a voice line must project a dialogue block",
+                    "a voice line must project a spoken block: dialogue, [VO] or [OS]",
                     line_id=line_id,
                     record_id=record_id,
                     kind=block.get("kind"),
@@ -272,7 +288,8 @@ def check(
             )
             continue
         raw = screenplay[start:end]
-        match = DIALOGUE.match(raw.decode("utf-8").strip())
+        body = VOICE_TAG_PREFIX.sub("", raw.decode("utf-8").strip())
+        match = DIALOGUE.match(body)
         if match is None:
             findings.append(
                 _finding(
@@ -307,7 +324,7 @@ def check(
             )
 
     dialogue_blocks = {
-        block_id for block_id, block in blocks.items() if block.get("kind") == "dialogue"
+        block_id for block_id, block in blocks.items() if _is_voiced(block)
     }
     projected: set[str] = set()
     for record in lines:
