@@ -697,3 +697,41 @@ class SuiteAnatomyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DiagnosticCatalogueTests(unittest.TestCase):
+    """Every code a checker can emit must appear in its skill's catalogue.
+
+    Eleven `SHT01_*` codes were emitted and none were listed; adding this test
+    surfaced sixteen more, including the whole `VOICE_*` family. A creator who
+    hits one has no way to look up what it means, or whether it is the script's
+    call or a reviewer's -- which is the question the catalogue exists to answer.
+    """
+
+    CODE_RE = re.compile(r'_finding\(\s*"([A-Z][A-Z0-9]*_[A-Z0-9_]+)"')
+
+    def emitted_codes(self, skill: Path) -> set[str]:
+        codes: set[str] = set()
+        for script in sorted((skill / "scripts").glob("*.py")):
+            if script.name == "selftest.py":
+                continue
+            codes |= set(self.CODE_RE.findall(script.read_text(encoding="utf-8")))
+        return codes
+
+    def test_every_emitted_code_is_catalogued(self) -> None:
+        for skill in sorted((SUITE / "skills").iterdir()):
+            if not skill.is_dir():
+                continue
+            emitted = self.emitted_codes(skill)
+            if not emitted:
+                continue
+            catalogue = "\n".join(
+                path.read_text(encoding="utf-8") for path in sorted(skill.rglob("*.md"))
+            )
+            missing = sorted(code for code in emitted if code not in catalogue)
+            with self.subTest(skill=skill.name):
+                self.assertEqual(
+                    missing,
+                    [],
+                    f"{skill.name} emits codes no reference document lists",
+                )
