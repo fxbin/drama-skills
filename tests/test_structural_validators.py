@@ -250,13 +250,31 @@ class ContainerReconciliationTests(unittest.TestCase):
         {"shot_id": "SHOT-3", "duration_seconds": 1.0},
     ]
 
+    DURATION_OF = {"SHOT-1": 3.5, "SHOT-2": 2.5, "SHOT-3": 1.0}
+
     def container(self, container_id: str, shot_ids: list[str], seconds: float) -> dict[str, Any]:
+        """A container that satisfies the record's own documented shape.
+
+        `membership_basis` and per-member `accepted_duration` are part of that
+        shape; the fixture omitted both while nothing checked them.
+        """
+
         return {
             "container_id": container_id,
             "members": [
-                {"order": index, "shot_ref": shot_ref(shot_id)}
+                {
+                    "order": index,
+                    "shot_ref": shot_ref(shot_id),
+                    "accepted_duration": self.DURATION_OF.get(shot_id, 0.0),
+                }
                 for index, shot_id in enumerate(shot_ids, start=1)
             ],
+            "membership_basis": {
+                "source_order_contiguous": True,
+                "binding_chain_equal": True,
+                "scene_boundary_not_crossed": True,
+            },
+            "unresolved": [],
             "container_duration": seconds,
         }
 
