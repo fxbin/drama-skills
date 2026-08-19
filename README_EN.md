@@ -198,20 +198,4 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 /short-drama dashboard
 ```
 
-It opens on a list of projects: how many episodes each has, how far along it is, and what
-images, video and audio have accumulated. Open an episode and its files are laid out in the
-order they were written -- screenplay, storyboard, prompts. Prose reads as prose; structured
-outputs like `.jsonl` are labelled in plain words, so you are not matching record names by eye.
-Images and video play in the page, and prose files can be edited in place, with a check that
-nothing else has touched the file since it was loaded.
-
-Looking and editing is all it does. Generating images and video, review, and export are
-started from their own skills; the workspace configures no providers and submits no
-generation jobs.
-
-**It starts on macOS and Linux only.** It confines reads and writes to the project directory
-using `O_NOFOLLOW` and directory file descriptors, which Windows does not provide, so the
-workspace refuses to start there. Installing the suite and using the command-line project
-tool both work normally on Windows.
-
 <img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace with project overview, episode progress, existing media, and screenplay" width="680">
