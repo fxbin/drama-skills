@@ -280,7 +280,8 @@ v0.4.2 是一次校准版本，有两个来源。一是和竞品的端到端对�
 - **分镜覆盖对账剧本，按块 ID**。`storyboard_check.py` 增加 `--screenplay`：剧本里的每一个块
   必须被恰好一个镜头认领。没有镜头认领的块不会被拍，两个镜头认领的块会被剪两次；两者都是
   引用事实，不涉及审美。新增 `SHT21_BLOCK_UNCLAIMED` / `SHT21_BLOCK_CLAIMED_TWICE` /
-  `SHT21_BLOCK_NOT_IN_SCREENPLAY`。按块 ID 而不是正文行比对：正文一直在改，块 ID 不变。
+  `SHT21_BLOCK_NOT_IN_SCREENPLAY`。按块 ID 而不是正文行比对：内容未变的块保留 ID，改写的块
+  换新 ID 并让旧引用失效。
 - **动作的可生成性**。新增 `short-drama-video-prompts/references/generability.md`：
   **仅当项目声明由生成模型承担画面时生效**。判据是"这个动作在日常影像里常见吗"，
   并给出四类高风险写法（精确拦截、不可见内部状态、否定式动作、三步以上双手编排）
