@@ -78,7 +78,7 @@ def release_facing_text_files() -> list[Path]:
     # swept in whatever a maintainer kept locally — a showcase project under an
     # ignored path carried real provider responses through this scan, while the
     # published example project was never covered at all.
-    roots = ("skills/", "maintainers/", "examples/")
+    roots = ("skills/", "maintainers/", "examples/", "docs/")
     tracked = tracked_paths()
     selected = [
         name
