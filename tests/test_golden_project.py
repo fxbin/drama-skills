@@ -14,7 +14,9 @@ from typing import Any, Iterator
 
 
 SUITE = Path(__file__).resolve().parents[1]
+EXAMPLES = SUITE / "examples"
 GOLDEN = SUITE / "examples/golden-project"
+CREATOR_FIRST = SUITE / "examples/creator-first"
 CORE = SUITE / "skills/short-drama"
 
 
@@ -285,10 +287,10 @@ class GoldenProjectTests(unittest.TestCase):
 
     def test_fixture_contains_no_sensitive_fields_placeholders_or_media(self) -> None:
         placeholder = re.compile(r"<[^>\n]+>")
-        for path in GOLDEN.rglob("*"):
+        for path in EXAMPLES.rglob("*"):
             if not path.is_file():
                 continue
-            relative = path.relative_to(GOLDEN).as_posix()
+            relative = path.relative_to(EXAMPLES).as_posix()
             with self.subTest(path=relative):
                 self.assertNotIn(path.suffix.casefold(), MEDIA_SUFFIXES)
                 text = path.read_text(encoding="utf-8")

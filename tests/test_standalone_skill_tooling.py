@@ -112,9 +112,6 @@ class StandaloneSkillToolingTests(unittest.TestCase):
                 self.assertIn("## Quick Start", document)
                 self.assertIn("scripts/selftest.py", document)
                 self.assertNotIn("tools/verify_suite.py", document)
-                case = self.CASES.get(name)
-                if case is not None:
-                    self.assertIn(f"scripts/{case['checker']}", document)
 
 
 if __name__ == "__main__":

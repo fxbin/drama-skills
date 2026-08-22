@@ -8,11 +8,12 @@
 [![License](https://img.shields.io/github/license/worldwonderer/drama-skills)](LICENSE)
 
 面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十个技能把一个点子或一部长篇材料，
-一路做成分集剧本、资产设定、图片提示词、分镜关键帧、视频提示词和审查记录，
-用清晰的所有权、创作者确认与连续性契约衔接。适配 Claude Code、Codex 和其他
+一路做成分集剧本、资产设定、图片提示词、分镜关键帧和视频提示词，
+用清晰的所有权与连续性衔接。适配 Claude Code、Codex 和其他
 支持 Agent Skill 规范的运行环境。
 
-核心产出是文本：剧本、设定、提示词、审查记录。提示词预览并经用户明确确认后，也可通过
+新项目每集默认只维护五份 Markdown：`剧本.md`、`视觉设定.md`、`分镜.md`、
+`图片提示词.md` 和 `视频提示词.md`。提示词预览并经用户明确确认后，也可通过
 项目外配置的 adapter 执行图片、视频、TTS 和时间线音乐生产。
 
 ## 由来
@@ -59,7 +60,7 @@ done
 ```
 
 每个技能都是独立安装单元；只使用写作、审查或生产等单一能力时，可以只链接对应目录。
-`short-drama` 提供项目初始化、状态、交付与 Dashboard，但不是其他技能的安装门禁。
+`short-drama` 提供项目初始化、路由与 Dashboard，但不是其他技能的安装门禁。
 
 </details>
 
@@ -81,25 +82,25 @@ done
 # 2. 写第一集
 用 $short-drama-write 写第 1 集：外卖员在高档餐厅被经理羞辱，亮出集团董事身份
 
-# 3. 拆资产，写提示词与分镜
+# 3. 拆资产，写提示词与分镜（可在同一请求内连续完成）
 用 $short-drama-assets 从第 1 集拆人物/场景/道具
-需要统一视觉语言时，用 $short-drama 做 Look Development，再由 $short-drama-image-prompts 写人物/地点/高压力风格帧提示词
+需要统一视觉语言时，可选用 $short-drama 做 Look Development
 用 $short-drama-image-prompts 为已接受的资产写参考图提示词
-用 $short-drama-storyboard 给关键场次比较导演方案、接受场次视觉计划，再做正式分镜
+用 $short-drama-storyboard 给第 1 集做正式分镜与冻结关键帧
 用 $short-drama-video-prompts 把分镜逐镜翻译成视频提示词
 
 # 4. 明确确认后投产
 用 $short-drama-produce 预览第 1 集已接受的图片、视频、TTS 或时间线音乐任务；等我确认后再执行
 
-# 5. 审查（最好由未参与当前版本创作的人或上下文执行）
+# 5. 需要时再审查
 用 $short-drama-review 审查第 1 集的剧本与提示词
 ```
 
-两份示例都在 [examples/](examples/)。想先读文本长什么样，看
-[一集的摘录链条](examples/excerpt-chain/)：剧本 → 资产设定与图片提示词 → 分镜 → 视频提示词。
-想看可校验的八集端到端项目，看
-[Golden Sample《善意不结账》](examples/golden-project/)：项目开发 → 剧本与稳定索引 →
-资产设定 → 图像提示词 → 分镜与关键帧 → 视频提示词 → 审查结论。
+普通创作不运行安装 selftest，不为阶段批次生成 JSON/JSONL、指纹、QA 或覆盖表，也不在每个
+场次/资产组/镜头组后停下来等“继续”。用户点名审查时，结论写入创作者可读的 Markdown。
+
+示例都在 [examples/](examples/)。creator-first 的公开完整样例是
+[《让你管账号》EP001](examples/creator-first/EP001/)；其余目录仅作为仓库维护和校验器回归夹具。
 想把十个技能按漫剧产线从头串一遍（每步命令、产物与卡点），看
 [漫剧创作全流程指引](docs/comic-drama-workflow.md)。
 
@@ -132,7 +133,7 @@ flowchart LR
 
 | 技能 | 职责 |
 |---|---|
-| `short-drama` | 初始化、路由、视觉方向/Look Development、简洁状态、确认/复核与交付 |
+| `short-drama` | 初始化、路由、视觉方向/Look Development 与 Dashboard |
 | `short-drama-novel-analyze` | 长篇原著的抽样改编快评、章节索引、逐章功能提取、剧情单元与节奏、改编价值与分集候选 |
 | `short-drama-develop` | 小说/长材料的可追溯改编、多集整稿的 Agent 主导切片与续跑、故事引擎、分集地图、导演阐述、题材与钩子手册 |
 | `short-drama-write` | 单集目标、因果节拍、可拍剧本和项目选择的制作稿格式 |
@@ -143,9 +144,8 @@ flowchart LR
 | `short-drama-produce` | 展示有边界的图片/视频/TTS/音乐任务，取得本次明确确认后通过外部 adapter 执行并记录结果；可选支持 Seedance、GPT Image 2 与 MiniMax Music |
 | `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
 
-`$short-drama` 是入口路由，负责初始化、继续、显示状态和交付，把具体工作转给对应技能。
-项目生命周期只有“待确认、已接受、需修改、已通过、需更新”等创作者可读状态；输入和输出
-变化在读取时检查。
+`$short-drama` 是入口路由，负责初始化、继续和 Dashboard，把具体工作转给对应技能。交付直接选择
+五份 Markdown 与成品，不为打包补建生命周期记录。
 现成单集剧本可以直接进入规范化或资产拆解；多集整稿需要生成分集地图时，由开发技能按
 文件实际结构建立一次索引、逐集切片并断点续跑；点子从故事开发进入。手上是一部长篇原著时，
 先走 `$short-drama-novel-analyze` 抽样快评，值得拆再拆出分析层与分集候选，

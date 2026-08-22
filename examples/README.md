@@ -1,14 +1,14 @@
 # 示例
 
-两份示例回答不同的问题。
+三份示例用于创作参考或维护回归；面向创作者的默认入口只有 creator-first。
 
 | 目录 | 回答的问题 | 规模 |
 |---|---|---|
-| [excerpt-chain/](excerpt-chain/) | 各环节交出来的文本长什么样？ | 一集四份 Markdown 节选 |
-| [golden-project/](golden-project/) | 一个完整项目的目录、索引和引用链怎么落盘？ | 八集，含设定集、创作者决策与审查结论 |
+| [creator-first/](creator-first/) | 新项目默认到底留下什么？ | 一集五份完整 Markdown，0 JSON/JSONL |
+| [excerpt-chain/](excerpt-chain/) | 维护测试中的历史文本片段 | 一集四份 Markdown 节选 |
+| [golden-project/](golden-project/) | 维护校验器的完整回归夹具 | 八集结构化测试数据 |
 
-先读 [excerpt-chain/](excerpt-chain/)：四份节选覆盖剧本、资产设定与图片提示词、分镜、
-视频提示词，用来看清一个环节把什么交给下一个环节。不含关键帧与审查结论。
+新项目先读 [creator-first/](creator-first/)：它是默认创作表面的原生完整样例。
 
-再读 [golden-project/](golden-project/)：它是可机械校验的完整项目，每个阶段的校验器都能在
-它上面跑通，用来看清 hash 绑定、稳定索引和接受记录的实际形状。
+`excerpt-chain/` 与 `golden-project/` 只服务仓库维护、校验器回归和历史测试覆盖，不作为当前 Skill
+的操作说明，也不定义 creator-first 的公开产物。

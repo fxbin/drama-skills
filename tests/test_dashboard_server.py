@@ -1304,23 +1304,44 @@ process.stdout.write(JSON.stringify([
         self.assertTrue(html_kept_as_text)
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
-    def test_frontend_rail_opens_with_the_screenplay(self) -> None:
+    def test_frontend_understands_creator_first_episode_documents(self) -> None:
         # Raw directory order buried the screenplay below every generated prompt.
         app = dashboard_server.STATIC_ROOT / "app.js"
         script = f"""
 const logic = require({json.dumps(str(app))});
 const files = [
-  {{ path: "\u5267\u96c6/EP001/storyboard/keyframe-prompts.md" }},
-  {{ path: "\u5267\u96c6/EP001/assets/image-prompts.md" }},
-  {{ path: "\u5267\u96c6/EP001/screenplay.md" }},
-  {{ path: "\u5267\u96c6/EP001/storyboard/shots.jsonl" }},
+  {{ path: "\u5267\u96c6/EP001/\u5206\u955c.md", type: "text" }},
+  {{ path: "\u5267\u96c6/EP001/\u56fe\u7247\u63d0\u793a\u8bcd.md", type: "text" }},
+  {{ path: "\u5267\u96c6/EP001/\u5267\u672c.md", type: "text" }},
+  {{ path: "\u5267\u96c6/EP001/\u89c6\u89c9\u8bbe\u5b9a.md", type: "text" }},
+  {{ path: "\u5267\u96c6/EP001/\u89c6\u9891\u63d0\u793a\u8bcd.md", type: "text" }},
 ];
-process.stdout.write(JSON.stringify(logic.orderedForReading(files).map((file) => file.path.split("/").pop())));
+process.stdout.write(JSON.stringify({{
+  order: logic.orderedForReading(files).map((file) => file.path.split("/").pop()),
+  sections: Object.fromEntries(files.map((file) => [file.path.split("/").pop(), logic.creatorSection(file.path)])),
+  presentation: logic.episodePresentation(files),
+  reviewSection: logic.creatorSection("审查/EP001-审查.md"),
+  legacyReviewSection: logic.creatorSection("审查/EP001-findings.jsonl"),
+}}));
 """
         completed = subprocess.run(
             ["node", "-e", script], check=True, capture_output=True, text=True
         )
-        self.assertEqual(json.loads(completed.stdout)[0], "screenplay.md")
+        result = json.loads(completed.stdout)
+        self.assertEqual(result["order"][0], "剧本.md")
+        self.assertEqual(
+            result["sections"],
+            {
+                "剧本.md": "story",
+                "视觉设定.md": "cast",
+                "分镜.md": "storyboard",
+                "图片提示词.md": "prompts",
+                "视频提示词.md": "prompts",
+            },
+        )
+        self.assertEqual(result["presentation"]["label"], "提示词就绪")
+        self.assertEqual(result["reviewSection"], "review")
+        self.assertIsNone(result["legacyReviewSection"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_translates_server_protocol_messages(self) -> None:

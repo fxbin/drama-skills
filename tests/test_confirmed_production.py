@@ -39,7 +39,7 @@ class ConfirmedProductionTests(unittest.TestCase):
             aspect_ratio="9:16",
             suite_root=SUITE / "skills/short-drama",
         )
-        source = root / "剧集/EP001/prompts/current.md"
+        source = root / "剧集/EP001/图片提示词.md"
         source.parent.mkdir(parents=True)
         source.write_text("当前提示词来源\n", encoding="utf-8")
         reference = root / "输入/reference.png"
@@ -70,7 +70,7 @@ class ConfirmedProductionTests(unittest.TestCase):
                     "modality": modality,
                     "adapter": "fixture",
                     "prompt": prompt,
-                    "source": "剧集/EP001/prompts/current.md",
+                    "source": "剧集/EP001/图片提示词.md",
                     "references": ["输入/reference.png"],
                     "outputs": [output],
                     "parameters": parameters or {"count": 1},
@@ -283,7 +283,7 @@ class ConfirmedProductionTests(unittest.TestCase):
             root = self.make_project(directory)
             job = self.write_job(root)
             self.prepare_and_confirm(root, job)
-            (root / "剧集/EP001/prompts/current.md").write_text(
+            (root / "剧集/EP001/图片提示词.md").write_text(
                 "提示词来源已改\n", encoding="utf-8"
             )
 

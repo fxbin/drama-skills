@@ -9,12 +9,13 @@
 
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
 directors. Ten skills take an idea or a long-form source all the way to episode
-scripts, asset decisions, image prompts, storyboard keyframes, video prompts, and
-review records — carrying clear ownership, creator confirmation, and
+scripts, asset decisions, image prompts, storyboard keyframes, and video prompts —
+carrying clear ownership and
 continuity through the entire chain. Works with Claude Code, Codex, and other
 runtimes that support Agent Skills.
 
-The core output is text: scripts, asset notes, prompts, and review records. After an
+For a new project, each episode defaults to five Markdown files: `剧本.md`,
+`视觉设定.md`, `分镜.md`, `图片提示词.md`, and `视频提示词.md`. After an
 exact preview and explicit user confirmation, an external adapter can also execute
 image, video, TTS, and timeline-level music production.
 
@@ -70,8 +71,8 @@ done
 
 Each skill is an independent installation unit. For a single writing, review, or
 production capability, link only that directory. `short-drama` provides project
-initialization, status, delivery, and the Dashboard; it is not an installation gate
-for the other skills.
+initialization, routing, and the Dashboard; it is not an installation gate for the
+other skills.
 
 </details>
 
@@ -96,28 +97,29 @@ Use $short-drama to init a vertical 9:16 urban face-slapping short-drama project
 Use $short-drama-write to write EP001: a delivery rider humiliated at a luxury
 hotel turns out to be the group chairman
 
-# 3. Extract assets, write prompts and storyboards
+# 3. Extract assets, write prompts and storyboards (these can be one request)
 Use $short-drama-assets to extract characters/scenes/props from EP001
-When the visual language needs alignment, use $short-drama for Look Development,
-then $short-drama-image-prompts for character/location/high-pressure style-frame prompts
+When the visual language needs alignment, optionally use $short-drama for Look Development
 Use $short-drama-image-prompts to write reference prompts for accepted assets
-Use $short-drama-storyboard to audition distinct directing approaches for key scenes,
-accept a scene visual plan, then author the formal storyboard
+Use $short-drama-storyboard to author EP001's storyboard and frozen keyframes
 Use $short-drama-video-prompts to translate each authored shot into a video prompt
 
 # 4. Produce after explicit confirmation
 Use $short-drama-produce to preview EP001's accepted image, video, TTS, or timeline-music job; execute only after I confirm
 
-# 5. Review (prefer someone or a context that did not author this version)
+# 5. Review when needed
 Use $short-drama-review to review EP001's script and prompts
 ```
 
-Both samples live in [examples/](examples/). To see what the text looks like,
-read the [one-episode excerpt chain](examples/excerpt-chain/): screenplay, assets
-with their image prompts, storyboard, motion prompts. The verifiable eight-episode
-[Golden Sample, *Kindness Is Not a Debt*](examples/golden-project/), demonstrates
-the full path from development and byte-stable screenplay indexes through assets,
-image prompts, storyboards, keyframes, motion prompts, and review.
+Normal creative work does not run installation self-tests or create JSON/JSONL,
+fingerprints, QA reports, or coverage sheets for every stage batch. Scene/asset/shot
+batches continue automatically within the requested scope. When review is requested,
+its result is written as creator-readable Markdown.
+
+Samples live in [examples/](examples/). The public creator-first sample is
+[*Let You Run the Account*, EP001](examples/creator-first/EP001/). Other example
+directories are repository-maintenance and validator-regression fixtures rather than
+instructions for the current workflow.
 To walk the ten skills as one comic-drama production line, with per-step commands,
 outputs, and common pitfalls, see the
 [comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
@@ -151,7 +153,7 @@ flowchart LR
 
 | Skill | Responsibility |
 |---|---|
-| `short-drama` | Init, routing, visual direction/Look Development, simple status, confirmation/review, delivery |
+| `short-drama` | Init, routing, visual direction/Look Development, and Dashboard |
 | `short-drama-novel-analyze` | Sampled adaptation triage, chapter index, per-chapter function extraction, story units and rhythm, adaptation value, and episode candidates for a long source |
 | `short-drama-develop` | Traceable adaptation, Agent-led indexing/slicing/resume for complete multi-episode scripts, story engine, episode map, director brief, genre & hook playbook |
 | `short-drama-write` | Episode contract, causal beats, performable screenplay, and the project's accepted production dialect |
@@ -162,15 +164,13 @@ flowchart LR
 | `short-drama-produce` | Preview a bounded image/video/TTS/music job, require explicit confirmation, execute an external adapter, and record results; optional Seedance, GPT Image 2, and MiniMax Music profiles are included |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
-`$short-drama` is the entry router: it initializes, resumes, shows status, and delivers
-projects, dispatching the actual work to the matching skill. An existing single-episode
+`$short-drama` is the entry router: it initializes, resumes, and opens the Dashboard.
+Delivery selects the requested Markdown and media directly instead of creating lifecycle
+records just for packaging. An existing single-episode
 screenplay can enter normalization or asset extraction directly. When a complete
 multi-episode script needs an episode map, development indexes its actual structure once,
 reads one verified slice at a time, and resumes from the on-disk map. An idea or long-form
 source enters through story development.
-
-Project state stays creator-readable: needs confirmation, accepted, revise, approved,
-or update needed. Input/output drift is checked on read.
 
 The three single-frame prompt paths have distinct ownership: project-level
 `lookdev_frame` prompts test an accepted visual direction; asset prompts preserve
