@@ -12,12 +12,14 @@ license: MIT
 
 ## Quick Start
 
-先离线验证确认闸门、fixture adapter 和供应商 payload 编译，不发起远端请求：
+只在用户明确要求实际生成后，从当前 `图片提示词.md`、`分镜.md`、`视频提示词.md` 或旧版规格中
+取出本次提示词，建立一个有边界的运行 job。这个 job 是生产工具的临时输入，不是第六份创作文档：
 
 ```bash
-python3 {技能目录}/scripts/selftest.py
-python3 {技能目录}/scripts/provider_adapters.py --selftest
+python3 {技能目录}/scripts/production_tool.py prepare <project> --job <临时-job.json>
 ```
+
+先展示 `prepare` 的完整预览；此时不会调用供应商。
 
 ## 硬闸门
 
@@ -36,7 +38,8 @@ job、prompt、参数、输出路径或直接输入任一变化，旧确认立�
 
 ## 命令
 
-先把待执行任务写成 JSON；格式和 adapter 契约见
+只在进入生产边界后把当前提示词和运行参数写成临时 JSON；不要在创作阶段为每条提示词预建 job。
+格式和 adapter 契约见
 [adapter-contract.md](references/adapter-contract.md)。命令由
 [production_tool.py](scripts/production_tool.py) 提供，然后运行：
 
@@ -101,3 +104,12 @@ adapter 配置必须在项目外，只包含 argv 命令和超时；凭据由 ad
 缺陷回到对应 prompt/spec owner。
 如需质量复核，报告可把已有结果另行交给 `$short-drama-review`；不要在生产调用中自动启动复核。
 Dashboard 只负责展示这些文件和运行摘要，不提供 adapter 设置或生产按钮。
+
+## 安装维护
+
+只有安装、升级或排障时运行离线自检；普通创作和生产准备不运行：
+
+```bash
+python3 scripts/selftest.py
+python3 scripts/provider_adapters.py --selftest
+```

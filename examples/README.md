@@ -1,14 +1,17 @@
 # 示例
 
-两份示例回答不同的问题。
+三份示例回答不同的问题。
 
 | 目录 | 回答的问题 | 规模 |
 |---|---|---|
+| [creator-first/](creator-first/) | 新项目默认到底留下什么？ | 一集五份完整 Markdown，0 JSON/JSONL |
 | [excerpt-chain/](excerpt-chain/) | 各环节交出来的文本长什么样？ | 一集四份 Markdown 节选 |
 | [golden-project/](golden-project/) | 一个完整项目的目录、索引和引用链怎么落盘？ | 八集，含设定集、创作者决策与审查结论 |
 
-先读 [excerpt-chain/](excerpt-chain/)：四份节选覆盖剧本、资产设定与图片提示词、分镜、
+新项目先读 [creator-first/](creator-first/)：它是默认创作表面的原生完整样例。
+
+需要看旧文本链条时读 [excerpt-chain/](excerpt-chain/)：四份节选覆盖剧本、资产设定与图片提示词、分镜、
 视频提示词，用来看清一个环节把什么交给下一个环节。不含关键帧与审查结论。
 
-再读 [golden-project/](golden-project/)：它是可机械校验的完整项目，每个阶段的校验器都能在
+维护旧结构化项目时读 [golden-project/](golden-project/)：它是可机械校验的完整项目，每个阶段的校验器都能在
 它上面跑通，用来看清 hash 绑定、稳定索引和接受记录的实际形状。

@@ -6,148 +6,96 @@ license: MIT
 
 # 短剧创作路由
 
-本技能负责找到项目、显示当前状态并把工作交给正确的创作技能，不代写各阶段内容。
+本技能只负责项目级路由、初始化、状态、Dashboard 和交付；各阶段正文由对应 owner 完成。
 
 ## Quick Start
 
-先离线确认本技能被单独复制后仍能初始化、读取和保护项目路径：
+新项目和独立任务遵守 [creator-first 工作流](references/creator-workflow.md)：每集最多五份创作者
+Markdown，按需创建，不为了流程完整生成 JSON/JSONL、索引、指纹、QA 或交接文件。五份文档格式
+见 [creator-documents.md](references/creator-documents.md)。
 
-```bash
-python3 {技能目录}/scripts/selftest.py
-python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例短剧"
-```
+已经存在 `screenplay.md`、`*.json` 或 `*.jsonl` 权威产物的项目继续原布局；不迁移、不同时维护
+两套真相。`short-drama.json` 和工具写入的隐藏运行状态不算创作产物。
 
-创作者可读内容使用 `short-drama.json#/language`；交给图片或视频生成器的提示词正文使用
-`#/format/prompt_language`。两者互不推断，详见
-[contract-and-ownership.md](references/contract-and-ownership.md#output-language-contract)。
+## 路由
 
-## 每次请求的起点
-
-1. 使用用户给出的路径，或从当前目录向上寻找最近的 `short-drama.json`。
-2. 运行 `status`，只读完成当前任务所需的直接输入，不批量加载整个项目。
-3. 按用户眼下要完成的工作路由；未安装的阶段技能只影响对应路由，不阻断其他工作。
-4. 明确的单阶段任务直接交给独立安装的对应技能，按创作者要的那一步做。
-
-统一预检见 [runtime-preflight.md](references/runtime-preflight.md)，创作入口见
-[creator-workflow.md](references/creator-workflow.md)，所有权见
-[contract-and-ownership.md](references/contract-and-ownership.md)。
-
-## 意图路由
-
-| 创作者意图 | 路由 |
+| 用户要做什么 | owner / 行为 |
 |---|---|
-| 开发点子、系列承诺、改编和分集地图 | `$short-drama-develop` |
-| 导入已有多集完整剧本/散稿并生成或补分集地图 | `$short-drama-develop` 按文件实际结构建立索引，每次只读当前集并续跑 |
-| 判断长篇是否值得改、建立原文索引 | `$short-drama-novel-analyze` |
-| 写或改单集契约、节拍、剧本 | `$short-drama-write` |
-| 拆人物、造型、地点、道具和状态 | `$short-drama-assets` |
-| 写人物、地点、道具和 Look Development 图片提示词 | `$short-drama-image-prompts` |
-| 做覆盖设计、镜头和冻结关键帧 | `$short-drama-storyboard` |
-| 写动作、表演、运镜、声音视频提示词 | `$short-drama-video-prompts` |
-| 写主题曲/配乐意图或校验时间线音乐规格 | `$short-drama-video-prompts`，歌词必须由创作者提供并接受 |
-| 按已确认规格实际生成图片、视频、TTS 或时间线音乐 | `$short-drama-produce` 先展示本次 job，得到明确确认后才执行 |
-| 定制作形态、视觉方向或 Look Development 路径 | `$short-drama` |
-| 校验、审稿或发修订请求 | `$short-drama-review` |
-| 打开创作台、看内容和进度 | `$short-drama dashboard` |
+| 开发点子、系列承诺、改编和分集地图 | `$short-drama-develop`，仅在用户需要时 |
+| 已有多集完整剧本/散稿，需要识别分集并续跑 | `$short-drama-develop` 按实际边界建立索引 |
+| 分析长篇原著 | `$short-drama-novel-analyze`，仅在用户需要时 |
+| 写或改单集剧本 | `$short-drama-write` → `剧本.md` |
+| 拆人物、造型、地点、道具 | `$short-drama-assets` → `视觉设定.md` |
+| 写资产图片提示词 | `$short-drama-image-prompts` → `图片提示词.md` |
+| 做镜头和冻结关键帧 | `$short-drama-storyboard` → `分镜.md` |
+| 写视频/时间线音乐提示词 | `$short-drama-video-prompts` → `视频提示词.md` |
+| 实际生成媒体 | `$short-drama-produce`，先预览，再显式确认，最后运行 |
+| 审稿或校验 | `$short-drama-review`，只有用户点名或交付明确需要时 |
+| 初始化、状态、Dashboard、导出 | 本技能 |
 
-用户的明确意图优先。Look Development 是可选分支；资产图片提示词和分镜在资产确认后可以
-并行，不互相等待。需要把已接受的视觉方向变成可比较的代表帧时，读
-[look-development.md](references/look-development.md)。
+直接入场合法：现成剧本可直接拆资产；已有视觉事实可直接写图片提示词或分镜；已有分镜可直接写
+视频提示词。不要补造没有创作价值的上游文件。
 
-**产物可以直接入场**。 上游的可选环节缺失不构成阻塞：现成剧本可直接进入资产；已接受资产
-可直接进入资产图片提示词；已接受剧本加资产可直接进入分镜；已接受镜头与关键帧可直接进入
-视频提示词。只补建对应技能拥有的、确实缺少的必要产物，绝不倒补虚构的创作简报或系列大纲。
+## 执行请求
 
-**请求含糊时不要追问技术细节**。 遇到"帮我把这集做完"这类请求，先展示当前的创作者可读
-状态，再给出不超过三个有意义的动作，优先能解开当前交付阻塞的那个；不要拿 schema、事务或
-存储格式去问创作者。
-
-## 有界续跑
-
-全链预览或“继续”每轮只授权一个 owner 的一个有界工作单元。写作、资产、图片提示词、分镜和
-视频提示词按各自「每轮的工作单元」分批工作；完成当前批次后报告已覆盖范围、剩余范围与
-下一步，并把控制权交还创作者。下一阶段、审查和生产各自需要明确的后续请求；生产还要先展示
-准确 job 并取得确认。
-
-审查尽量交给没有参与该版本创作的 reviewer，以减少自证偏差；运行环境不支持隔离上下文时，
-如实标注为自检即可。CLI 只记录 verdict、reviewer 标签和备注，不收集或伪造上下文证明。
-Reviewer 给出证据和修改请求，内容仍由原 owner 修改。
+1. 找到用户给出的项目/资料，只读当前任务的直接输入。
+2. 把用户点名的完整范围交给相应 owner；批次只用于内部控制上下文，自动续跑。
+3. 只有真实创作分叉才询问；不要拿 schema、目录、事务或检查器询问创作者。
+4. 范围完成后一次回报：完成内容、关键决定、真实未决项、可选下一步。
+5. 不自动开始用户没点名的审查、交付或生产。
 
 ## 初始化
 
-没有项目且用户要初始化时：
+需要项目配置时运行：
 
-1. 确定标题、项目语言、提示词语言、画幅和路径；集数或时长未知就留空。
-2. 运行 `init` 建立最小目录和空状态，不覆盖现有文件。
-3. 将制作形态与视觉方向保持为 `unset`，告诉创作者下一个最有用的选择。
-4. 创作者定下形态、方向、播放面或集长目标后，把这条决定发布并接受为一条创作者决策记录，
-   再用 `set-authority` 写回 `short-drama.json`，让下游读到已 `accepted` 的值。
+```bash
+python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例短剧"
+```
 
-初始化不自动生成故事、剧本或资产设定。
+`init` 只建立配置和空目录，不生成故事。creator-first 文档在第一次被请求时直接写入
+`创作内容/剧集/<EP>/`；不要预建五个空文件。
 
-## 本地 Dashboard
+## 旧项目生命周期
 
-Dashboard 是项目内容的轻量展示与有限文本编辑层，核心能力仍在各 skill 中。当用户调用
-`$short-drama dashboard` 时：
+旧布局继续使用现有命令，不改行为：
 
-1. 项目存在时读取 `status`；浏览普通目录时直接使用该目录。
-2. 项目内启动时用项目根作为 workspace；否则使用用户给出的容器目录或当前目录。
-3. 从本技能安装目录运行：
+```text
+project_tool.py status <project>
+project_tool.py publish <project> ...
+project_tool.py accept <project> ...
+project_tool.py review <project> ...
+project_tool.py package <project> ...
+project_tool.py verify <delivery>
+```
 
-   ```text
-   python3 <short-drama-skill-dir>/scripts/dashboard_server.py --workspace <workspace> --port 0 --open
-   ```
+这些命令服务已有结构化项目；creator-first 普通创作不为了使用它们而复制 Markdown。命令参数和
+安全边界见 [lifecycle-commands.md](references/lifecycle-commands.md)。
 
-4. 回报脚本打印的完整回环地址与停止方式，并保持进程运行。
+## Dashboard
 
-Dashboard 只读取 workspace 内的文件；密钥、生产 adapter 与工作流编排都在它之外。它按项目
-和剧集展示正文、结构化卡片以及已有图片/音频/视频；保存只表示保存文件，不代表创作者确认。
-每次启动使用独立本机会话，项目 API 只接受该会话。参数与安全边界见
-[lifecycle-commands.md](references/lifecycle-commands.md#dashboard-启动)。
+用户明确要求 Dashboard 时，从技能目录运行：
 
-## 项目命令
+```bash
+python3 scripts/dashboard_server.py --workspace <workspace> --port 0 --open
+```
 
-从本技能安装目录调用 `scripts/project_tool.py`：
+Dashboard 只展示它能识别的现有项目文件，不负责工作流编排、媒体生产或创作者接受。
 
-| 命令 | 用途 |
-|---|---|
-| `init` | 初始化最小项目 |
-| `status` | 显示项目与产物状态 |
-| `publish` | 原子发布一项产物并记录它的直接输入 |
-| `accept` | 记录创作者接受或拒绝当前版本 |
-| `review` | 记录当前版本的复核结论 |
-| `set-authority` | 把已接受的创作者决策写回制作形态、视觉方向、播放面或集长目标 |
-| `package` | 打包当前已确认且复核通过的文本/JSON |
-| `verify` | 用交付校验和检查打包结果是否被改动 |
+## 项目级创作决定
 
-完整示例见 [lifecycle-commands.md](references/lifecycle-commands.md)。单文件发布用临时文件与
-原子替换完成。
+制作形态、视觉方向、播放面和集长目标确实会约束多个阶段时，先展示选择及影响，再由用户决定。
+旧项目可用 `set-authority` 写入已接受决定；creator-first 文档只引用决定结果，不复制审批过程。
+Look Development 是可选分支，不是进入图片提示词或分镜的固定门槛。
 
-## 状态与修订
+## 生产与交付边界
 
-对创作者只使用六种状态：
+外部生产永远保留 `preview -> explicit confirm -> run`。交付只包含用户点名的当前文档和成品，排除
+私有输入、凭据、绝对路径和隐藏运行状态；校验和只能证明字节未变，不能证明创作质量。
 
-- `draft`：尚未发布；
-- `needs_confirmation`：等待创作者决定；
-- `accepted`：创作者已接受；
-- `revise`：创作者或 reviewer 要求修改；
-- `approved`：当前版本已确认且复核通过；
-- `update_needed`：输出或某个直接输入已经变化，需要重新发布。
+## 安装维护
 
-状态在读取时核对当前文件，不把过期传播写回整个项目。修订时只说明负责技能、语义变化、
-直接受影响的产物和下一步；重新发布会清除该产物旧的接受与复核结果，不触碰无关产物。
-除非诊断需要，不向创作者显示内部 hash 或原始状态文件。
+只有安装、升级或排障时运行：
 
-## 交付
-
-先由 `$short-drama-review` 复核，再用 `package` 打包。包内只收录明确选择的、当前状态为
-`approved` 的文本和 JSON，并记录有意省略项；二进制媒体、非公开输入、机器状态、绝对路径、
-凭据和未批准草稿不进入文本交付包。`verify` 检查清单、校验和及未登记新增文件。
-
-## 边界
-
-- 图片、视频和 TTS 生产只由 `$short-drama-produce` 在展示准确 job 并取得本次明确确认后执行；
-  其他技能不直接调用生成服务。
-- 运行时不检索外部或非公开生产来源。
-- 不把别处案例提升为项目定律。
-- 语义冲突不静默修复；不明外部改动由创作者选择保留或重做。
+```bash
+python3 scripts/selftest.py
+```

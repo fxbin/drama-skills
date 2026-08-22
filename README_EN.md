@@ -9,12 +9,13 @@
 
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
 directors. Ten skills take an idea or a long-form source all the way to episode
-scripts, asset decisions, image prompts, storyboard keyframes, video prompts, and
-review records — carrying clear ownership, creator confirmation, and
+scripts, asset decisions, image prompts, storyboard keyframes, and video prompts —
+carrying clear ownership and
 continuity through the entire chain. Works with Claude Code, Codex, and other
 runtimes that support Agent Skills.
 
-The core output is text: scripts, asset notes, prompts, and review records. After an
+For a new project, each episode defaults to five Markdown files: `剧本.md`,
+`视觉设定.md`, `分镜.md`, `图片提示词.md`, and `视频提示词.md`. After an
 exact preview and explicit user confirmation, an external adapter can also execute
 image, video, TTS, and timeline-level music production.
 
@@ -96,23 +97,28 @@ Use $short-drama to init a vertical 9:16 urban face-slapping short-drama project
 Use $short-drama-write to write EP001: a delivery rider humiliated at a luxury
 hotel turns out to be the group chairman
 
-# 3. Extract assets, write prompts and storyboards
+# 3. Extract assets, write prompts and storyboards (these can be one request)
 Use $short-drama-assets to extract characters/scenes/props from EP001
-When the visual language needs alignment, use $short-drama for Look Development,
-then $short-drama-image-prompts for character/location/high-pressure style-frame prompts
+When the visual language needs alignment, optionally use $short-drama for Look Development
 Use $short-drama-image-prompts to write reference prompts for accepted assets
-Use $short-drama-storyboard to audition distinct directing approaches for key scenes,
-accept a scene visual plan, then author the formal storyboard
+Use $short-drama-storyboard to author EP001's storyboard and frozen keyframes
 Use $short-drama-video-prompts to translate each authored shot into a video prompt
 
 # 4. Produce after explicit confirmation
 Use $short-drama-produce to preview EP001's accepted image, video, TTS, or timeline-music job; execute only after I confirm
 
-# 5. Review (prefer someone or a context that did not author this version)
+# 5. Review when needed
 Use $short-drama-review to review EP001's script and prompts
 ```
 
-Both samples live in [examples/](examples/). To see what the text looks like,
+Normal creative work does not run installation self-tests or create JSON/JSONL,
+fingerprints, QA reports, coverage sheets, or review records for every stage batch.
+Scene/asset/shot batches continue automatically within the requested scope. Existing
+structured projects remain readable and are never auto-migrated.
+
+Samples live in [examples/](examples/). For a complete creator-first five-document
+episode, see [*Let You Run the Account*, EP001](examples/creator-first/EP001/).
+To see the older structured text chain,
 read the [one-episode excerpt chain](examples/excerpt-chain/): screenplay, assets
 with their image prompts, storyboard, motion prompts. The verifiable eight-episode
 [Golden Sample, *Kindness Is Not a Debt*](examples/golden-project/), demonstrates
