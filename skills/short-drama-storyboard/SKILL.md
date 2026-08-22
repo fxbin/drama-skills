@@ -11,8 +11,8 @@ license: MIT
 
 ## Quick Start
 
-新项目和独立任务只写 `剧集/<EP>/分镜.md`。每镜使用稳定 `SHOT-...` 标题，冻结关键帧
-提示词写在同一镜下；不另建 coverage、audition、scene plan、shots/keyframes JSONL、QA 或审核文件。
+新项目和独立任务只写 `剧集/<EP>/分镜.md`。每镜使用二级标题 `## SHOT-...`，冻结关键帧
+使用同一镜下的三级标题 `### 冻结关键帧提示词`；不另建 coverage、audition、scene plan、shots/keyframes JSONL、QA 或审核文件。
 这些比较和覆盖检查留在本轮上下文。已有结构化项目继续原布局。
 创作者可读分镜跟随项目语言；冻结关键帧正文跟随 `short-drama.json#/format/prompt_language`。
 
