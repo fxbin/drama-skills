@@ -6,55 +6,62 @@ license: MIT
 
 # 短剧资产图片提示词
 
-把已确认视觉事实写成可复用、可修改、可直接复制的角色板、场景板、道具板或状态图提示词；不负责
-实际生成图片、分镜或视频运动。
+把视觉事实写成可复用、可修改、可直接复制的角色板、场景板、道具板或状态图提示词，统一保存到
+`剧集/<EP>/图片提示词.md`。每项用 `IMG-...` 标题，正文放在 `### 可复制提示词` 引用块。
 
 ## Quick Start
 
-新项目和独立任务只写 `剧集/<EP>/图片提示词.md`。每项用可读 `IMG-...` 标题，正文放在
-`### 可复制提示词` 引用块；不同时生成 prompt spec JSONL、渲染副本、QA 或接受记录。已有结构化
-项目继续其 `image-prompt-specs.jsonl` 与渲染流程。
-创作者可读说明跟随项目语言；可复制正文严格跟随 `short-drama.json#/format/prompt_language`。
+```text
+用 $short-drama-image-prompts 为 EP001 已确定的人物、地点和道具写可直接复制的图片提示词
+```
 
 ## 入口
 
-有当前视觉设定即可直接开始；剧本只在提示词需要确认剧情状态时读取。Look Development 是可选分支，
-不是固定门槛。先确认用途：身份板、造型/状态变体、地点 plate、道具 plate、跨对象 production sheet
-或明确的 Look Development 比较帧。
+有当前视觉设定即可直接开始；剧本只在提示词需要确认剧情状态时读取。Look Development 是可选分支。
+先确认用途：身份板、造型/状态变体、地点板、道具板、组合 production sheet 或比较风格帧。
+
+创作者可读说明跟随项目语言；可复制正文跟随 `short-drama.json#/format/prompt_language`。没有
+`short-drama.json` 时正文默认
+使用 `en`，并在同一任务中保持一致；不能从创作者说明语言推断提示词语言。
 
 ## 工作流
 
-1. **锁定目标**：这一张图要固定哪个身份、状态、空间或比较变量。
-2. **整理输入**：只读所需资产事实、视觉方向、负面约束和已提供参考图。
-3. **写提示词**：主体与身份锚点 → 当前变体 → 构图/视角 → 光色/材质 → 背景边界 → 禁止项。
-4. **说明参考用途**：每张参考只控制身份、造型、地理、构图或风格中的明确部分，不让参考越权。
-5. **检查矛盾**：身份与变体不混、单图目标清楚、文字政策明确、没有互斥视角或光线要求。
-6. **自动续跑**：用户要“全部资产”就完成全部；资产组只是内部批次，不逐组请求接受。
+1. 锁定这一张图要固定的身份、状态、空间或比较变量。
+2. 只读所需资产事实、视觉方向、负面约束和已提供参考图。
+3. 按“主体与身份锚点 → 当前变体 → 构图/视角 → 光色/材质 → 背景边界 → 禁止项”写正文。
+4. 每张参考只控制身份、造型、地理、构图或风格中的明确部分。
+5. 检查身份与变体、文字政策、视角和光线是否冲突。
+6. 用户要全部资产就完成全部，资产组只是内部批次。
 
 ## 提示词要求
 
-- 提示词开头先写对象和用途，不用风格词淹没身份。
-- 只包含当前图能同时满足的要求；多视图/状态对照必须明确版面关系。
+- 开头先写对象和用途，不用风格词淹没身份。
+- 只包含当前图能同时满足的要求；多视图/状态对照写清版面关系。
 - 保留稳定识别锚点，变体只改允许变化的部分。
-- 避免“高级、震撼、电影级、8K”等无验证作用的堆词。
-- 可见文字、logo、水印、界面和字幕按项目政策明确允许或禁止。
+- 避免无验证作用的质量词堆砌。
+- 可见文字、logo、水印、界面和字幕明确允许或禁止。
 - 正文可直接复制，不含占位符、流程说明、文件路径或 QA 结论。
 
-默认只读本 SKILL 和当前视觉设定，不遍历或预读 `references/`。只有复杂多视图/变体、地点地理、
-功能道具、组合板或局部修订遇到含混时，才读取对应的 `look-and-state-variant.md`、
-`location-plate.md`、`prop-plate.md`、`production-sheet-recipes.md` 或 `edit-and-revision.md` 一份。
+## 按需知识
 
-## 旧项目兼容
+默认只读本 SKILL 和当前视觉设定。遇到对应问题时只打开一份：
 
-已有结构化规格时继续使用 `assets/image-prompt-spec.jsonl.md`、`image_prompt_check.py` 和既有发布命令；
-渲染 Markdown 仍是规格视图。不要把旧项目迁移，也不要在 creator-first 项目为了跑检查器补写 JSONL。
+- 阶段边界与规则分级：[阶段契约](references/stage-contract.md)
+- 普通单图的最小配方：[通用配方](references/common-recipe.md)
+- 人物身份板与造型一致性：[人物与造型](references/character-and-look.md)
+- 地点地理、视角和光线：[地点板](references/location-plate.md)
+- 功能道具、尺度、材质与文字：[道具板](references/prop-plate.md)
+- 造型和状态变体：[造型与状态变体](references/look-and-state-variant.md)
+- 多对象组合板：[Production Sheet 配方](references/production-sheet-recipes.md)
+- 比较视觉方向的代表帧：[Lookdev 风格帧](references/lookdev-frame.md)
+- 局部修改和 preserve set：[定点修改](references/edit-and-revision.md)
+- 完成前的可生成性检查：[审查与示例](references/review-and-fixtures.md)
 
 ## 完成与投产
 
-每个点名对象都有明确用途、可复用正文、参考边界和禁止项，且相互不矛盾，即完成。实际生成必须
-转 `$short-drama-produce`，展示精确任务后取得显式确认；本技能不调用外部服务。
+每个点名对象都有明确用途、可复制正文、参考边界和禁止项，且相互不矛盾，即完成。实际生成必须
+转 `$short-drama-produce`，展示精确任务并取得显式确认；本技能不调用外部服务。
 
 ## 安装维护
 
-安装、升级或旧项目排障时才运行 `python3 scripts/selftest.py` 和
-`python3 scripts/image_prompt_check.py ...`；普通 creator-first 提示词创作不运行它们。
+只有安装、升级或排障时运行 `python3 scripts/selftest.py`。

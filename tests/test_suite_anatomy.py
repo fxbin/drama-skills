@@ -222,13 +222,10 @@ class SuiteAnatomyTests(unittest.TestCase):
                     )
 
     def test_deterministic_validators_are_linked_from_their_owning_skills(self) -> None:
+        # Creator-first authoring skills operate directly on the five Markdown
+        # documents. Only tools that remain part of the public workflow belong
+        # in SKILL.md; historical JSON fixtures are still exercised separately.
         expected = {
-            "short-drama-storyboard": {"scripts/storyboard_check.py"},
-            "short-drama-video-prompts": {
-                "scripts/container_check.py",
-                "scripts/motion_timing_check.py",
-            },
-            "short-drama-write": {"scripts/voice_sheet_check.py"},
             "short-drama-novel-analyze": {"scripts/novel_index.py"},
             "short-drama-produce": {"scripts/production_tool.py"},
         }
@@ -700,21 +697,17 @@ if __name__ == "__main__":
 
 
 class DiagnosticCatalogueTests(unittest.TestCase):
-    """Every code a checker can emit must appear in its skill's catalogue.
+    """Every public checker code must appear in its skill's public guidance.
 
-    Eleven `SHT01_*` codes were emitted and none were listed; adding this test
-    surfaced sixteen more, including the whole `VOICE_*` family. A creator who
-    hits one has no way to look up what it means, or whether it is the script's
-    call or a reviewer's -- which is the question the catalogue exists to answer.
+    Retired JSON fixture checkers remain executable for maintainer regression,
+    but creator-first SKILL.md files must not advertise their diagnostics.
     """
 
     CODE_RE = re.compile(r'_finding\(\s*"([A-Z][A-Z0-9]*_[A-Z0-9_]+)"')
 
-    def emitted_codes(self, skill: Path) -> set[str]:
+    def emitted_codes(self, scripts: set[Path]) -> set[str]:
         codes: set[str] = set()
-        for script in sorted((skill / "scripts").glob("*.py")):
-            if script.name == "selftest.py":
-                continue
+        for script in sorted(scripts):
             codes |= set(self.CODE_RE.findall(script.read_text(encoding="utf-8")))
         return codes
 
@@ -722,7 +715,13 @@ class DiagnosticCatalogueTests(unittest.TestCase):
         for skill in sorted((SUITE / "skills").iterdir()):
             if not skill.is_dir():
                 continue
-            emitted = self.emitted_codes(skill)
+            skill_md = skill / "SKILL.md"
+            linked_scripts = {
+                (skill / target).resolve()
+                for target in local_markdown_targets(skill_md)
+                if target.endswith(".py") and (skill / target).is_file()
+            }
+            emitted = self.emitted_codes(linked_scripts)
             if not emitted:
                 continue
             catalogue = "\n".join(

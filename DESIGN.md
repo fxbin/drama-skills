@@ -28,7 +28,7 @@ navigation.
 - Answer within ten seconds: which project, which episode, current work, next action.
 - Organize work by project, episode, scene, character, and shot instead of files.
 - Let creators read and edit story content without understanding its storage format.
-- Keep version choice explicit: saving text never means adopting a creative version.
+- Keep save semantics explicit: saving persists the current Markdown and does not launch production.
 - Explain problems in terms of audience or production impact.
 - Export production materials by purpose.
 
@@ -53,18 +53,18 @@ records, images, and video are rendered as creator-facing documents, cards, or
 media previews in the permanent reading area. Selecting another item replaces that
 area in place; it never opens a modal or another page.
 
-### Creator-facing states
+### Creator-facing progress
 
-Use only these creator-facing states:
+Infer progress from the five visible documents and media, without a separate lifecycle file:
 
-- 待你确认
-- 需要修改
-- 需要更新
-- 已采用
+- 未开始
+- 创作中
+- 提示词就绪
+- 已有媒体
 
-The page shows only a compact plain-language reminder. Until creator-safe action APIs
-exist, adoption feedback and export requests are handed back to the conversation; the
-Dashboard must not imitate an action it cannot complete.
+The page shows only a compact plain-language reminder. Production confirmation and export
+requests are handed back to the conversation; the Dashboard must not imitate an action it
+cannot complete.
 
 ## Interaction rules
 
@@ -72,13 +72,13 @@ Dashboard must not imitate an action it cannot complete.
 
 - Save persists the current edit.
 - The interface shows saved, saving, unsaved, and conflict states in plain language.
-- Save does not adopt the content as the chosen creative version.
+- Save does not confirm or launch external production.
 
-### Adopt or return
+### Revise or continue
 
-- The Dashboard does not pretend that saving adopts a version.
-- Pending work is read in place; the creator gives the decision in the conversation.
-- A future action API may shorten this loop, but it must not add a second mode or page.
+- The creator reads and edits the current document in place.
+- Requests to revise, continue, review, export, or produce return to the conversation.
+- A future action API may shorten this loop, but it must not create a second source of truth.
 
 ### Problems
 
@@ -118,21 +118,20 @@ The target public handoff is:
 ```text
 项目/
 ├── 原始资料/
-├── 创作内容/
-│   ├── 项目设定/
-│   └── 剧集/
-│       └── EP001/
-│           ├── 剧本.md
-│           ├── 视觉设定.md
-│           ├── 分镜.md
-│           ├── 图片提示词.md
-│           └── 视频提示词.md
+├── 剧集/
+│   └── EP001/
+│       ├── 剧本.md
+│       ├── 视觉设定.md
+│       ├── 分镜.md
+│       ├── 图片提示词.md
+│       └── 视频提示词.md
+├── 审查/
+│   └── EP001-审查.md
 └── 导出/
 ```
 
-Existing projects remain readable while storage migration is introduced safely. The
-Dashboard must already present the simplified creator model even when an older project
-still uses the existing internal layout.
+The Dashboard classifies the five Chinese document names into story, cast, storyboard,
+and prompt groups, opens `剧本.md` first, and derives episode progress from visible files.
 
 ## Implementation constraints
 
@@ -148,6 +147,6 @@ still uses the existing internal layout.
 ## Delivery sequence
 
 1. Replace the file console with the single creator workspace.
-2. Add creator-safe adopt, return, problem, and export actions.
+2. Add creator-safe revise, review, production-preview, and export actions.
 3. Introduce logical content identifiers independent of storage paths.
-4. Migrate new projects to the simplified public directory and keep old projects readable.
+4. Keep the five Markdown files as the only creator-facing episode truth.

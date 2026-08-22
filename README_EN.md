@@ -71,8 +71,8 @@ done
 
 Each skill is an independent installation unit. For a single writing, review, or
 production capability, link only that directory. `short-drama` provides project
-initialization and the Dashboard, plus status/delivery commands for older structured
-projects; it is not an installation gate for the other skills.
+initialization, routing, and the Dashboard; it is not an installation gate for the
+other skills.
 
 </details>
 
@@ -112,18 +112,14 @@ Use $short-drama-review to review EP001's script and prompts
 ```
 
 Normal creative work does not run installation self-tests or create JSON/JSONL,
-fingerprints, QA reports, coverage sheets, or review records for every stage batch.
-Scene/asset/shot batches continue automatically within the requested scope. Existing
-structured projects remain readable and are never auto-migrated.
+fingerprints, QA reports, or coverage sheets for every stage batch. Scene/asset/shot
+batches continue automatically within the requested scope. When review is requested,
+its result is written as creator-readable Markdown.
 
-Samples live in [examples/](examples/). For a complete creator-first five-document
-episode, see [*Let You Run the Account*, EP001](examples/creator-first/EP001/).
-To see the older structured text chain,
-read the [one-episode excerpt chain](examples/excerpt-chain/): screenplay, assets
-with their image prompts, storyboard, motion prompts. The verifiable eight-episode
-[Golden Sample, *Kindness Is Not a Debt*](examples/golden-project/), demonstrates
-the full path from development and byte-stable screenplay indexes through assets,
-image prompts, storyboards, keyframes, motion prompts, and review.
+Samples live in [examples/](examples/). The public creator-first sample is
+[*Let You Run the Account*, EP001](examples/creator-first/EP001/). Other example
+directories are repository-maintenance and validator-regression fixtures rather than
+instructions for the current workflow.
 To walk the ten skills as one comic-drama production line, with per-step commands,
 outputs, and common pitfalls, see the
 [comic-drama workflow guide](docs/comic-drama-workflow.md) (Chinese).
@@ -157,7 +153,7 @@ flowchart LR
 
 | Skill | Responsibility |
 |---|---|
-| `short-drama` | Init, routing, visual direction/Look Development, Dashboard, and status/delivery for older structured projects |
+| `short-drama` | Init, routing, visual direction/Look Development, and Dashboard |
 | `short-drama-novel-analyze` | Sampled adaptation triage, chapter index, per-chapter function extraction, story units and rhythm, adaptation value, and episode candidates for a long source |
 | `short-drama-develop` | Traceable adaptation, Agent-led indexing/slicing/resume for complete multi-episode scripts, story engine, episode map, director brief, genre & hook playbook |
 | `short-drama-write` | Episode contract, causal beats, performable screenplay, and the project's accepted production dialect |
@@ -168,17 +164,13 @@ flowchart LR
 | `short-drama-produce` | Preview a bounded image/video/TTS/music job, require explicit confirmation, execute an external adapter, and record results; optional Seedance, GPT Image 2, and MiniMax Music profiles are included |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
-`$short-drama` is the entry router: it initializes, resumes, and opens the Dashboard,
-while older structured projects keep the existing status/delivery commands. Creator-first
-delivery selects the requested Markdown and media directly instead of creating lifecycle
+`$short-drama` is the entry router: it initializes, resumes, and opens the Dashboard.
+Delivery selects the requested Markdown and media directly instead of creating lifecycle
 records just for packaging. An existing single-episode
 screenplay can enter normalization or asset extraction directly. When a complete
 multi-episode script needs an episode map, development indexes its actual structure once,
 reads one verified slice at a time, and resumes from the on-disk map. An idea or long-form
 source enters through story development.
-
-Project state stays creator-readable: needs confirmation, accepted, revise, approved,
-or update needed. Input/output drift is checked on read.
 
 The three single-frame prompt paths have distinct ownership: project-level
 `lookdev_frame` prompts test an accepted visual direction; asset prompts preserve

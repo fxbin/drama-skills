@@ -174,17 +174,11 @@ class CheckerSweepTests(unittest.TestCase):
 
 
 class CanonicalPathTests(unittest.TestCase):
-    """The reference run must use the filenames the skills document.
+    """The recorded historical evaluation must remain internally complete.
 
-    A reference run is read as an example, so a path it invents is a path people
-    copy. This fixture shipped `voice-sheet.jsonl` and `storyboard/containers.jsonl`
-    while the skills document `voice-record-sheet.jsonl` and
-    `storyboard/delivery-containers.jsonl` -- close enough to look right, wrong
-    enough that the dashboard did not recognise either file.
-
-    Each row is checked twice: the file is where the fixture puts it, and the
-    name still appears in the SKILL.md that owns it. The second half is what
-    catches a rename on the skill side.
+    This fixture exercises retired deterministic validators. It is not public
+    creator-first workflow guidance, so active SKILL.md files must not advertise
+    its JSON/JSONL filenames merely to keep the fixture discoverable.
     """
 
     # (path under the episode/project root, owning skill)
@@ -207,25 +201,12 @@ class CanonicalPathTests(unittest.TestCase):
         ("设定集/props.jsonl", "short-drama-assets"),
     )
 
-    def test_the_fixture_uses_the_documented_filenames(self) -> None:
-        for relative, owner in self.CANONICAL:
+    def test_the_fixture_contains_every_input_its_checker_sweep_uses(self) -> None:
+        for relative, _owner in self.CANONICAL:
             with self.subTest(path=relative):
                 self.assertTrue(
                     (RUN / relative).is_file(),
                     f"{relative} is missing from the reference run",
-                )
-                name = relative.rsplit("/", 1)[-1]
-                # Some stages name their outputs in SKILL.md, others only in the
-                # `destination` of a shipped example, so search the whole skill.
-                documented = any(
-                    name in doc.read_text(encoding="utf-8", errors="ignore")
-                    for doc in (SKILLS / owner).rglob("*")
-                    if doc.is_file() and doc.suffix in {".md", ".json", ".jsonl"}
-                )
-                self.assertTrue(
-                    documented,
-                    f"nothing in skills/{owner}/ mentions {name}; the fixture and "
-                    f"the skill have drifted apart",
                 )
 
 

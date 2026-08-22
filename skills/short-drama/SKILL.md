@@ -1,29 +1,25 @@
 ---
 name: short-drama
-description: 基于文件系统初始化、继续短剧或漫剧项目并提供面向创作者的本地 Dashboard；也负责项目级制作形态、视觉方向和 Look Development 路由，以及旧结构化项目的状态与交付。用户提出“创建/继续短剧项目”“看进度/下一步”“做 Look Development”“打开 dashboard/短剧创作台”“导出制作资料”，或任务跨多个环节而需要判断负责技能时使用；明确的写作、资产、提示词、分镜或审查请求由对应子 skill 直接处理。
+description: 基于文件系统初始化和继续短剧或漫剧项目，提供 creator-first 五文档路由、本地 Dashboard、制作形态与 Look Development 决策。用户提出“创建/继续短剧项目”“看进度/下一步”“做 Look Development”“打开 dashboard/短剧创作台”“导出制作资料”，或任务跨多个创作阶段时使用；明确的写作、资产、提示词、分镜或审查请求由对应子 skill 直接处理。
 license: MIT
 ---
 
 # 短剧创作路由
 
-本技能负责项目级路由、初始化和 Dashboard；旧结构化项目的状态与交付仍由现有生命周期命令处理。
-各阶段正文由对应 owner 完成。
+本技能负责项目初始化、跨阶段路由、制作形态与 Dashboard。各阶段正文由对应 owner 完成。
 
 ## Quick Start
 
-新项目和独立任务遵守 [creator-first 工作流](references/creator-workflow.md)：每集最多五份创作者
-Markdown，按需创建，不为了流程完整生成 JSON/JSONL、索引、指纹、QA 或交接文件。五份文档格式
-见 [creator-documents.md](references/creator-documents.md)。
-
-已经存在 `screenplay.md`、`*.json` 或 `*.jsonl` 权威产物的项目继续原布局；不迁移、不同时维护
-两套真相。`short-drama.json` 和工具写入的隐藏运行状态不算创作产物。
+所有项目统一使用 [creator-first 工作流](references/creator-workflow.md)：每集按需维护
+`剧本.md`、`视觉设定.md`、`分镜.md`、`图片提示词.md`、`视频提示词.md`，不建立并行的结构化创作真相。
+具体写法见 [五份创作文档](references/creator-documents.md)。
 
 ## 路由
 
 | 用户要做什么 | owner / 行为 |
 |---|---|
 | 开发点子、系列承诺、改编和分集地图 | `$short-drama-develop`，仅在用户需要时 |
-| 已有多集完整剧本/散稿，需要识别分集并续跑 | `$short-drama-develop` 按实际边界建立索引 |
+| 已有多集完整剧本/散稿识别分集 | `$short-drama-develop` 按实际边界建立临时索引 |
 | 分析长篇原著 | `$short-drama-novel-analyze`，仅在用户需要时 |
 | 写或改单集剧本 | `$short-drama-write` → `剧本.md` |
 | 拆人物、造型、地点、道具 | `$short-drama-assets` → `视觉设定.md` |
@@ -31,21 +27,24 @@ Markdown，按需创建，不为了流程完整生成 JSON/JSONL、索引、指�
 | 做镜头和冻结关键帧 | `$short-drama-storyboard` → `分镜.md` |
 | 写视频/时间线音乐提示词 | `$short-drama-video-prompts` → `视频提示词.md` |
 | 实际生成媒体 | `$short-drama-produce`，先预览，再显式确认，最后运行 |
-| 审稿或校验 | `$short-drama-review`，只有用户点名或交付明确需要时 |
-| 初始化、Dashboard；旧项目状态/导出 | 本技能 |
+| 审稿或校验 | `$short-drama-review`，仅在用户点名时 |
+| 初始化、Dashboard、归档点名文档 | 本技能 |
 
-直接入场合法：现成剧本可直接拆资产；已有视觉事实可直接写图片提示词或分镜；已有分镜可直接写
-视频提示词。不要补造没有创作价值的上游文件。
+`项目开发/` 中的长材料分析与分集索引是可选分析工作区，不参与单集布局判定；写任何一集仍只维护
+该集的五份 creator-first Markdown。
+
+现成剧本可直接拆资产；已有视觉事实可直接写图片提示词或分镜；已有分镜可直接写视频提示词。
+不要为补齐名义流水线伪造上游。
 
 ## 执行请求
 
-1. 找到用户给出的项目/资料，只读当前任务的直接输入。
-2. 把用户点名的完整范围交给相应 owner；批次只用于内部控制上下文，自动续跑。
+1. 找到用户给出的项目或资料，只读当前任务的直接输入。
+2. 把用户点名的完整范围交给相应 owner；批次只控制上下文，自动续跑。
 3. 只有真实创作分叉才询问；不要拿 schema、目录、事务或检查器询问创作者。
-4. 范围完成后一次回报：完成内容、关键决定、真实未决项、可选下一步。
-5. 不自动开始用户没点名的审查、交付或生产。
+4. 范围完成后一次回报完成内容、关键决定、真实未决项和可选下一步。
+5. 不自动开始用户没点名的审查、归档或生产。
 
-## 初始化
+## 初始化与 Dashboard
 
 需要项目配置时运行：
 
@@ -53,51 +52,35 @@ Markdown，按需创建，不为了流程完整生成 JSON/JSONL、索引、指�
 python3 {技能目录}/scripts/project_tool.py init ./my-drama --title "示例短剧"
 ```
 
-`init` 只建立配置和空目录，不生成故事。creator-first 文档在第一次被请求时直接写入
-`剧集/<EP>/`；不要预建五个空文件。这个目录沿用 Dashboard 已识别的集路径，不再增加第三套根目录。
-
-## 旧项目生命周期
-
-旧布局继续使用现有命令，不改行为：
-
-```text
-project_tool.py status <project>
-project_tool.py publish <project> ...
-project_tool.py accept <project> ...
-project_tool.py review <project> ...
-project_tool.py package <project> ...
-project_tool.py verify <delivery>
-```
-
-这些命令服务已有结构化项目；creator-first 普通创作不为了使用它们而复制 Markdown。命令参数和
-安全边界见 [lifecycle-commands.md](references/lifecycle-commands.md)。
-
-## Dashboard
-
-用户明确要求 Dashboard 时，从技能目录运行：
+`init` 只建立配置和空目录；第一次创作时再把文档写入 `剧集/<EP>/`，不预建空文件。
+项目定位与安全写入见 [运行预检](references/runtime-preflight.md)。用户明确要求 Dashboard 时运行：
 
 ```bash
-python3 scripts/dashboard_server.py --workspace <workspace> --port 0 --open
+python3 {技能目录}/scripts/dashboard_server.py --workspace <workspace> --port 0 --open
 ```
 
-Dashboard 只展示它能识别的现有项目文件，不负责工作流编排、媒体生产或创作者接受。
+Dashboard 展示和编辑创作文件，不负责工作流编排或媒体生产。
 
 ## 项目级创作决定
 
-制作形态、视觉方向、播放面和集长目标确实会约束多个阶段时，先展示选择及影响，再由用户决定。
-旧项目可用 `set-authority` 写入已接受决定；creator-first 文档只引用决定结果，不复制审批过程。
+制作形态、视觉方向、播放面和集长目标确实约束多个阶段时，展示选择及影响后由用户决定。
 Look Development 是可选分支，不是进入图片提示词或分镜的固定门槛。
+
+按问题只读取一份相关知识：
+
+- 规则分级与 owner 路由：[规则与路由索引](references/knowhow-index.md)
+- 输出语言、稳定 ID、所有权与安全边界：[契约与所有权](references/contract-and-ownership.md)
+- 实拍、二维、三维、水墨、Q 版、国漫的形态差异：[制作形态](references/production-form-profiles.md)
+- 需要比较代表帧时：[Look Development](references/look-development.md)
+- 参考图能控制什么：[参考角色](references/reference-roles.md)
+- 遮挡、延迟揭示和观众知情时机：[观众揭示](references/audience-reveal.md)
+- 母版、补拍和替代版的职责：[补拍与替代](references/pickup-and-alternate.md)
 
 ## 生产与交付边界
 
-外部生产永远保留 `preview -> explicit confirm -> run`。交付只包含用户点名的当前文档和成品，排除
-私有输入、凭据、绝对路径和隐藏运行状态。creator-first 直接复制或归档这些点名文件；旧项目才使用
-生命周期 `package`。校验和只能证明字节未变，不能证明创作质量。
+外部生产永远保留 `preview -> explicit confirm -> run`。归档只复制用户点名的当前文档和成品，排除
+私有输入、凭据、绝对路径与隐藏运行状态；不为归档补造审批、哈希或第二套内容。
 
 ## 安装维护
 
-只有安装、升级或排障时运行：
-
-```bash
-python3 scripts/selftest.py
-```
+只有安装、升级或排障时运行 `python3 scripts/selftest.py`。
