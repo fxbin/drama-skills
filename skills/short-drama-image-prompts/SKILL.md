@@ -11,7 +11,7 @@ license: MIT
 
 ## Quick Start
 
-新项目和独立任务只写 `创作内容/剧集/<EP>/图片提示词.md`。每项用可读 `IMG-...` 标题，正文放在
+新项目和独立任务只写 `剧集/<EP>/图片提示词.md`。每项用可读 `IMG-...` 标题，正文放在
 `### 可复制提示词` 引用块；不同时生成 prompt spec JSONL、渲染副本、QA 或接受记录。已有结构化
 项目继续其 `image-prompt-specs.jsonl` 与渲染流程。
 创作者可读说明跟随项目语言；可复制正文严格跟随 `short-drama.json#/format/prompt_language`。
@@ -22,11 +22,6 @@ license: MIT
 不是固定门槛。先确认用途：身份板、造型/状态变体、地点 plate、道具 plate、跨对象 production sheet
 或明确的 Look Development 比较帧。
 
-按用途读取资料：人物/造型见 [character-and-look.md](references/character-and-look.md)，变体见
-[look-and-state-variant.md](references/look-and-state-variant.md)，地点见
-[location-plate.md](references/location-plate.md)，道具见 [prop-plate.md](references/prop-plate.md)，
-组合板见 [production-sheet-recipes.md](references/production-sheet-recipes.md)。
-
 ## 工作流
 
 1. **锁定目标**：这一张图要固定哪个身份、状态、空间或比较变量。
@@ -36,9 +31,6 @@ license: MIT
 5. **检查矛盾**：身份与变体不混、单图目标清楚、文字政策明确、没有互斥视角或光线要求。
 6. **自动续跑**：用户要“全部资产”就完成全部；资产组只是内部批次，不逐组请求接受。
 
-通用写法见 [common-recipe.md](references/common-recipe.md)，修订见
-[edit-and-revision.md](references/edit-and-revision.md)。
-
 ## 提示词要求
 
 - 提示词开头先写对象和用途，不用风格词淹没身份。
@@ -47,6 +39,10 @@ license: MIT
 - 避免“高级、震撼、电影级、8K”等无验证作用的堆词。
 - 可见文字、logo、水印、界面和字幕按项目政策明确允许或禁止。
 - 正文可直接复制，不含占位符、流程说明、文件路径或 QA 结论。
+
+默认只读本 SKILL 和当前视觉设定，不遍历或预读 `references/`。只有复杂多视图/变体、地点地理、
+功能道具、组合板或局部修订遇到含混时，才读取对应的 `look-and-state-variant.md`、
+`location-plate.md`、`prop-plate.md`、`production-sheet-recipes.md` 或 `edit-and-revision.md` 一份。
 
 ## 旧项目兼容
 

@@ -71,8 +71,8 @@ done
 
 Each skill is an independent installation unit. For a single writing, review, or
 production capability, link only that directory. `short-drama` provides project
-initialization, status, delivery, and the Dashboard; it is not an installation gate
-for the other skills.
+initialization and the Dashboard, plus status/delivery commands for older structured
+projects; it is not an installation gate for the other skills.
 
 </details>
 
@@ -157,7 +157,7 @@ flowchart LR
 
 | Skill | Responsibility |
 |---|---|
-| `short-drama` | Init, routing, visual direction/Look Development, simple status, confirmation/review, delivery |
+| `short-drama` | Init, routing, visual direction/Look Development, Dashboard, and status/delivery for older structured projects |
 | `short-drama-novel-analyze` | Sampled adaptation triage, chapter index, per-chapter function extraction, story units and rhythm, adaptation value, and episode candidates for a long source |
 | `short-drama-develop` | Traceable adaptation, Agent-led indexing/slicing/resume for complete multi-episode scripts, story engine, episode map, director brief, genre & hook playbook |
 | `short-drama-write` | Episode contract, causal beats, performable screenplay, and the project's accepted production dialect |
@@ -168,8 +168,10 @@ flowchart LR
 | `short-drama-produce` | Preview a bounded image/video/TTS/music job, require explicit confirmation, execute an external adapter, and record results; optional Seedance, GPT Image 2, and MiniMax Music profiles are included |
 | `short-drama-review` | Structural/content review, project-bounded diagnosis from authorized production observations, and revision verdicts |
 
-`$short-drama` is the entry router: it initializes, resumes, shows status, and delivers
-projects, dispatching the actual work to the matching skill. An existing single-episode
+`$short-drama` is the entry router: it initializes, resumes, and opens the Dashboard,
+while older structured projects keep the existing status/delivery commands. Creator-first
+delivery selects the requested Markdown and media directly instead of creating lifecycle
+records just for packaging. An existing single-episode
 screenplay can enter normalization or asset extraction directly. When a complete
 multi-episode script needs an episode map, development indexes its actual structure once,
 reads one verified slice at a time, and resumes from the on-disk map. An idea or long-form

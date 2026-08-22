@@ -11,7 +11,7 @@ license: MIT
 
 ## Quick Start
 
-新项目和独立任务只写 `创作内容/剧集/<EP>/分镜.md`。每镜使用稳定 `SHOT-...` 标题，冻结关键帧
+新项目和独立任务只写 `剧集/<EP>/分镜.md`。每镜使用稳定 `SHOT-...` 标题，冻结关键帧
 提示词写在同一镜下；不另建 coverage、audition、scene plan、shots/keyframes JSONL、QA 或审核文件。
 这些比较和覆盖检查留在本轮上下文。已有结构化项目继续原布局。
 创作者可读分镜跟随项目语言；冻结关键帧正文跟随 `short-drama.json#/format/prompt_language`。
@@ -20,12 +20,6 @@ license: MIT
 
 当前剧本加必要视觉事实即可直接进入。资产图片提示词与分镜是兄弟分支，不互相等待。只有关键场次
 真的存在多个成立导演方案时，才在上下文比较覆盖方案；普通场次直接设计。
-
-镜头职责见 [shot-craft.md](references/shot-craft.md)，场次视觉计划见
-[scene-visual-plan.md](references/scene-visual-plan.md)，可制作语法见
-[production-shot-grammar.md](references/production-shot-grammar.md)，空间调度见
-[blocking-playbooks.md](references/blocking-playbooks.md)。漫剧关键帧风格与质量见
-[comic-keyframe-lexicon.md](references/comic-keyframe-lexicon.md)。
 
 ## 工作流
 
@@ -37,9 +31,6 @@ license: MIT
 6. **冻结关键帧**：默认每镜一个可见起点；提示词描述一个瞬间，不把运动过程塞进静帧。
 7. **自动续跑**：整集请求完成整集，场次只是内部批次；末端一次报告覆盖、节奏和真实未决选择。
 
-关键帧方法见 [keyframe-craft.md](references/keyframe-craft.md)，剧本到关键帧示例见
-[screenplay-to-keyframe-example.md](references/screenplay-to-keyframe-example.md)。
-
 ## 镜头要求
 
 - 每镜有唯一职责、明确来源、可见起止状态和合理时长。
@@ -50,10 +41,13 @@ license: MIT
 - 冻结关键帧只写该瞬间能看见的内容；文字、手指、反射和遮挡要可生成。
 - 规则检查发现明确遗漏就直接修正文档，不为通过检查器生成覆盖表。
 
+默认只读本 SKILL、当前剧本和必要视觉事实，不遍历或预读 `references/`。只有关键场次需要比较导演
+方案、复杂群戏/空间调度、特殊漫剧画风或镜头身份修订时，才读取对应的一份参考。
+
 ## 修订
 
 保留未受影响的镜头 ID。拆镜、并镜或改变镜头职责时，在回报中说明哪些下游视频提示词需要刷新；
-不自动重写它们。镜头身份判断见 [shot-revision-identity.md](references/shot-revision-identity.md)。
+不自动重写它们。镜头身份确实含混时再读 `references/shot-revision-identity.md`。
 
 ## 旧项目兼容
 

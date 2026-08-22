@@ -60,7 +60,7 @@ done
 ```
 
 每个技能都是独立安装单元；只使用写作、审查或生产等单一能力时，可以只链接对应目录。
-`short-drama` 提供项目初始化、状态、交付与 Dashboard，但不是其他技能的安装门禁。
+`short-drama` 提供项目初始化与 Dashboard，以及旧结构化项目的状态/交付命令，但不是其他技能的安装门禁。
 
 </details>
 
@@ -137,7 +137,7 @@ flowchart LR
 
 | 技能 | 职责 |
 |---|---|
-| `short-drama` | 初始化、路由、视觉方向/Look Development、简洁状态、确认/复核与交付 |
+| `short-drama` | 初始化、路由、视觉方向/Look Development、Dashboard，以及旧结构化项目的状态与交付 |
 | `short-drama-novel-analyze` | 长篇原著的抽样改编快评、章节索引、逐章功能提取、剧情单元与节奏、改编价值与分集候选 |
 | `short-drama-develop` | 小说/长材料的可追溯改编、多集整稿的 Agent 主导切片与续跑、故事引擎、分集地图、导演阐述、题材与钩子手册 |
 | `short-drama-write` | 单集目标、因果节拍、可拍剧本和项目选择的制作稿格式 |
@@ -148,9 +148,8 @@ flowchart LR
 | `short-drama-produce` | 展示有边界的图片/视频/TTS/音乐任务，取得本次明确确认后通过外部 adapter 执行并记录结果；可选支持 Seedance、GPT Image 2 与 MiniMax Music |
 | `short-drama-review` | 结构/内容审查、授权生产观察的项目级校准诊断与修订结论 |
 
-`$short-drama` 是入口路由，负责初始化、继续、显示状态和交付，把具体工作转给对应技能。
-项目生命周期只有“待确认、已接受、需修改、已通过、需更新”等创作者可读状态；输入和输出
-变化在读取时检查。
+`$short-drama` 是入口路由，负责初始化、继续和 Dashboard，把具体工作转给对应技能；旧结构化项目
+继续使用现有状态与交付命令。creator-first 交付直接选择五份 Markdown 与成品，不为打包补建生命周期记录。
 现成单集剧本可以直接进入规范化或资产拆解；多集整稿需要生成分集地图时，由开发技能按
 文件实际结构建立一次索引、逐集切片并断点续跑；点子从故事开发进入。手上是一部长篇原著时，
 先走 `$short-drama-novel-analyze` 抽样快评，值得拆再拆出分析层与分集候选，

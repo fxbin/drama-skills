@@ -6,11 +6,11 @@
 
 | 阶段 | owner | 文件 |
 |---|---|---|
-| 剧本 | `short-drama-write` | `创作内容/剧集/<EP>/剧本.md` |
-| 视觉资产 | `short-drama-assets` | `创作内容/剧集/<EP>/视觉设定.md` |
-| 分镜与冻结关键帧 | `short-drama-storyboard` | `创作内容/剧集/<EP>/分镜.md` |
-| 图片提示词 | `short-drama-image-prompts` | `创作内容/剧集/<EP>/图片提示词.md` |
-| 视频提示词 | `short-drama-video-prompts` | `创作内容/剧集/<EP>/视频提示词.md` |
+| 剧本 | `short-drama-write` | `剧集/<EP>/剧本.md` |
+| 视觉资产 | `short-drama-assets` | `剧集/<EP>/视觉设定.md` |
+| 分镜与冻结关键帧 | `short-drama-storyboard` | `剧集/<EP>/分镜.md` |
+| 图片提示词 | `short-drama-image-prompts` | `剧集/<EP>/图片提示词.md` |
+| 视频提示词 | `short-drama-video-prompts` | `剧集/<EP>/视频提示词.md` |
 
 没有内容时不预建空文件。一个请求只创建它实际需要的文档；直接从剧本、视觉设定、分镜或提示词
 任一阶段进入都合法，不为补齐名义流水线伪造上游。
@@ -56,4 +56,5 @@
 
 图片、视频、TTS 和音乐生产仍遵守 `preview -> explicit confirm -> run`。生产工具可以在隐藏运行目录
 保存 job、确认和审计记录；这些是付费/外部副作用的必要边界，不要求模型把创作内容再抄成一套
-长期 JSON/JSONL。任何提示词、参数、输入或输出路径变化都需要重新预览和确认。
+长期 JSON/JSONL。creator-first job 必须把拥有当前提示词的 Markdown 写入 `source`，输出写到
+`剧集/<EP>/制作成果/`；任何提示词、参数、输入或输出路径变化都需要重新预览和确认。

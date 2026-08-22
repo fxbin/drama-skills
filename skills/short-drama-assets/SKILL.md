@@ -11,7 +11,7 @@ license: MIT
 
 ## Quick Start
 
-新项目和独立任务只写 `创作内容/剧集/<EP>/视觉设定.md`。出场清单、身份决定和连续性 delta 是
+新项目和独立任务只写 `剧集/<EP>/视觉设定.md`。出场清单、身份决定和连续性 delta 是
 本轮推理，不另存 occurrence、decision、ledger、QA 或审核文件。已有结构化项目继续原 JSONL 布局。
 
 ## 入口与边界
@@ -23,9 +23,6 @@ license: MIT
 - **镜头瞬态**：姿势、视线、左右手、站位和相机角度，由分镜拥有，不建资产；
 - **故事语义**：知识、目标、关系和情绪由写作/开发拥有，只引用其可见后果。
 
-方法见 [identity-vs-variant.md](references/identity-vs-variant.md) 与
-[stage-contract.md](references/stage-contract.md)。
-
 ## 工作流
 
 1. **读直接事实**：只读当前范围的剧本和已接受视觉方向。
@@ -35,10 +32,6 @@ license: MIT
 5. **检查连续性**：造型/伤势、持物/所有权、道具状态、地点时段/天气/光态与跨集 outgoing。
 6. **自动续跑**：整集请求处理完整集，场次只是内部批次；末端一次回报关键身份决定和未决指代。
 
-人物与造型见 [character-and-look.md](references/character-and-look.md)，地点见
-[location-and-view.md](references/location-and-view.md)，道具见 [prop-and-state.md](references/prop-and-state.md)，
-连续性见 [continuity-delta.md](references/continuity-delta.md)。
-
 ## 内容要求
 
 - 每项先写“什么不变使它仍是同一资产”，再写本集具体变化。
@@ -47,6 +40,10 @@ license: MIT
 - 不把剧情摘要复制进设定；只保留下游图片、分镜或连续性真正需要的事实。
 - 文字、标识和敏感可见信息遵守项目政策；不擅自补造品牌、徽标或私密信息。
 - 多集状态写清从何时生效、持续到何时；镜头内瞬态留给分镜。
+
+默认只读本 SKILL、当前剧本和已接受视觉方向，不遍历或预读 `references/`。只有身份/变体、复杂地点、
+功能道具或跨集状态确实含混时，才读取对应的 `identity-vs-variant.md`、`location-and-view.md`、
+`prop-and-state.md` 或 `continuity-delta.md` 一份。
 
 ## 旧项目兼容
 

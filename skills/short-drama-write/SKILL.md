@@ -10,9 +10,9 @@ license: MIT
 
 ## Quick Start
 
-新项目和独立任务只写 `创作内容/剧集/<EP>/剧本.md`。不要另建 episode card、beats、block index、
+新项目和独立任务只写 `剧集/<EP>/剧本.md`。不要另建 episode card、beats、block index、
 录音表、QA 或接受记录。场景 ID 写在 Markdown 标题即可；下游明确需要机器索引时再临时生成。
-通用边界见核心技能的 `references/creator-workflow.md` 与 `creator-documents.md`。
+场景标题使用 `## EP001-SC001 内 · 地点 · 时间/天气`；对白使用 `角色（可选表演提示）：台词`。
 
 已有结构化单集继续使用原来的 `screenplay.md`、卡片、节拍和索引，不迁移成第二套格式。
 
@@ -34,10 +34,6 @@ license: MIT
 5. **自动续跑**：用户要求整集就写完整集；场景只是内部批次，中途不逐场请求确认。
 6. **修订与自检**：局部修订保留不相关段落；直接修正明确问题，只把真实剧情分叉交给用户。
 
-格式见 [screenplay-format.md](references/screenplay-format.md)；可拍摄行动与场景设计见
-[script-craft.md](references/script-craft.md)；对白见 [dialogue-craft.md](references/dialogue-craft.md)；
-声音见 [scene-sound-dramaturgy.md](references/scene-sound-dramaturgy.md)。
-
 ## 写作要求
 
 - 每场都改变信息、权力、关系、情绪、物理状态或风险；没有变化的场删掉或合并。
@@ -48,10 +44,10 @@ license: MIT
 - 不用统一字数、镜头数或节拍数填模板；长度服从本集戏剧动作。
 - 用户原文优先；“去 AI 味”是定点修订，不抹平作者个性。
 
-遇到功能必须保留但实现可替换的桥段，使用
-[substitutable-realization.md](references/substitutable-realization.md) 区分功能与拍法。只有长单集确实
-跨上下文中断时才读取 [scene-handoff-capsule.md](references/scene-handoff-capsule.md)，且胶囊留在工作
-上下文，不作为默认项目文件。
+默认只读本 SKILL 和任务直接输入，不遍历或预读 `references/`。只有遇到对应难题时才打开一份：
+旧稿规范化读 [screenplay-format.md](references/screenplay-format.md)，场景/对白/声音专项修订分别读
+`script-craft.md`、`dialogue-craft.md`、`scene-sound-dramaturgy.md`。长单集确实跨上下文中断时才读
+`scene-handoff-capsule.md`，且胶囊只留在上下文。
 
 ## 时长估算（按需）
 
@@ -59,8 +55,9 @@ license: MIT
 
 ```bash
 TMP_DIR=$(mktemp -d)
-python3 scripts/screenplay_index.py 创作内容/剧集/EP001/剧本.md --output "$TMP_DIR/index.jsonl"
-python3 scripts/duration_estimate.py 创作内容/剧集/EP001/剧本.md \
+python3 scripts/screenplay_index.py 剧集/EP001/剧本.md --output "$TMP_DIR/index.jsonl" \
+  --speaker 江晨 --speaker 周薄森 --speaker 系统
+python3 scripts/duration_estimate.py 剧集/EP001/剧本.md \
   --index "$TMP_DIR/index.jsonl" --project short-drama.json
 rm -rf "$TMP_DIR"
 ```

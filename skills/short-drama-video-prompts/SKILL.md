@@ -11,7 +11,7 @@ license: MIT
 
 ## Quick Start
 
-新项目和独立任务只写 `创作内容/剧集/<EP>/视频提示词.md`。每镜使用 `MOTION-...` 标题并引用
+新项目和独立任务只写 `剧集/<EP>/视频提示词.md`。每镜使用 `MOTION-...` 标题并引用
 对应 `SHOT-...`；不另建 motion spec、delivery container、coverage、QA 或接受记录。已有结构化项目
 继续原 JSONL 和渲染布局。
 创作者可读说明跟随项目语言；可复制正文严格跟随 `short-drama.json#/format/prompt_language`。
@@ -22,11 +22,6 @@ license: MIT
 已确认起点到终点的变化：表演动作、道具状态、运镜、节奏和声音提示；静态身份、造型、地点和
 构图仍由参考帧/视觉设定拥有。
 
-运动配方见 [motion-recipe.md](references/motion-recipe.md)，表演时序见
-[performance-action-timing.md](references/performance-action-timing.md)，生成性见
-[generability.md](references/generability.md)，镜头与声音连续性见
-[camera-audio-continuity.md](references/camera-audio-continuity.md)。
-
 ## 工作流
 
 1. **写不能动的边框**：起始帧已锁定的身份、造型、空间、持物、光态和构图不可漂移。
@@ -36,8 +31,6 @@ license: MIT
 5. **检查单镜边界**：不跨到下一镜，不要求互斥动作，不让人物/道具瞬移或无因变形。
 6. **自动续跑**：用户要整集就完成整集；镜头组只是内部批次，不逐组请求接受。
 
-生产语言写法见 [production-prompt-grammar.md](references/production-prompt-grammar.md)。
-
 ## 提示词要求
 
 - 从可见的已确认起点开始，以可验证终点结束。
@@ -46,6 +39,9 @@ license: MIT
 - 运镜与人物动作不争夺注意力；复杂运镜必须有叙事理由。
 - 声音只写该镜需要的对白、画外音、环境或转场职责，不擅自补歌词和配乐成品。
 - 正文可直接复制，不含占位符、流程说明、文件路径或 QA 结论。
+
+默认只读本 SKILL、当前分镜和必要视觉事实，不遍历或预读 `references/`。只有复杂多人表演、精确
+口型/动作时序、特殊运镜与声音连续性或生成性风险时，才读取对应的一份参考。
 
 用户明确要求时间线音乐时，把音乐意图作为 `视频提示词.md` 的独立章节：使用区间、剧情功能、
 进入/退出方式、动态曲线与禁用项；歌词必须来自用户提供或明确接受的文本。只有确有多镜容器约束时

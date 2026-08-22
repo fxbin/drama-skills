@@ -13,7 +13,8 @@ license: MIT
 ## Quick Start
 
 只在用户明确要求实际生成后，从当前 `图片提示词.md`、`分镜.md`、`视频提示词.md` 或旧版规格中
-取出本次提示词，建立一个有边界的运行 job。这个 job 是生产工具的临时输入，不是第六份创作文档：
+取出本次提示词，建立一个有边界的运行 job。creator-first job 的 `source` 必须指向拥有这条提示词的
+当前 Markdown，输出放在 `剧集/<EP>/制作成果/`；这个 job 是生产工具的临时输入，不是第六份创作文档：
 
 ```bash
 python3 {技能目录}/scripts/production_tool.py prepare <project> --job <临时-job.json>
@@ -60,7 +61,8 @@ python3 <本技能目录>/scripts/production_tool.py audit <project>
 
 - **image**：读取当前图片 prompt/spec、必要参考图和明确的输出尺寸/数量。
 - **video**：读取当前 motion spec、对应 shot/keyframe、必要首尾帧和时长/画幅。
-- **tts**：读取当前录音表中的原句、说话人/声音参考和本句表演要求；不得在生产 job 中改词。
+- **tts**：creator-first 从 `剧本.md` 读取原句与表演要求，声音参考由用户或现有媒体明确提供；旧项目
+  读取当前录音表。不得在生产 job 中改词，也不为 TTS 新建第六份创作文档。
 - **music**：读取已接受的时间线音乐规格；主题曲使用已确认歌词，纯配乐不携带歌词。供应商不能
   精确承诺时长时，生成 source track 后仍由剪辑按 `mix_intent` 完成落点、循环、淡入淡出和对白 ducking。
 
