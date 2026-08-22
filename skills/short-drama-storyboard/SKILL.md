@@ -42,7 +42,8 @@ license: MIT
 - 规则检查发现明确遗漏就直接修正文档，不为通过检查器生成覆盖表。
 
 默认只读本 SKILL、当前剧本和必要视觉事实，不遍历或预读 `references/`。只有关键场次需要比较导演
-方案、复杂群戏/空间调度、特殊漫剧画风或镜头身份修订时，才读取对应的一份参考。
+方案、复杂群戏/空间调度或特殊漫剧画风时，才分别读 `scene-visual-plan.md`、`blocking-playbooks.md`
+或 `comic-keyframe-lexicon.md` 一份。
 
 ## 修订
 

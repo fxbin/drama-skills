@@ -55,9 +55,9 @@ license: MIT
 
 ```bash
 TMP_DIR=$(mktemp -d)
-python3 scripts/screenplay_index.py 剧集/EP001/剧本.md --output "$TMP_DIR/index.jsonl" \
+python3 "{技能目录}/scripts/screenplay_index.py" 剧集/EP001/剧本.md --output "$TMP_DIR/index.jsonl" \
   --speaker 江晨 --speaker 周薄森 --speaker 系统
-python3 scripts/duration_estimate.py 剧集/EP001/剧本.md \
+python3 "{技能目录}/scripts/duration_estimate.py" 剧集/EP001/剧本.md \
   --index "$TMP_DIR/index.jsonl" --project short-drama.json
 rm -rf "$TMP_DIR"
 ```
