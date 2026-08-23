@@ -35,6 +35,55 @@ EP001 时长 94.8 秒 / 目标 90 秒。它是**回归基准**，不是范文。
 `reference-run/RUN-LOG.md` 记着这一次实跑遇到的人工介入与检查器报错，
 下次实跑拿它对照，判断遇到的是老问题还是新问题。
 
+## 跨题材内容质量门禁
+
+`content-quality-corpus.json` v3 冻结 16 个合成案例，覆盖 16 种题材。已经用于修订或看过结果的
+12 个案例全部归 development；候选写作指令、量表、提示词、阈值与 replicate 方案冻结后，另建
+4 个只运行一次的 holdout。四个负对照中包含不直接提示评测目标的普通题面，用来发现 Skill 是否会
+自发把局部手艺写成通用模板。holdout 结果一旦促成上述输入修改，就立即退役为 development；下一次
+结论必须另建未运行的新案例，不能在同一组题上反复调到通过。
+
+候选与基线使用同一创作模型、同一题面、同一份中性创作模板和隔离会话生成。生成器不得直接运行在
+两个完整仓库 worktree 中：每次调用都在无 `.git`、无 `evaluations/` 的净化临时根中，只物化当前
+arm 被 seal 绑定的 `skills/short-drama-write/` bundle，提示词从标准输入传入。收据必须声明
+`workspace_policy: source-bundle-only`，且 `workspace_bundle_sha256` 等于当前 arm 的 source bundle；
+否则门禁 fail-closed。这个约束防止候选看到新增题面、量表或历史报告，而基线看不到的环境混杂。
+
+每个案例、每个 arm 预先固定 3 次独立创作 replicate，全部等权纳入，不做 best-of-N，也不只重跑分数较差的作品。每个
+replicate 再由 Codex、Kimi 各自交换 A/B 位置盲评，共 4 份报告；完整一轮为 96 份创作作品与 192 份
+盲评报告。Kimi CLI 未提供独立 reasoning-effort 开关，因此配置与收据如实记录为
+`provider-default`，不伪造未实际传入供应商的档位。
+
+盲评同样不得在完整仓库或运行目录中执行。每次 judge 调用使用无 `.git`、无任何文件的空临时根，完整
+题面、A/B 作品、量表与固定 JSON 模板只作为本次调用的 prompt 输入传入，不在工作区物化；收据必须声明 `workspace_policy: prompt-only`
+并使用空工作区的固定 bundle SHA。Codex 可从 stdin 读取该 prompt，Kimi 使用非交互 `--prompt` 参数；
+二者都不能把 prompt 或评测文件落到工作区。这样 judge 无法从 manifest、文件名、另一份报告或历史输出恢复版本
+身份。缺少该身份的报告即使 JSON 和分数齐全，也不能进入正式聚合。
+
+[`content-quality-rubric.md`](content-quality-rubric.md) 只评剧本。`content_quality_gate.py` v5
+先在 replicate 内平均，再等权聚合为案例，最后计算 development、holdout 与全语料宏平均；它拒绝
+缺失、重复、额外或选择性纳入的 replicate。门禁不信任运行 manifest 自报的题材和 split，而与公开
+corpus 逐案例核对，并绑定基线提交、候选 Skill bundle、创作/评审模板、量表、模型配置、corpus JSON
+与全部题面正文组成的 bundle、每份作品、报告、调用收据和外部私有词表。它还分别报告模型家族、A/B
+位置、评分维度和单案例变化，并拒绝重复题面或跨案例/arm/replicate 重用作品。
+
+实际作品、收据、报告、私有词表和可信 seal 放在被忽略的 `.omx/`。manifest 中的 seal 只是一份随
+证据携带的副本；门禁要求它逐字段等于维护者在冻结时另存、且不由运行脚本重建的可信 seal。运行时
+必须显式提供维护者控制的词表和可信 seal：
+
+```bash
+python3 evaluations/content_quality_gate.py path/to/manifest.json \
+  --trusted-leakage-terms path/to/maintainer-terms.txt \
+  --trusted-seal path/to/maintainer-seal.json
+```
+
+manifest schema v5、corpus schema v3、config schema v3 与 receipt schema v2 都不兼容旧格式；这是
+有意的 fail-closed 变更，不保留兼容分支。缺少净化工作区身份的历史运行只能作为方向性诊断，不能
+追认为正式门禁证据。
+
+这套评测不能靠断言文档里存在某句话替代。文案是否泛化由真实跨题材产出、单次 holdout、负对照和
+盲评诊断证明；单元测试只验证门禁面对合成输入、篡改、replicate 缺失/复用和伪造元数据时的行为。
+
 ## 每次发布前
 
 分两层，因为两层能判定的东西不同。
@@ -73,4 +122,5 @@ git worktree add /tmp/eval-run <commit> # 在这份固定副本上跑，不要�
 第三条不能省：上一轮最重的一个缺陷是 `SKILL.md` 写的重建方式与脚本实际行为不一致，
 而所有测试都是绿的。发现的问题按 `CONTRIBUTING.md` 的分类记进 `CHANGELOG.md`。
 
-**这里不放 A/B 对比**——只回答我们自己的流程还顺不顺。
+`让你管账号` 这一节仍只回答主工作流是否顺畅；内容 A/B 使用上面的独立跨题材语料，
+不拿回归运行冒充剧本质量证明。
