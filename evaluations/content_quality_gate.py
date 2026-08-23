@@ -862,7 +862,9 @@ def evaluate(
                     f"{case_id} {replicate_id}: exactly {expected_run_count} balanced judge runs are required"
                 )
             family_counts: Counter[str] = Counter()
-            family_positions = {family: Counter() for family in FAMILIES}
+            family_positions: dict[str, Counter[str]] = {
+                family: Counter() for family in FAMILIES
+            }
             replicate_baseline_scores: list[float] = []
             replicate_candidate_scores: list[float] = []
             replicate_baseline_dimensions: dict[str, list[float]] = defaultdict(list)

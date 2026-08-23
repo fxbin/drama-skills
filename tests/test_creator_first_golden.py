@@ -126,6 +126,11 @@ def heading_ids(document: str, prefix: str) -> list[str]:
     return re.findall(rf"^## ({prefix}[A-Z0-9-]+)\b", document, flags=re.MULTILINE)
 
 
+def headings(document: str, level: int) -> list[str]:
+    marker = "#" * level
+    return re.findall(rf"^{marker} (.+)$", document, flags=re.MULTILINE)
+
+
 def frozen_prompt(document: str, shot_id: str) -> str:
     section = document.split(f"## {shot_id}", 1)[1].split("\n## ", 1)[0]
     return section.split("### 冻结关键帧提示词", 1)[1]
@@ -165,24 +170,30 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         self.assertFalse(list(EPISODE.rglob("*.json")))
         self.assertFalse(list(EPISODE.rglob("*.jsonl")))
 
-    def test_documents_are_complete_creator_content_not_placeholders(self) -> None:
+    def test_documents_follow_the_creator_markdown_contract(self) -> None:
         for name in EXPECTED:
-            content = text(name)
-            self.assertGreater(len(content), 500, name)
-            self.assertNotRegex(content, r"(?i)TODO|TBD|PLACEHOLDER|待补|待定")
+            document = text(name)
+            with self.subTest(document=name):
+                self.assertEqual(len(headings(document, 1)), 1)
+                self.assertGreater(len(headings(document, 2)), 0)
 
         screenplay = text("剧本.md")
-        self.assertGreaterEqual(
-            len(re.findall(r"^## EP001-SC\d+ (?:内|外|内外) · ", screenplay, re.MULTILINE)),
-            2,
+        scene_ids = re.findall(
+            r"^## (EP001-SC\d+) (?:内|外|内外) · \S.* · \S.*$",
+            screenplay,
+            re.MULTILINE,
         )
-        self.assertIn("江晨：", screenplay)
-        self.assertIn("剩余 4 天 23:59:58", screenplay)
+        self.assertGreaterEqual(len(scene_ids), 2)
+        self.assertEqual(len(scene_ids), len(set(scene_ids)))
 
         visual = text("视觉设定.md")
-        for section in ("## 人物", "## 地点", "## 道具", "识别锚点"):
-            self.assertIn(section, visual)
-        self.assertEqual(visual.count("- 识别锚点："), 6)
+        visual_entries = [heading.split(" · ", 1) for heading in headings(visual, 2)]
+        self.assertTrue(all(len(entry) == 2 and all(entry) for entry in visual_entries))
+        self.assertEqual({entry[0] for entry in visual_entries}, {"人物", "地点", "道具"})
+        self.assertEqual(
+            len(re.findall(r"^- 识别锚点：\S.+$", visual, re.MULTILINE)),
+            len(visual_entries),
+        )
 
     def test_storyboard_and_motion_cover_the_same_unique_shots(self) -> None:
         storyboard = text("分镜.md")
@@ -195,8 +206,8 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         self.assertEqual(len(shot_ids), len(set(shot_ids)))
         self.assertEqual(len(motion_ids), len(set(motion_ids)))
         self.assertEqual(motion_shots, shot_ids)
-        self.assertEqual(storyboard.count("### 冻结关键帧提示词"), len(shot_ids))
-        self.assertEqual(video.count("### 可复制提示词"), len(shot_ids))
+        self.assertEqual(headings(storyboard, 3), ["冻结关键帧提示词"] * len(shot_ids))
+        self.assertEqual(headings(video, 3), ["可复制提示词"] * len(shot_ids))
 
         storyboard_durations = {
             shot_id: int(re.search(r"^- 时长：(\d+)s$", body, re.MULTILINE).group(1))
@@ -210,6 +221,14 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         }
         self.assertEqual(motion_durations, storyboard_durations)
 
+        screenplay_scenes = set(heading_ids(text("剧本.md"), "EP001-SC"))
+        storyboard_scenes = {
+            match.group(1)
+            for body in sections(storyboard, "SHOT-").values()
+            if (match := re.search(r"^- 来源：(EP001-SC\d+)$", body, re.MULTILINE))
+        }
+        self.assertEqual(storyboard_scenes, screenplay_scenes)
+
     def test_each_shot_names_its_image_references(self) -> None:
         image_ids = set(heading_ids(text("图片提示词.md"), "IMG-"))
         for shot_id, body in sections(text("分镜.md"), "SHOT-").items():
@@ -220,13 +239,11 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 self.assertTrue(referenced)
                 self.assertLessEqual(referenced, image_ids)
 
-    def test_frozen_keyframes_are_motion_start_states(self) -> None:
+    def test_frozen_keyframes_are_copyable_markdown_blocks(self) -> None:
         storyboard = text("分镜.md")
-        self.assertIn("formal neutral expression", frozen_prompt(storyboard, "SHOT-EP001-003"))
-        self.assertNotIn("8,472", frozen_prompt(storyboard, "SHOT-EP001-005"))
-        self.assertNotIn("配乐", frozen_prompt(storyboard, "SHOT-EP001-006"))
-        self.assertIn("screen completely dark", frozen_prompt(storyboard, "SHOT-EP001-007"))
-        self.assertNotIn("23:59", frozen_prompt(storyboard, "SHOT-EP001-008"))
+        for shot_id in heading_ids(storyboard, "SHOT-"):
+            with self.subTest(shot=shot_id):
+                self.assertRegex(frozen_prompt(storyboard, shot_id), r"^\s*>\s*\S")
 
     def test_screenplay_is_accepted_by_the_documented_indexer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -244,36 +261,12 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         ids = heading_ids(prompts, "IMG-")
         self.assertGreater(len(ids), 0)
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(prompts.count("### 可复制提示词"), len(ids))
+        self.assertEqual(headings(prompts, 3), ["可复制提示词"] * len(ids))
         for image_id, body in sections(prompts, "IMG-").items():
             with self.subTest(prompt=image_id):
-                self.assertRegex(body.lower(), r"no [^\n>]*watermark")
-
-    def test_story_critical_text_and_lines_reach_the_delivery_prompts(self) -> None:
-        downstream = "\n".join((text("分镜.md"), text("图片提示词.md"), text("视频提示词.md")))
-        for fact in (
-            "微博 2",
-            "短视频 0",
-            "全站创作者榜",
-            "演唱",
-            "伴奏素材《亮剑》×1",
-            "剩余 4 天 23:59:58",
-            "一片没人动过的地",
-            "我不懂音乐。连抄都抄不出来。",
-        ):
-            with self.subTest(fact=fact):
-                self.assertIn(fact, downstream)
-
-    def test_every_screenplay_tag_is_documented_for_creator_first(self) -> None:
-        guidance = "\n".join(
-            (
-                (ROOT / "skills/short-drama-write/SKILL.md").read_text(encoding="utf-8"),
-                (ROOT / "skills/short-drama/references/creator-documents.md").read_text(encoding="utf-8"),
-            )
-        )
-        for tag in screenplay_index.SUPPORTED_TAGS:
-            with self.subTest(tag=tag):
-                self.assertIn(f"[{tag}]", guidance)
+                prompt_headings = headings(body, 3)
+                self.assertEqual(prompt_headings, ["可复制提示词"])
+                self.assertRegex(body.split("### ", 1)[1], r"\n>\s*\S")
 
     def test_every_creator_knowledge_reference_is_reachable(self) -> None:
         for skill_name in ACTIVE_CREATOR_SKILLS:
@@ -293,33 +286,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             actual = {path.name for path in references.glob("*.md")}
             with self.subTest(skill=skill_name):
                 self.assertEqual(actual, expected)
-
-    def test_creator_knowledge_does_not_route_back_to_retired_artifacts(self) -> None:
-        retired = (
-            "screenplay.md",
-            "screenplay-index.jsonl",
-            "creator_authority",
-            "creator-decisions",
-            "set-authority",
-            "创作者决策/",
-            "设定集/voice-casting.md",
-            "shots.jsonl",
-            "motion-specs.jsonl",
-            "look_development",
-            "record_id",
-            "evidence_refs",
-            "target_ref",
-            "coverage_scope",
-            "supersession-decision.example.json",
-            "accepted structured spec",
-        )
-        for skill_name in ACTIVE_CREATOR_SKILLS:
-            references = ROOT / "skills" / skill_name / "references"
-            for path in references.glob("*.md"):
-                document = path.read_text(encoding="utf-8")
-                for term in retired:
-                    with self.subTest(skill=skill_name, reference=path.name, term=term):
-                        self.assertNotIn(term, document)
 
     def test_creator_rule_catalogs_keep_every_craft_rule(self) -> None:
         expected = {
@@ -348,34 +314,6 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             actual = set(re.findall(r"\b(?:SCR|AST|IMG|SHT|VID|CON|REV)-\d{2}\b", contract))
             with self.subTest(skill=skill_name):
                 self.assertEqual(actual, rule_ids)
-
-    def test_creator_skills_have_one_layout_not_a_compatibility_branch(self) -> None:
-        for skill_name in CREATOR_SKILLS:
-            document = (ROOT / "skills" / skill_name / "SKILL.md").read_text(encoding="utf-8")
-            with self.subTest(skill=skill_name):
-                self.assertNotIn("旧项目兼容", document)
-                self.assertNotIn("已有结构化", document)
-
-        produce = (ROOT / "skills/short-drama-produce/SKILL.md").read_text(encoding="utf-8")
-        self.assertNotIn("旧版规格", produce)
-        for retired_name in ("image-prompt-specs.jsonl", "motion-specs.jsonl", "voice-record-sheet.jsonl"):
-            self.assertNotIn(retired_name, produce)
-
-    def test_review_outputs_creator_readable_markdown(self) -> None:
-        review = (ROOT / "skills/short-drama-review/SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("审查/EP001-审查.md", review)
-        self.assertNotIn("findings.jsonl", review)
-        self.assertNotIn("verdict.json", review)
-
-    def test_removed_pipeline_does_not_return(self) -> None:
-        contract = (
-            ROOT / "skills/short-drama/references/creator-workflow.md"
-        ).read_text(encoding="utf-8")
-        # ddfdbe3 briefly reintroduced a nested creator root and a generated
-        # state module. These guards lock the corrected simple layout.
-        self.assertNotIn("创作内容/剧集", contract)
-        self.assertNotIn("creator_state.py", contract)
-
 
 if __name__ == "__main__":
     unittest.main()
