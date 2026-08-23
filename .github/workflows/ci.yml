@@ -79,6 +79,7 @@ jobs:
           skills/short-drama-produce/scripts/provider_adapters.py
           skills/short-drama-review/scripts/review_check.py
           skills/short-drama-video-prompts/scripts/music_spec_check.py
+          evaluations/content_quality_gate.py
           --ignore-missing-imports
       - uses: actions/setup-node@v4
         with:

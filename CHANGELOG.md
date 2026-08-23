@@ -9,30 +9,54 @@
 
 ## [未发布]
 
+## [0.6.0] - 2026-08-23
+
+本版把默认创作路径从结构化流水线改为 creator-first 五文档，并重整短剧写作规则的
+启用方式：工具与审查只在题面确实承诺某种叙事机制时应用对应约束，详细 knowhow 仍按
+具体问题提供。版本同时补充漫剧关键帧词表与端到端创作指引，并让 Dashboard 原生识别
+新的文档布局。
+
+这是一次**破坏性版本升级**。creator-first 不是旧结构化项目的就地升级格式；旧、新两套
+创作真相不得在同一项目根目录并排维护。
+
 ### 变更
-
-**短剧写作专项规则改为按机制启用，并扩大跨题材质量验证**。SCR-13（艰难选择）、SCR-14
-（争议证据）、SCR-16（字面精确死线）与 SCR-17（有限单位完成边界）只在剧本实际承诺对应机制时
-审查；事务性角色、安静收束、蒙太奇/主观时间、故意保留悬疑不再被迫改成统一模板。顶层 Skill 改为
-输入优先的规则选择器，详细 knowhow 完整保留在按需参考中，并新增不发明精确数字/记录、验证停止条件
-和连续性标签不能证明镜头外负面事实的边界。内容门禁扩为 16 个题材：12 个已见案例归 development，
-另加 4 个冻结后只运行一次的 holdout 与第 4 个负对照；每案例、每 arm 固定 3 次独立创作，再由
-Codex/Kimi A/B 换位产生 12 份盲评报告。两 arm 必须在只含各自写作 Skill bundle 的同构净化工作区
-生成，judge 必须在只接收本次 prompt、且不物化评测文件的空工作区运行；收据分别绑定 `source-bundle-only` 与 `prompt-only`
-策略，拒绝完整 worktree、manifest 和历史报告混杂。v5 门禁先按 replicate 再按案例等权聚合，通过 manifest 外
-的维护者可信 seal 绑定公开 corpus、源码 bundle、基线提交、中性提示词、量表、模型配置、私有泄漏
-词表和调用收据，拒绝缺失/复用 replicate、重复题面/作品，并单独检查模型家族、A/B 位置、评分维度、
-题面忠实度、题材适配和过拟合标签。
-
-**贡献测试不得用纯字符串包含断言钉死文案**。规则契约应结构化验证，工具用输入/输出夹具证明行为，
-内容判断使用隔离实跑与盲评；泄漏扫描器的测试验证扫描边界，不把当前文档的一句话当成功条件。
 
 **公开创作流程改为 creator-first 五文档**。普通创作只按需维护 `剧本.md`、`视觉设定.md`、
 `分镜.md`、`图片提示词.md` 和 `视频提示词.md`；场次/资产/镜头批次自动续跑，不再为每批生成
-JSON/JSONL、索引、指纹、覆盖表或 QA 记录。审查结果改为创作者可读的 Markdown，生产前显式确认不变。
+JSON/JSONL、索引、指纹、覆盖表或 QA 记录。用户点名整集或整阶段时一次完成，也可从任一创作
+阶段直接进入，不为流程完整补造名义上游。审查结果改为创作者可读的 Markdown；外部媒体生产仍须
+经过准备、显式确认和执行三个阶段。
 
 **Dashboard 原生识别 creator-first 五文档**。中文文件名会进入正确内容分组，默认打开 `剧本.md`，
 并从可见文档和媒体推导本集进度。
+
+**短剧写作专项规则改为按机制启用**。SCR-13（艰难选择）、SCR-14（争议证据）、SCR-16
+（字面精确死线）与 SCR-17（有限单位完成边界）只在剧本实际承诺对应机制时审查；事务性角色、
+安静收束、蒙太奇或主观时间，以及故意保留的悬疑，不再被迫改成同一套模板。顶层 Skill 改为
+输入优先的规则选择器，详细 knowhow 完整保留在按需参考中，并补充不发明精确数字、记录、资源
+与程序，证据验证停止条件，以及连续性标签不能证明镜头外负面事实等边界。
+
+**内容质量门禁扩为跨题材、可复现的隔离 A/B 协议**。公开 corpus 区分可迭代的 development、
+冻结后只运行一次的 holdout 与负对照；每个案例、每个 arm 固定执行 3 次独立创作，再由两个
+模型家族进行 A/B 换位盲评。生成端只接收各自的写作 Skill bundle，评审端只接收本次 prompt；
+收据分别绑定 `source-bundle-only` 与 `prompt-only` 策略。schema v5 按 replicate、案例逐级
+等权聚合，并通过仓库外的维护者可信 seal 绑定 corpus、源码 bundle、基线提交、中性提示词、
+量表、模型配置、私有泄漏词表与调用收据。
+
+**贡献测试不得用纯字符串包含断言钉死文案**。规则契约应结构化验证，工具用输入/输出夹具证明
+行为，内容判断使用隔离实跑与盲评；泄漏扫描器的测试验证扫描边界，不把当前文档的一句话当作
+成功条件。
+
+### 迁移与回滚
+
+- **v0.5 在途项目继续锁定 `v0.5.0`**。不要在原项目根目录直接切换到 creator-first，
+  也不要把两套产物并排放置后交替调用不同版本。
+- **升级时新建 creator-first 项目根目录**。逐集人工转移并重新确认 `剧本.md`、
+  `视觉设定.md`、`分镜.md`、`图片提示词.md` 和 `视频提示词.md` 这五份创作真相；不要把
+  旧 JSON/JSONL 自动转换后直接视为已确认内容。
+- **旧结构化产物、生产记录与审计证据只读保留**。它们用于追溯既有生产，不再作为新项目
+  的并行真相来源。需要回滚时，回到原 v0.5 项目根目录并继续锁定 `v0.5.0`；不要把新五文档
+  反向写回旧结构化目录。
 
 ### 新增
 
@@ -45,6 +69,12 @@ JSON/JSONL、索引、指纹、覆盖表或 QA 记录。审查结果改为创作
 **docs 新增《漫剧 Creator-first 全流程》**。`docs/comic-drama-workflow.md` 把十个技能串成一条
 可照做的漫剧产线路径：从初始化与视觉方向，到剧本、资产、图片提示词、分镜关键帧、视频
 提示词、确认后生产、审查与文本交付，含每步命令、产物位置与常见卡点。
+
+### 修复
+
+**修正随发布 Markdown 中无法闭合的粗体标记**。将粗体段落末尾标点移到标记之外，避免
+句末标点紧邻闭合标记的写法在 GitHub 按字面显示星号；新增 CommonMark 形状检查覆盖
+随发布文档，固定评估产物保持原样。
 
 ## [0.5.0] - 2026-08-19
 
@@ -1097,7 +1127,12 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[未发布]: https://github.com/worldwonderer/drama-skills/compare/v0.3.0...HEAD
+[未发布]: https://github.com/worldwonderer/drama-skills/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/worldwonderer/drama-skills/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/worldwonderer/drama-skills/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/worldwonderer/drama-skills/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/worldwonderer/drama-skills/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/worldwonderer/drama-skills/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/worldwonderer/drama-skills/compare/v0.2.0...v0.3.0
 [0.3.0-rc.1]: https://github.com/worldwonderer/drama-skills/compare/v0.2.0...v0.3.0-rc.1
 [0.2.0]: https://github.com/worldwonderer/drama-skills/releases/tag/v0.2.0
