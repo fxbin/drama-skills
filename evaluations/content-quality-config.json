@@ -2,6 +2,7 @@
   "schema_version": 3,
   "generation_replicates": 3,
   "generation_workspace_policy": "source-bundle-only",
+  "judge_workspace_policy": "prompt-only",
   "generator": {
     "cli": "codex",
     "model": "gpt-5.6-sol",

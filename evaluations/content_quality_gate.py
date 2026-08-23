@@ -62,6 +62,8 @@ CONFIG_SCHEMA = 3
 RECEIPT_SCHEMA = 2
 TRUSTED_SEAL_SCHEMA = 1
 GENERATION_WORKSPACE_POLICY = "source-bundle-only"
+JUDGE_WORKSPACE_POLICY = "prompt-only"
+EMPTY_WORKSPACE_SHA256 = hashlib.sha256(b"").hexdigest()
 HOLDOUT_SEAL_KEYS = {
     "seal_id",
     "baseline_commit",
@@ -224,6 +226,7 @@ def _load_config(path: Path) -> dict[str, Any]:
         "schema_version",
         "generation_replicates",
         "generation_workspace_policy",
+        "judge_workspace_policy",
         "generator",
         "judges",
     }:
@@ -233,6 +236,8 @@ def _load_config(path: Path) -> dict[str, Any]:
         raise GateError("evaluation config requires at least 3 generation replicates")
     if config.get("generation_workspace_policy") != GENERATION_WORKSPACE_POLICY:
         raise GateError("generation workspace must expose only the bound source bundle")
+    if config.get("judge_workspace_policy") != JUDGE_WORKSPACE_POLICY:
+        raise GateError("judge workspace must be empty and receive only the bound prompt")
     _validated_model_config(config.get("generator"), "generator")
     judges = config.get("judges")
     if not isinstance(judges, dict) or set(judges) != FAMILIES:
@@ -960,6 +965,8 @@ def evaluate(
                         "model_config": config["judges"][family],
                         "prompt_sha256": prompt_sha,
                         "report_sha256": report_sha,
+                        "workspace_policy": config["judge_workspace_policy"],
+                        "workspace_bundle_sha256": EMPTY_WORKSPACE_SHA256,
                     },
                     label=f"{case_id} {replicate_id} {judge_id}",
                 )

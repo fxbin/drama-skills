@@ -18,7 +18,8 @@
 和连续性标签不能证明镜头外负面事实的边界。内容门禁扩为 16 个题材：12 个已见案例归 development，
 另加 4 个冻结后只运行一次的 holdout 与第 4 个负对照；每案例、每 arm 固定 3 次独立创作，再由
 Codex/Kimi A/B 换位产生 12 份盲评报告。两 arm 必须在只含各自写作 Skill bundle 的同构净化工作区
-生成，收据绑定 `source-bundle-only` 策略并拒绝完整 worktree 混杂。v5 门禁先按 replicate 再按案例等权聚合，通过 manifest 外
+生成，judge 必须在只接收本次 prompt、且不物化评测文件的空工作区运行；收据分别绑定 `source-bundle-only` 与 `prompt-only`
+策略，拒绝完整 worktree、manifest 和历史报告混杂。v5 门禁先按 replicate 再按案例等权聚合，通过 manifest 外
 的维护者可信 seal 绑定公开 corpus、源码 bundle、基线提交、中性提示词、量表、模型配置、私有泄漏
 词表和调用收据，拒绝缺失/复用 replicate、重复题面/作品，并单独检查模型家族、A/B 位置、评分维度、
 题面忠实度、题材适配和过拟合标签。

@@ -54,6 +54,12 @@ replicate 再由 Codex、Kimi 各自交换 A/B 位置盲评，共 4 份报告；
 盲评报告。Kimi CLI 未提供独立 reasoning-effort 开关，因此配置与收据如实记录为
 `provider-default`，不伪造未实际传入供应商的档位。
 
+盲评同样不得在完整仓库或运行目录中执行。每次 judge 调用使用无 `.git`、无任何文件的空临时根，完整
+题面、A/B 作品、量表与固定 JSON 模板只作为本次调用的 prompt 输入传入，不在工作区物化；收据必须声明 `workspace_policy: prompt-only`
+并使用空工作区的固定 bundle SHA。Codex 可从 stdin 读取该 prompt，Kimi 使用非交互 `--prompt` 参数；
+二者都不能把 prompt 或评测文件落到工作区。这样 judge 无法从 manifest、文件名、另一份报告或历史输出恢复版本
+身份。缺少该身份的报告即使 JSON 和分数齐全，也不能进入正式聚合。
+
 [`content-quality-rubric.md`](content-quality-rubric.md) 只评剧本。`content_quality_gate.py` v5
 先在 replicate 内平均，再等权聚合为案例，最后计算 development、holdout 与全语料宏平均；它拒绝
 缺失、重复、额外或选择性纳入的 replicate。门禁不信任运行 manifest 自报的题材和 split，而与公开

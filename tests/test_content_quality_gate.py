@@ -10,6 +10,7 @@ from pathlib import Path
 
 from evaluations.content_quality_gate import (
     DIMENSIONS,
+    EMPTY_WORKSPACE_SHA256,
     GateError,
     _report_template,
     corpus_bundle_sha256,
@@ -100,6 +101,7 @@ class ContentQualityGateTests(unittest.TestCase):
             "schema_version": 3,
             "generation_replicates": REPLICATE_COUNT,
             "generation_workspace_policy": "source-bundle-only",
+            "judge_workspace_policy": "prompt-only",
             "generator": {
                 "cli": "codex",
                 "model": "generator-model",
@@ -344,6 +346,10 @@ class ContentQualityGateTests(unittest.TestCase):
                                 "model_config": config["judges"][family],
                                 "prompt_sha256": digest(prompt),
                                 "report_sha256": digest(report),
+                                "workspace_policy": config[
+                                    "judge_workspace_policy"
+                                ],
+                                "workspace_bundle_sha256": EMPTY_WORKSPACE_SHA256,
                                 "cli_version": f"test-{family} 1",
                             },
                         )
@@ -546,6 +552,20 @@ class ContentQualityGateTests(unittest.TestCase):
             receipt["workspace_policy"] = "full-worktree"
             write_json(receipt_path, receipt)
             generation_run["receipt_sha256"] = digest(receipt_path)
+            self.save_manifest(workspace, manifest)
+            with self.assertRaises(GateError):
+                self.evaluate_workspace(workspace)
+
+    def test_judge_receipt_rejects_nonempty_workspace_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.build_workspace(Path(directory))
+            manifest = self.load_manifest(workspace)
+            judge_run = manifest["cases"][0]["replicates"][0]["judge_runs"][0]
+            receipt_path = workspace["run"] / judge_run["receipt"]
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            receipt["workspace_policy"] = "full-worktree"
+            write_json(receipt_path, receipt)
+            judge_run["receipt_sha256"] = digest(receipt_path)
             self.save_manifest(workspace, manifest)
             with self.assertRaises(GateError):
                 self.evaluate_workspace(workspace)
