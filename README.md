@@ -2,10 +2,10 @@
 
 # Drama Skills
 
-[![CI](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/worldwonderer/drama-skills)](https://github.com/worldwonderer/drama-skills/releases/latest)
+[![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/github/license/worldwonderer/drama-skills)](LICENSE)
+[![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
 
 面向编剧、漫剧工作室和编导的 AI 短剧创作工作流。十个技能把一个点子或一部长篇材料，
 一路做成分集剧本、资产设定、图片提示词、分镜关键帧和视频提示词，
@@ -37,14 +37,14 @@ Seedance、GPT Image 2 与 MiniMax Music 的可选 adapter，但项目文件和�
 Codex 等支持导入 GitHub 仓库的智能体：
 
 ```
-安装这些技能 https://github.com/worldwonderer/drama-skills
+安装这些技能 https://github.com/zenstory-ai/drama-skills
 ```
 
 <details>
 <summary>手动链接（可安装全部，也可只链接需要的技能）</summary>
 
 ```bash
-git clone https://github.com/worldwonderer/drama-skills.git && cd drama-skills
+git clone https://github.com/zenstory-ai/drama-skills.git && cd drama-skills
 
 # Claude Code
 mkdir -p "$HOME/.claude/skills"
