@@ -1127,13 +1127,13 @@ image-prompts / storyboard / video-prompts / review。
 fresh-agent 双臂盲测、独立 reviewer verdict 与 protected-release gate 三项未完成，
 由维护者知情后放行；相应记录以 `hold` 而非 `promotion` 留在仓库外的受控工作区。
 
-[未发布]: https://github.com/worldwonderer/drama-skills/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/worldwonderer/drama-skills/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/worldwonderer/drama-skills/compare/v0.4.2...v0.5.0
-[0.4.2]: https://github.com/worldwonderer/drama-skills/compare/v0.4.1...v0.4.2
-[0.4.1]: https://github.com/worldwonderer/drama-skills/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/worldwonderer/drama-skills/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/worldwonderer/drama-skills/compare/v0.2.0...v0.3.0
-[0.3.0-rc.1]: https://github.com/worldwonderer/drama-skills/compare/v0.2.0...v0.3.0-rc.1
-[0.2.0]: https://github.com/worldwonderer/drama-skills/releases/tag/v0.2.0
-[0.1.0]: https://github.com/worldwonderer/drama-skills/releases/tag/v0.1.0
+[未发布]: https://github.com/zenstory-ai/drama-skills/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/zenstory-ai/drama-skills/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/zenstory-ai/drama-skills/compare/v0.2.0...v0.3.0
+[0.3.0-rc.1]: https://github.com/zenstory-ai/drama-skills/compare/v0.2.0...v0.3.0-rc.1
+[0.2.0]: https://github.com/zenstory-ai/drama-skills/releases/tag/v0.2.0
+[0.1.0]: https://github.com/zenstory-ai/drama-skills/releases/tag/v0.1.0

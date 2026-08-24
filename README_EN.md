@@ -2,10 +2,10 @@
 
 # Drama Skills
 
-[![CI](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/worldwonderer/drama-skills/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/worldwonderer/drama-skills)](https://github.com/worldwonderer/drama-skills/releases/latest)
+[![CI](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/zenstory-ai/drama-skills/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/zenstory-ai/drama-skills)](https://github.com/zenstory-ai/drama-skills/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/github/license/worldwonderer/drama-skills)](LICENSE)
+[![License](https://img.shields.io/github/license/zenstory-ai/drama-skills)](LICENSE)
 
 An AI short-drama creation suite for screenwriters, motion-comic studios, and
 directors. Ten skills take an idea or a long-form source all the way to episode
@@ -47,14 +47,14 @@ Needs **Python 3.9 or newer** (the version macOS ships is enough).
 Just tell Claude Code, Codex, or any agent that can import a GitHub repository:
 
 ```
-Install this skill suite: https://github.com/worldwonderer/drama-skills
+Install this skill suite: https://github.com/zenstory-ai/drama-skills
 ```
 
 <details>
 <summary>Manual linking (install all skills or only the ones you need)</summary>
 
 ```bash
-git clone https://github.com/worldwonderer/drama-skills.git && cd drama-skills
+git clone https://github.com/zenstory-ai/drama-skills.git && cd drama-skills
 
 # Claude Code
 mkdir -p "$HOME/.claude/skills"
