@@ -160,6 +160,7 @@ const FAILURE_COPY = {
   "unsupported preview media": "这种画面格式无法在这里预览。",
   "request body is too large": "内容太长，无法提交。",
   "internal dashboard error": "工作台遇到问题，请刷新后重试。",
+  "invalid dashboard response": "工作台收到无效数据，请刷新后重试。",
 };
 
 function friendlyFailure(message) {
@@ -902,15 +903,29 @@ function cleanupMedia() {
   $("media").replaceChildren();
 }
 
+function scrollProgress(node) {
+  const available = Math.max(0, node.scrollHeight - node.clientHeight);
+  return available ? node.scrollTop / available : 0;
+}
+
+function restoreScrollProgress(node, progress) {
+  const available = Math.max(0, node.scrollHeight - node.clientHeight);
+  node.scrollTop = available * Math.max(0, Math.min(1, progress));
+}
+
 function setView(view) {
-  state.view = view;
   const media = state.selected?.type === "media";
+  const contentStage = document.querySelector(".content-stage");
+  const previous = state.view === "edit" ? $("editor") : contentStage;
+  const progress = media ? 0 : scrollProgress(previous);
+  state.view = view;
   $("editor").hidden = media || view !== "edit";
   $("preview").hidden = media || view !== "preview";
   $("media").hidden = !media;
   $("editMode").setAttribute("aria-pressed", String(view === "edit"));
   $("editMode").textContent = view === "edit" ? "返回阅读" : "修改正文";
   if (!media && view === "preview") renderPreview();
+  if (!media) restoreScrollProgress(view === "edit" ? $("editor") : contentStage, progress);
 }
 
 function renderMedia(info) {
@@ -957,6 +972,8 @@ async function openFile(file, scrollToContent = false) {
   state.expandedGroups.add(contentGroupKey(file));
   state.version = null;
   $("editor").value = "";
+  $("editor").scrollTop = 0;
+  document.querySelector(".content-stage").scrollTop = 0;
   $("editor").disabled = true;
   $("preview").classList.add("empty-document");
   $("preview").replaceChildren();
@@ -1067,6 +1084,7 @@ async function selectProject(id, preferredPath = "") {
       $("editMode").disabled = true;
       clearLoadingSkeleton();
       $("preview").replaceChildren();
+      setMessage("项目中还没有创作内容");
     }
   } catch (error) {
     if (sequence !== state.projectLoadSequence) return;
@@ -1125,6 +1143,7 @@ async function boot() {
   try {
     await establishSession();
     const data = await api("/api/projects");
+    if (!data || !Array.isArray(data.projects)) throw new Error("invalid dashboard response");
     const options = data.projects.map((project) => {
       const option = element("option", "", project.title || "未命名短剧");
       option.value = project.id;

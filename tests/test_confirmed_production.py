@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,6 +17,8 @@ SUITE = Path(__file__).resolve().parents[1]
 CORE_SCRIPT = SUITE / "skills/short-drama/scripts/project_tool.py"
 PRODUCTION_SCRIPT = SUITE / "skills/short-drama-produce/scripts/production_tool.py"
 FIXTURE_ADAPTER = SUITE / "skills/short-drama-produce/scripts/fixture_adapter.py"
+CREATOR_VALIDATOR = SUITE / "skills/short-drama/scripts/creator_markdown_check.py"
+CREATOR_EXAMPLE = SUITE / "examples/creator-first/EP001"
 
 
 def load_module(name: str, path: Path):
@@ -27,6 +31,7 @@ def load_module(name: str, path: Path):
 
 project_tool = load_module("production_core", CORE_SCRIPT)
 production_tool = load_module("confirmed_production", PRODUCTION_SCRIPT)
+creator_markdown_check = load_module("creator_markdown_check", CREATOR_VALIDATOR)
 
 
 class ConfirmedProductionTests(unittest.TestCase):
@@ -39,7 +44,7 @@ class ConfirmedProductionTests(unittest.TestCase):
             aspect_ratio="9:16",
             suite_root=SUITE / "skills/short-drama",
         )
-        source = root / "剧集/EP001/图片提示词.md"
+        source = root / "剧集/EP001/制作规格.md"
         source.parent.mkdir(parents=True)
         source.write_text("当前提示词来源\n", encoding="utf-8")
         reference = root / "输入/reference.png"
@@ -70,7 +75,7 @@ class ConfirmedProductionTests(unittest.TestCase):
                     "modality": modality,
                     "adapter": "fixture",
                     "prompt": prompt,
-                    "source": "剧集/EP001/图片提示词.md",
+                    "source": "剧集/EP001/制作规格.md",
                     "references": ["输入/reference.png"],
                     "outputs": [output],
                     "parameters": parameters or {"count": 1},
@@ -79,6 +84,106 @@ class ConfirmedProductionTests(unittest.TestCase):
                 ensure_ascii=False,
             ),
             encoding="utf-8",
+        )
+        return path
+
+    def write_creator_video_job(
+        self,
+        root: Path,
+        *,
+        prompt: str = "The same woman turns toward the door.",
+        reference_path: str = "输入/reference.png",
+        may_control: list[str] | None = None,
+        must_not_control: list[str] | None = None,
+    ) -> Path:
+        source = root / "剧集/EP001/视频提示词.md"
+        source.write_text(
+            "# EP001 视频提示词\n\n"
+            "## MOTION-EP001-001 · 回头\n\n"
+            "- 分镜：SHOT-EP001-001\n"
+            "- 输入参考图：REF-HERO（顺序：1）· "
+            "输入/reference.png《女主定妆照》"
+            "（控制：身份、造型；不得控制：构图、动作）\n\n"
+            "### 可复制提示词\n"
+            "> The same woman turns toward the door.\n",
+            encoding="utf-8",
+        )
+        path = root / "creator-video-job.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "job_id": "EP001-MOTION001",
+                    "modality": "video",
+                    "adapter": "fixture",
+                    "prompt": prompt,
+                    "source": "剧集/EP001/视频提示词.md",
+                    "source_entry": "MOTION-EP001-001",
+                    "reference_bindings": [
+                        {
+                            "slot_id": "REF-HERO",
+                            "order": 1,
+                            "path": reference_path,
+                            "label": "女主定妆照",
+                            "role": "identity_and_look",
+                            "may_control": may_control or ["身份", "造型"],
+                            "must_not_control": must_not_control or ["构图", "动作"],
+                        }
+                    ],
+                    "outputs": ["剧集/EP001/制作成果/video/SHOT-EP001-001.mp4"],
+                    "parameters": {},
+                    "overwrite": False,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def write_creator_image_job(
+        self,
+        root: Path,
+        *,
+        reference_declaration: str = "无外部参考；保持人物年龄与造型一致。",
+        include_binding: bool = False,
+    ) -> Path:
+        prompt = "A young East Asian woman stands beside a rain-dark door."
+        source = root / "剧集/EP001/图片提示词.md"
+        source.write_text(
+            "# EP001 图片提示词\n\n"
+            "## IMG-EP001-HERO · 女主角色板\n\n"
+            f"- 参考：{reference_declaration}\n\n"
+            "### 可复制提示词\n"
+            f"> {prompt}\n",
+            encoding="utf-8",
+        )
+        document: dict[str, object] = {
+            "schema_version": "1.0",
+            "job_id": "EP001-IMG-HERO",
+            "modality": "image",
+            "adapter": "fixture",
+            "prompt": prompt,
+            "source": "剧集/EP001/图片提示词.md",
+            "source_entry": "IMG-EP001-HERO",
+            "outputs": ["剧集/EP001/制作成果/image/IMG-EP001-HERO.png"],
+            "parameters": {},
+            "overwrite": False,
+        }
+        if include_binding:
+            document["reference_bindings"] = [
+                {
+                    "slot_id": "REF-HERO",
+                    "order": 1,
+                    "path": "输入/reference.png",
+                    "label": "女主定妆照",
+                    "role": "identity_and_look",
+                    "may_control": ["身份", "造型"],
+                    "must_not_control": ["构图", "动作"],
+                }
+            ]
+        path = root / "creator-image-job.json"
+        path.write_text(
+            json.dumps(document, ensure_ascii=False), encoding="utf-8"
         )
         return path
 
@@ -127,6 +232,266 @@ class ConfirmedProductionTests(unittest.TestCase):
                 production_tool.job_status(root, job_id="EP001-SHOT001")["state"],
                 "needs_confirmation",
             )
+
+    def test_creator_source_entry_binds_prompt_and_reference_semantics(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(
+                root, self.write_creator_video_job(root)
+            )
+
+            self.assertEqual(preview["source_entry"], "MOTION-EP001-001")
+            self.assertEqual(preview["references"], ["输入/reference.png"])
+            self.assertEqual(
+                preview["reference_bindings"],
+                [
+                    {
+                        "slot_id": "REF-HERO",
+                        "order": 1,
+                        "path": "输入/reference.png",
+                        "label": "女主定妆照",
+                        "role": "identity_and_look",
+                        "may_control": ["身份", "造型"],
+                        "must_not_control": ["构图", "动作"],
+                    }
+                ],
+            )
+
+    def test_creator_image_source_entry_supports_no_ref_and_real_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(
+                root, self.write_creator_image_job(root)
+            )
+            self.assertEqual(preview["source_entry"], "IMG-EP001-HERO")
+            self.assertEqual(preview["references"], [])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            declaration = (
+                "REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
+                "（控制：身份、造型；不得控制：构图、动作）"
+            )
+            preview = production_tool.prepare_job(
+                root,
+                self.write_creator_image_job(
+                    root,
+                    reference_declaration=declaration,
+                    include_binding=True,
+                ),
+            )
+            self.assertEqual(preview["references"], ["输入/reference.png"])
+
+    def test_source_entry_rejects_unbound_refs_wrong_kind_and_ambiguous_markdown(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            document = json.loads(job.read_text(encoding="utf-8"))
+            document.pop("source_entry")
+            document["prompt"] = "NOT canonical"
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "requires source_entry"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            document = json.loads(job.read_text(encoding="utf-8"))
+            document["references"] = ["输入/reference.png"]
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must match reference_bindings"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            document = json.loads(job.read_text(encoding="utf-8"))
+            document["source_entry"] = "MOTION-EP001-001"
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "does not match the job modality"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            document = json.loads(job.read_text(encoding="utf-8"))
+            canonical = root / "剧集/EP001/图片提示词.md"
+            arbitrary = root / "剧集/EP001/任意.md"
+            arbitrary.write_text(canonical.read_text(encoding="utf-8"), encoding="utf-8")
+            document["source"] = "剧集/EP001/任意.md"
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "canonical creator Markdown path"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            source = root / "剧集/EP001/图片提示词.md"
+            source.write_text(
+                source.read_text(encoding="utf-8")
+                + "\n## IMG-EP001-HERO · 重复条目\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "duplicated"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            source = root / "剧集/EP001/图片提示词.md"
+            source.write_text(
+                source.read_text(encoding="utf-8")
+                + "\n### 可复制提示词\n> duplicate\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate copyable prompts"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_image_job(root)
+            source = root / "剧集/EP001/图片提示词.md"
+            source.write_text(
+                source.read_text(encoding="utf-8").replace(
+                    "> A young East Asian woman stands beside a rain-dark door.",
+                    "> A young East Asian woman stands beside a rain-dark door.\n"
+                    "THIS CRITICAL LINE IS NOT QUOTED",
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "unquoted content"):
+                production_tool.prepare_job(root, job)
+
+    def test_music_timeline_and_noncanonical_same_name_sources_remain_supported(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            source = root / "剧集/EP001/视频提示词.md"
+            source.write_text("# 时间线音乐\n\n压低对白下的配乐。\n", encoding="utf-8")
+            job = self.write_job(root, modality="music", job_id="EP001-MUSIC")
+            document = json.loads(job.read_text(encoding="utf-8"))
+            document["source"] = "剧集/EP001/视频提示词.md"
+            document["references"] = []
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+
+            preview = production_tool.prepare_job(root, job)
+
+            self.assertEqual(preview["modality"], "music")
+            self.assertIsNone(preview["source_entry"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            source = root / "输入/图片提示词.md"
+            source.write_text("非 creator 的结构化规格\n", encoding="utf-8")
+            job = self.write_job(root)
+            document = json.loads(job.read_text(encoding="utf-8"))
+            document["source"] = "输入/图片提示词.md"
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+
+            preview = production_tool.prepare_job(root, job)
+
+            self.assertIsNone(preview["source_entry"])
+
+    def test_source_entry_requires_ref_separators_and_non_conflicting_scopes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            declaration = (
+                "REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
+                "（控制：身份；不得控制：动作）"
+                "REF-LOOK（顺序：2）· 输入/second.png《服装参考》"
+                "（控制：造型；不得控制：构图）"
+            )
+            (root / "输入/second.png").write_bytes(b"second")
+            job = self.write_creator_image_job(
+                root, reference_declaration=declaration, include_binding=True
+            )
+            document = json.loads(job.read_text(encoding="utf-8"))
+            document["reference_bindings"].append(
+                {
+                    "slot_id": "REF-LOOK",
+                    "order": 2,
+                    "path": "输入/second.png",
+                    "label": "服装参考",
+                    "role": "look",
+                    "may_control": ["造型"],
+                    "must_not_control": ["构图"],
+                }
+            )
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "declaration is invalid"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_video_job(
+                root, may_control=["身份"], must_not_control=["身份"]
+            )
+            with self.assertRaisesRegex(ValueError, "must not overlap"):
+                production_tool.prepare_job(root, job)
+
+    def test_pre_contract_stored_jobs_remain_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            preview = production_tool.prepare_job(root, self.write_job(root))
+            path = production_tool._job_path(root, preview["job_id"])
+            document = json.loads(path.read_text(encoding="utf-8"))
+            document.pop("source_entry")
+            document.pop("reference_bindings")
+            execution = {
+                key: document[key]
+                for key in production_tool.LEGACY_STORED_EXECUTION_KEYS
+            }
+            document["fingerprint"] = production_tool.sha256_bytes(
+                production_tool._canonical(execution)
+            )
+            path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+
+            restored = production_tool._read_job(root, preview["job_id"])
+
+            self.assertIsNone(restored["source_entry"])
+            self.assertEqual(restored["reference_bindings"], [])
+
+    def test_creator_source_entry_rejects_prompt_or_reference_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            with self.assertRaisesRegex(ValueError, "prompt does not match"):
+                production_tool.prepare_job(
+                    root,
+                    self.write_creator_video_job(root, prompt="A different prompt."),
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            wrong = root / "输入/wrong.png"
+            wrong.write_bytes(b"wrong")
+            with self.assertRaisesRegex(ValueError, "bindings do not match"):
+                production_tool.prepare_job(
+                    root,
+                    self.write_creator_video_job(root, reference_path="输入/wrong.png"),
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            with self.assertRaisesRegex(ValueError, "bindings do not match"):
+                production_tool.prepare_job(
+                    root,
+                    self.write_creator_video_job(root, must_not_control=["背景"]),
+                )
+
+    def test_reference_bindings_require_bounded_may_and_must_not_scopes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            job = self.write_creator_video_job(root)
+            document = json.loads(job.read_text(encoding="utf-8"))
+            document["reference_bindings"][0]["must_not_control"] = []
+            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must_not_control"):
+                production_tool.prepare_job(root, job)
 
     def test_run_requires_the_exact_explicit_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -283,7 +648,7 @@ class ConfirmedProductionTests(unittest.TestCase):
             root = self.make_project(directory)
             job = self.write_job(root)
             self.prepare_and_confirm(root, job)
-            (root / "剧集/EP001/图片提示词.md").write_text(
+            (root / "剧集/EP001/制作规格.md").write_text(
                 "提示词来源已改\n", encoding="utf-8"
             )
 
@@ -325,6 +690,101 @@ class ConfirmedProductionTests(unittest.TestCase):
                 status = production_tool.job_status(root, job_id=job_id)
                 self.assertEqual(status["state"], "succeeded")
                 self.assertNotIn("command", json.dumps(status))
+
+    def test_creator_episode_runs_through_validation_confirmation_and_adapter(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            episode = root / "剧集/EP001"
+            shutil.rmtree(episode)
+            shutil.copytree(CREATOR_EXAMPLE, episode)
+            reference = root / "输入/女主定妆.png"
+            reference.write_bytes(b"structural reference")
+            declaration = (
+                "REF-HERO（顺序：1）· 输入/女主定妆.png《女主定妆照》"
+                "（控制：身份、造型；不得控制：构图、动作）"
+            )
+            for name in ("分镜.md", "视频提示词.md"):
+                path = episode / name
+                path.write_text(
+                    path.read_text(encoding="utf-8").replace(
+                        "- 输入参考图：无。",
+                        f"- 输入参考图：{declaration}",
+                        1,
+                    ),
+                    encoding="utf-8",
+                )
+            video_path = episode / "视频提示词.md"
+            video_path.write_text(
+                video_path.read_text(encoding="utf-8").replace(
+                    "- 生成方式：文生视频", "- 生成方式：图生视频", 1
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                creator_markdown_check.validate_episode(episode, root), []
+            )
+
+            document = video_path.read_text(encoding="utf-8")
+            section_match = re.search(
+                r"^## MOTION-EP001-001\b(?P<body>.*?)(?=^## |\Z)",
+                document,
+                re.MULTILINE | re.DOTALL,
+            )
+            self.assertIsNotNone(section_match)
+            assert section_match is not None
+            prompt = "\n".join(
+                line[1:].lstrip()
+                for line in section_match.group("body").splitlines()
+                if line.startswith(">")
+            ).strip()
+            self.assertTrue(prompt)
+            job = root / "creator-e2e-job.json"
+            job.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "job_id": "EP001-MOTION001-E2E",
+                        "modality": "video",
+                        "adapter": "fixture",
+                        "prompt": prompt,
+                        "source": "剧集/EP001/视频提示词.md",
+                        "source_entry": "MOTION-EP001-001",
+                        "reference_bindings": [
+                            {
+                                "slot_id": "REF-HERO",
+                                "order": 1,
+                                "path": "输入/女主定妆.png",
+                                "label": "女主定妆照",
+                                "role": "identity_and_look",
+                                "may_control": ["身份", "造型"],
+                                "must_not_control": ["构图", "动作"],
+                            }
+                        ],
+                        "outputs": [
+                            "剧集/EP001/制作成果/video/SHOT-EP001-001.mp4"
+                        ],
+                        "parameters": {},
+                        "overwrite": False,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            preview = self.prepare_and_confirm(root, job)
+            result = production_tool.run_job(
+                root,
+                job_id=preview["job_id"],
+                adapter_config=self.adapter_config(directory),
+            )
+
+            output = root / preview["outputs"][0]
+            self.assertEqual(result["state"], "succeeded")
+            self.assertTrue(
+                output.read_bytes().startswith(b"\x00\x00\x00\x18ftypisom")
+            )
 
     def test_failed_started_adapter_consumes_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

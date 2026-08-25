@@ -33,6 +33,26 @@ jobs:
       - name: unit tests
         run: python -B -m unittest discover -s tests -v
 
+  dashboard-browser:
+    name: Dashboard browser regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DASHBOARD_BROWSER_REQUIRED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Browser tooling stays CI-local rather than becoming a runtime dependency
+      # of the filesystem-first skill package.
+      - name: Install pinned Chromium test runtime
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.58.0
+          python -m playwright install --with-deps chromium
+      - name: Run real-browser Dashboard regressions
+        run: python -B -m unittest tests.test_dashboard_browser -v
+
   windows-install:
     name: Windows CRLF installation and dashboard
     runs-on: windows-latest
@@ -78,6 +98,7 @@ jobs:
         run: >
           mypy skills/short-drama/scripts/project_tool.py
           skills/short-drama/scripts/dashboard_server.py
+          skills/short-drama/scripts/creator_markdown_check.py
           skills/short-drama-develop/scripts/episode_intake.py
           skills/short-drama-assets/scripts/asset_check.py
           skills/short-drama-image-prompts/scripts/image_prompt_check.py
