@@ -174,6 +174,8 @@ https://github.com/user-attachments/assets/ae88b444-06e5-4964-856c-91e619020f12
 /short-drama dashboard
 ```
 
+macOS、Linux、WSL 与 Windows 原生都可运行。
+
 <img src="docs/assets/dashboard-zh.png" alt="短剧创作台：项目概览、分集进度、已有媒体与剧本正文" width="680">
 
 ## 致谢

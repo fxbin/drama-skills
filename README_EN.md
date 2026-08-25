@@ -201,4 +201,6 @@ One line inside your agent (Codex writes `$short-drama dashboard`):
 /short-drama dashboard
 ```
 
+Runs on macOS, Linux, WSL, and native Windows.
+
 <img src="docs/assets/dashboard-zh.png" alt="Short drama creator workspace with project overview, episode progress, existing media, and screenplay" width="680">

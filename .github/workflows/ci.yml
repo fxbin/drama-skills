@@ -34,7 +34,7 @@ jobs:
         run: python -B -m unittest discover -s tests -v
 
   windows-install:
-    name: Windows CRLF installation
+    name: Windows CRLF installation and dashboard
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -42,6 +42,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+      # The dashboard pins directories by verified path here rather than by
+      # descriptor, and that half of it exists for this runner. The POSIX jobs
+      # exercise the same backend by forcing the selection, but only this one
+      # proves it against real Windows file semantics -- reparse points,
+      # msvcrt locking, and a replace that a holder can refuse.
       - name: Run Windows portability regressions
         run: >-
           python -B -m unittest
@@ -49,6 +54,7 @@ jobs:
           tests.test_episode_intake
           tests.test_standalone_skill_tooling
           tests.test_golden_project
+          tests.test_dashboard_server
           tests.test_simple_lifecycle.SimpleLifecycleTests.test_publish_rejects_path_aliases_and_unsafe_episode_ids
           tests.test_simple_lifecycle.SimpleLifecycleTests.test_package_and_verify_selected_approved_text
           -v
