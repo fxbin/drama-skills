@@ -1112,6 +1112,30 @@ class DashboardEntrypointTests(unittest.TestCase):
         project_tool = dashboard_server.load_project_tool(SKILL)
         self.assertTrue(callable(project_tool.project_status))
 
+    def test_document_reader_keeps_long_content_in_a_scroll_container(self) -> None:
+        styles = (dashboard_server.STATIC_ROOT / "styles.css").read_text(
+            encoding="utf-8"
+        )
+
+        def declarations(selector: str) -> str:
+            match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", styles)
+            if match is None:
+                self.fail(f"missing Dashboard CSS rule for {selector}")
+            return match.group(1)
+
+        creator_desk = declarations(".creator-desk")
+        document_pane = declarations(".document-pane")
+        content_stage = declarations(".content-stage")
+        self.assertRegex(creator_desk, r"\boverflow:\s*hidden\s*;")
+        self.assertRegex(document_pane, r"\bmin-height:\s*0\s*;")
+        self.assertRegex(document_pane, r"\bdisplay:\s*grid\s*;")
+        self.assertRegex(
+            document_pane,
+            r"\bgrid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto\s*;",
+        )
+        self.assertRegex(content_stage, r"\bmin-height:\s*0\s*;")
+        self.assertRegex(content_stage, r"\boverflow:\s*auto\s*;")
+
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
     def test_frontend_supports_simple_and_legacy_creator_statuses(self) -> None:
         app = dashboard_server.STATIC_ROOT / "app.js"
