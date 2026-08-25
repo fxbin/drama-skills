@@ -4,6 +4,7 @@ import hashlib
 import http.client
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -26,6 +27,27 @@ ProjectStore = dashboard_server.ProjectStore
 create_server = dashboard_server.create_server
 
 
+def redirect_directory(link: Path, target: Path) -> bool:
+    """Point ``link`` at ``target``, however this platform can.
+
+    A symlink needs Developer Mode or an elevated shell on Windows, but a
+    directory junction needs neither and redirects traversal just as well --
+    which is exactly why the traversal checks must reject both.
+    """
+
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return True
+    except (OSError, NotImplementedError):
+        if os.name != "nt":
+            return False
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+    )
+    return completed.returncode == 0 and link.exists()
+
+
 def make_project(root: Path, title: str = "测试短剧") -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "short-drama.json").write_text(
@@ -39,13 +61,21 @@ def make_project(root: Path, title: str = "测试短剧") -> None:
 class ProjectStoreTests(unittest.TestCase):
     def store(self, workspace: Path, **limits: int) -> ProjectStore:
         canonical = dashboard_server.load_project_tool(SKILL)
+        # Expose exactly what the active backend declares it needs, so a
+        # backend that quietly reached past its own contract fails here.
         tool = SimpleNamespace(
-            project_status_at=canonical.project_status_at,
-            is_protected_project_text=canonical.is_protected_project_text,
-            coordinated_project_text_edit_at=canonical.coordinated_project_text_edit_at,
-            project_path_lifecycle_at=canonical.project_path_lifecycle_at,
+            **{
+                name: getattr(canonical, name)
+                for name in dashboard_server.directory_backend().contract
+            }
         )
         return ProjectStore(workspace, tool, **limits)
+
+    def require_descriptor_pinning(self) -> None:
+        if dashboard_server.directory_backend() is not (
+            dashboard_server._DescriptorDirectory
+        ):
+            self.skipTest("this behaviour is specific to descriptor pinning")
 
     def test_rejects_a_project_tool_without_the_dashboard_contract(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -423,8 +453,10 @@ class ProjectStoreTests(unittest.TestCase):
             self.assertEqual(caught.exception.status, 403)
 
     def test_status_and_tree_read_from_a_pinned_project_root(self) -> None:
-        if not dashboard_server.SECURE_DIR_FD:
-            self.skipTest("secure dir-fd traversal is unavailable on this platform")
+        # A descriptor keeps reading the directory it pinned even after the
+        # name is repointed. Path pinning cannot promise that -- it fails the
+        # request instead, which the path-backend test below asserts.
+        self.require_descriptor_pinning()
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory) / "workspace"
             project = workspace / "show"
@@ -648,8 +680,6 @@ class ProjectStoreTests(unittest.TestCase):
             )
 
     def test_parent_directory_swap_cannot_redirect_a_text_write(self) -> None:
-        if not dashboard_server.SECURE_DIR_FD:
-            self.skipTest("secure dir-fd traversal is unavailable on this platform")
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
             project = workspace / "show"
@@ -667,20 +697,22 @@ class ProjectStoreTests(unittest.TestCase):
             version = store.read_text(project_id, "inside/notes.txt")["version"]
             swapped = False
 
-            original_open_parent = dashboard_server._open_parent_directory_at
+            original_open_parent = dashboard_server._open_parent_directory
 
             @contextlib.contextmanager
-            def swap_parent(root_fd: int, relative: PurePosixPath):
+            def swap_parent(root, relative: PurePosixPath):
                 nonlocal swapped
                 if relative.as_posix() == "inside/notes.txt" and not swapped:
                     inside.rename(project / "inside-original")
-                    inside.symlink_to(outside, target_is_directory=True)
+                    if not redirect_directory(inside, outside):
+                        (project / "inside-original").rename(inside)
+                        self.skipTest("directory redirection is unavailable")
                     swapped = True
-                with original_open_parent(root_fd, relative) as opened:
+                with original_open_parent(root, relative) as opened:
                     yield opened
 
             with patch.object(
-                dashboard_server, "_open_parent_directory_at", swap_parent
+                dashboard_server, "_open_parent_directory", swap_parent
             ):
                 with self.assertRaises(DashboardError) as caught:
                     store.write_text(
@@ -695,8 +727,6 @@ class ProjectStoreTests(unittest.TestCase):
             )
 
     def test_parent_directory_swap_cannot_redirect_media_read(self) -> None:
-        if not dashboard_server.SECURE_DIR_FD:
-            self.skipTest("secure dir-fd traversal is unavailable on this platform")
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
             project = workspace / "show"
@@ -712,20 +742,22 @@ class ProjectStoreTests(unittest.TestCase):
             project_id = store.discover()[0][0]["id"]
             swapped = False
 
-            original_open_parent = dashboard_server._open_parent_directory_at
+            original_open_parent = dashboard_server._open_parent_directory
 
             @contextlib.contextmanager
-            def swap_parent(root_fd: int, relative: PurePosixPath):
+            def swap_parent(root, relative: PurePosixPath):
                 nonlocal swapped
                 if relative.as_posix() == "episodes/EP001/storyboard/clip.mp4" and not swapped:
                     storyboard.rename(project / "storyboard-original")
-                    storyboard.symlink_to(outside, target_is_directory=True)
+                    if not redirect_directory(storyboard, outside):
+                        (project / "storyboard-original").rename(storyboard)
+                        self.skipTest("directory redirection is unavailable")
                     swapped = True
-                with original_open_parent(root_fd, relative) as opened:
+                with original_open_parent(root, relative) as opened:
                     yield opened
 
             with patch.object(
-                dashboard_server, "_open_parent_directory_at", swap_parent
+                dashboard_server, "_open_parent_directory", swap_parent
             ):
                 with self.assertRaises(DashboardError) as caught:
                     store.open_media(project_id, "episodes/EP001/storyboard/clip.mp4")
@@ -733,20 +765,134 @@ class ProjectStoreTests(unittest.TestCase):
             self.assertEqual(caught.exception.status, 403)
             self.assertEqual(outside_target.read_bytes(), b"OUTSIDE-SECRET")
 
-    def test_unsafe_platform_fails_closed_for_project_content(self) -> None:
+    def test_a_platform_without_descriptors_serves_the_same_content(self) -> None:
+        # Windows has no openat, so it pins verified paths instead. That
+        # backend is a whole dashboard, not a degraded one: the same tree, the
+        # same reads, the same saves and the same previews.
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
             project = workspace / "show"
             make_project(project)
-            (project / "notes.txt").write_text("text", encoding="utf-8")
+            (project / "notes.txt").write_text("文本", encoding="utf-8")
             (project / "clip.mp4").write_bytes(b"media")
 
-            # Patched before construction: the store refuses to exist at all
-            # without directory descriptors, rather than serving a browse tree
-            # whose every file, save and preview answers 501.
             with patch.object(dashboard_server, "SECURE_DIR_FD", False):
-                with self.assertRaisesRegex(RuntimeError, "unsupported"):
-                    self.store(workspace)
+                store = self.store(workspace)
+                self.assertIs(store.backend, dashboard_server._PathDirectory)
+                project_id = store.discover()[0][0]["id"]
+                self.assertEqual(store.status(project_id)["title"], "测试短剧")
+                names = {node["path"] for node in store.tree(project_id)["tree"]}
+                self.assertEqual(
+                    names, {"short-drama.json", "notes.txt", "clip.mp4"}
+                )
+
+                opened = store.read_text(project_id, "notes.txt")
+                self.assertEqual(opened["content"], "文本")
+                saved = store.write_text(
+                    project_id, "notes.txt", "改写", opened["version"]
+                )
+                self.assertTrue(saved["saved"])
+                self.assertEqual(
+                    (project / "notes.txt").read_bytes(), "改写".encode("utf-8")
+                )
+
+                handle, _path, content_type, size = store.open_media(
+                    project_id, "clip.mp4"
+                )
+                with handle:
+                    self.assertEqual(handle.read(), b"media")
+                self.assertEqual(content_type, "video/mp4")
+                self.assertEqual(size, 5)
+                store.close()
+
+    def test_path_pinning_fails_a_project_root_swapped_mid_request(self) -> None:
+        # The descriptor backend keeps reading the directory it pinned; path
+        # pinning cannot, so it must fail the request rather than follow the
+        # name to wherever it now points.
+        with tempfile.TemporaryDirectory() as directory:
+            container = Path(directory)
+            workspace = container / "workspace"
+            project = workspace / "show"
+            outside = container / "outside"
+            make_project(project, "原项目")
+            make_project(outside, "外部项目")
+            (outside / "outside-secret.md").write_text("secret", encoding="utf-8")
+
+            with patch.object(dashboard_server, "SECURE_DIR_FD", False):
+                store = self.store(workspace)
+                discovered = store.discover()
+                project_id = discovered[0][0]["id"]
+                shutil.rmtree(project)
+                if not redirect_directory(project, outside):
+                    self.skipTest("directory redirection is unavailable")
+                with patch.object(store, "discover", return_value=discovered):
+                    for call in (
+                        lambda: store.status(project_id),
+                        lambda: store.tree(project_id),
+                        lambda: store.read_text(project_id, "outside-secret.md"),
+                    ):
+                        with self.assertRaises(DashboardError) as caught:
+                            call()
+                        self.assertEqual(caught.exception.status, 403)
+                store.close()
+
+    def test_both_link_predicates_agree_on_what_must_not_be_walked(self) -> None:
+        # The dashboard and the project tool each own a copy of this
+        # predicate. Nothing else would notice if they drifted.
+        canonical = dashboard_server.load_project_tool(SKILL)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plain_file = root / "plain.txt"
+            plain_file.write_text("x", encoding="utf-8")
+            plain_dir = root / "dir"
+            plain_dir.mkdir()
+            expected = {plain_file: False, plain_dir: False}
+            link = root / "link"
+            if redirect_directory(link, plain_dir):
+                expected[link] = True
+            for candidate, must_reject in expected.items():
+                details = os.lstat(candidate)
+                self.assertEqual(
+                    dashboard_server._is_link_or_reparse(details),
+                    must_reject,
+                    candidate.name,
+                )
+                self.assertEqual(
+                    canonical._is_link_or_reparse(details),
+                    must_reject,
+                    candidate.name,
+                )
+
+    def test_a_save_refused_by_a_file_holder_says_so(self) -> None:
+        # Windows refuses the replace while anything else has the file open,
+        # and that is the most ordinary way a save fails there. Reporting it as
+        # an unsafe path would send a creator looking for the wrong problem.
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            project = workspace / "show"
+            make_project(project)
+            (project / "notes.txt").write_text("base", encoding="utf-8")
+            store = self.store(workspace)
+            project_id = store.discover()[0][0]["id"]
+            version = store.read_text(project_id, "notes.txt")["version"]
+
+            def refuse(self, source: str, target: str) -> None:
+                raise PermissionError(13, "used by another process")
+
+            with patch.object(store.backend, "replace", refuse):
+                with self.assertRaises(DashboardError) as caught:
+                    store.write_text(project_id, "notes.txt", "改写", version)
+
+            self.assertEqual(caught.exception.status, 409)
+            self.assertEqual(caught.exception.message, "file is open in another program")
+            self.assertEqual(
+                (project / "notes.txt").read_text(encoding="utf-8"), "base"
+            )
+            # The refused replace must still take its temporary file with it.
+            self.assertEqual(
+                [item.name for item in project.iterdir() if ".tmp" in item.name],
+                [],
+            )
 
     def test_media_has_an_independent_preview_limit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -798,6 +944,29 @@ class ProjectStoreTests(unittest.TestCase):
             collect(tree["tree"])
             self.assertEqual(files["剧集/EP001/制作成果/tts/LINE001.wav"]["type"], "media")
             self.assertEqual(store.media_info(project_id, "剧集/EP001/制作成果/tts/LINE001.wav")["kind"], "audio")
+
+
+class PathPinnedProjectStoreTests(ProjectStoreTests):
+    """Run every store test again through the backend Windows must use.
+
+    Descriptor pinning is chosen by platform, which would leave the path
+    backend exercised only on a Windows runner -- the one place a failure is
+    slowest to notice. Forcing the selection here runs both halves of the
+    dashboard everywhere the suite runs, and the handful of tests that assert
+    descriptor-specific behaviour skip themselves through
+    ``require_descriptor_pinning``.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = patch.object(dashboard_server, "SECURE_DIR_FD", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_path_backend_is_the_one_under_test(self) -> None:
+        self.assertIs(
+            dashboard_server.directory_backend(), dashboard_server._PathDirectory
+        )
 
 
 class ArtifactOwnershipTests(unittest.TestCase):
@@ -1351,6 +1520,7 @@ process.stdout.write(JSON.stringify({{
 const logic = require({json.dumps(str(app))});
 process.stdout.write(JSON.stringify([
   logic.friendlyFailure("file changed since it was opened"),
+  logic.friendlyFailure("file is open in another program"),
   logic.friendlyFailure("an unmapped message"),
   logic.creatorTitle({{ zh: "\u6d4b\u8bd5" }}),
   logic.creatorTitle("\u9006\u5149\u544a\u767d"),
@@ -1359,8 +1529,9 @@ process.stdout.write(JSON.stringify([
         completed = subprocess.run(
             ["node", "-e", script], check=True, capture_output=True, text=True
         )
-        translated, passthrough, guarded, kept = json.loads(completed.stdout)
+        translated, busy, passthrough, guarded, kept = json.loads(completed.stdout)
         self.assertNotIn("file changed", translated)
+        self.assertNotIn("another program", busy)
         self.assertEqual(passthrough, "an unmapped message")
         self.assertEqual(guarded, "未命名短剧")
         self.assertEqual(kept, "逆光告白")
@@ -1631,6 +1802,24 @@ class DashboardHTTPTests(unittest.TestCase):
             headers={"Origin": "http://evil.example"},
         )
         self.assertEqual(status, 403)
+
+
+class PathPinnedDashboardHTTPTests(DashboardHTTPTests):
+    """Serve the same HTTP surface through the backend Windows must use.
+
+    The store tests cover the backend directly; this covers what actually
+    reaches a creator -- byte ranges, conditional saves, media headers -- over
+    a real socket with descriptors taken away.
+    """
+
+    def setUp(self) -> None:
+        patcher = patch.object(dashboard_server, "SECURE_DIR_FD", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        super().setUp()
+        self.assertIs(
+            self.server.store.backend, dashboard_server._PathDirectory
+        )
 
 
 if __name__ == "__main__":

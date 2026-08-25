@@ -147,6 +147,7 @@ const FAILURE_COPY = {
   "file changed since it was opened": "这份内容在别处已经更新，请重新打开后再修改。",
   "text file cannot be opened safely": "这份内容暂时无法打开，请刷新后重试。",
   "text file cannot be replaced safely": "这份内容暂时无法保存，请刷新后重试。",
+  "file is open in another program": "这份文件正被别的程序占用，关掉它再保存。",
   "media file cannot be opened safely": "这段画面暂时无法打开，请刷新后重试。",
   "file type is not editable text": "这种内容不能在工作台里直接修改。",
   "content exceeds file limit": "内容太长，无法保存。",
