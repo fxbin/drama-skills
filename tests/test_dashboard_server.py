@@ -31,10 +31,8 @@ def run_node(script: str) -> "subprocess.CompletedProcess[str]":
     """Run one Node snippet and read its output as UTF-8.
 
     Without an explicit encoding Windows decodes the child's pipe with the ANSI
-    code page, which is cp1252 on the runner. The creator-facing Chinese these
-    assertions are about then comes back as mojibake -- or, on the five bytes
-    cp1252 leaves undefined, kills the reader thread and hands back no output
-    at all.
+    code page. The creator-facing Chinese these assertions are about then comes
+    back as mojibake, or fails outright on the bytes cp1252 leaves undefined.
     """
 
     return subprocess.run(
@@ -49,9 +47,9 @@ def run_node(script: str) -> "subprocess.CompletedProcess[str]":
 def redirect_directory(link: Path, target: Path) -> bool:
     """Point ``link`` at ``target``, however this platform can.
 
-    A symlink needs Developer Mode or an elevated shell on Windows, but a
-    directory junction needs neither and redirects traversal just as well --
-    which is exactly why the traversal checks must reject both.
+    A symlink needs Developer Mode or an elevated shell on Windows; a junction
+    needs neither and redirects just as well, which is why the traversal checks
+    must reject both.
     """
 
     try:
@@ -785,9 +783,8 @@ class ProjectStoreTests(unittest.TestCase):
             self.assertEqual(outside_target.read_bytes(), b"OUTSIDE-SECRET")
 
     def test_a_platform_without_descriptors_serves_the_same_content(self) -> None:
-        # Windows has no openat, so it pins verified paths instead. That
-        # backend is a whole dashboard, not a degraded one: the same tree, the
-        # same reads, the same saves and the same previews.
+        # The path backend is a whole dashboard, not a degraded one: same tree,
+        # same reads, same saves, same previews.
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
             project = workspace / "show"
@@ -856,8 +853,8 @@ class ProjectStoreTests(unittest.TestCase):
                 store.close()
 
     def test_both_link_predicates_agree_on_what_must_not_be_walked(self) -> None:
-        # The dashboard and the project tool each own a copy of this
-        # predicate. Nothing else would notice if they drifted.
+        # The dashboard and the project tool each own a copy of this predicate,
+        # and nothing else would notice if they drifted.
         canonical = dashboard_server.load_project_tool(SKILL)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -883,9 +880,9 @@ class ProjectStoreTests(unittest.TestCase):
                 )
 
     def test_a_save_refused_by_a_file_holder_says_so(self) -> None:
-        # Windows refuses the replace while anything else has the file open,
-        # and that is the most ordinary way a save fails there. Reporting it as
-        # an unsafe path would send a creator looking for the wrong problem.
+        # Windows refuses the replace while anything else holds the file open,
+        # the most ordinary way a save fails there. Reporting it as an unsafe
+        # path would send a creator after the wrong problem.
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
             project = workspace / "show"
@@ -903,7 +900,9 @@ class ProjectStoreTests(unittest.TestCase):
                     store.write_text(project_id, "notes.txt", "改写", version)
 
             self.assertEqual(caught.exception.status, 409)
-            self.assertEqual(caught.exception.message, "file is open in another program")
+            self.assertEqual(
+                caught.exception.message, "file is locked or not writable"
+            )
             self.assertEqual(
                 (project / "notes.txt").read_text(encoding="utf-8"), "base"
             )
@@ -912,6 +911,32 @@ class ProjectStoreTests(unittest.TestCase):
                 [item.name for item in project.iterdir() if ".tmp" in item.name],
                 [],
             )
+
+    def test_a_redirected_operations_directory_cannot_hold_the_lock(self) -> None:
+        # The project lock is what makes the version check and the replace one
+        # operation. Taken through a redirected `.short-drama`, two dashboards
+        # would each believe they held it.
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            project = workspace / "show"
+            make_project(project)
+            (project / "notes.txt").write_text("base", encoding="utf-8")
+            store = self.store(workspace)
+            project_id = store.discover()[0][0]["id"]
+            version = store.read_text(project_id, "notes.txt")["version"]
+            outside = workspace / "outside"
+            outside.mkdir()
+            if not redirect_directory(project / ".short-drama", outside):
+                self.skipTest("directory redirection is unavailable")
+
+            with self.assertRaises(DashboardError) as caught:
+                store.write_text(project_id, "notes.txt", "改写", version)
+
+            self.assertEqual(caught.exception.status, 403)
+            self.assertEqual(
+                (project / "notes.txt").read_text(encoding="utf-8"), "base"
+            )
+            self.assertEqual([item.name for item in outside.iterdir()], [])
 
     def test_media_has_an_independent_preview_limit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -968,12 +993,9 @@ class ProjectStoreTests(unittest.TestCase):
 class PathPinnedProjectStoreTests(ProjectStoreTests):
     """Run every store test again through the backend Windows must use.
 
-    Descriptor pinning is chosen by platform, which would leave the path
-    backend exercised only on a Windows runner -- the one place a failure is
-    slowest to notice. Forcing the selection here runs both halves of the
-    dashboard everywhere the suite runs, and the handful of tests that assert
-    descriptor-specific behaviour skip themselves through
-    ``require_descriptor_pinning``.
+    The backend is chosen by platform, so without this the path half would be
+    exercised only on the Windows runner. Tests that assert descriptor-specific
+    behaviour skip themselves through ``require_descriptor_pinning``.
     """
 
     def setUp(self) -> None:
@@ -1510,7 +1532,7 @@ process.stdout.write(JSON.stringify({{
 const logic = require({json.dumps(str(app))});
 process.stdout.write(JSON.stringify([
   logic.friendlyFailure("file changed since it was opened"),
-  logic.friendlyFailure("file is open in another program"),
+  logic.friendlyFailure("file is locked or not writable"),
   logic.friendlyFailure("an unmapped message"),
   logic.creatorTitle({{ zh: "\u6d4b\u8bd5" }}),
   logic.creatorTitle("\u9006\u5149\u544a\u767d"),
@@ -1519,7 +1541,7 @@ process.stdout.write(JSON.stringify([
         completed = run_node(script)
         translated, busy, passthrough, guarded, kept = json.loads(completed.stdout)
         self.assertNotIn("file changed", translated)
-        self.assertNotIn("another program", busy)
+        self.assertNotIn("not writable", busy)
         self.assertEqual(passthrough, "an unmapped message")
         self.assertEqual(guarded, "未命名短剧")
         self.assertEqual(kept, "逆光告白")
@@ -1795,9 +1817,8 @@ class DashboardHTTPTests(unittest.TestCase):
 class PathPinnedDashboardHTTPTests(DashboardHTTPTests):
     """Serve the same HTTP surface through the backend Windows must use.
 
-    The store tests cover the backend directly; this covers what actually
-    reaches a creator -- byte ranges, conditional saves, media headers -- over
-    a real socket with descriptors taken away.
+    The store tests cover the backend directly; this covers what reaches a
+    creator -- byte ranges, conditional saves, media headers -- over a socket.
     """
 
     def setUp(self) -> None:

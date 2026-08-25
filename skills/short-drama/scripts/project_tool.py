@@ -1111,6 +1111,15 @@ def coordinated_project_text_edit(
     normalized = _relative_path(relative)
     if not re.fullmatch(r"[0-9a-f]{64}", expected_version):
         raise ValueError("expected version must be a SHA-256 digest")
+    # The descriptor twin opens the operations directory with O_NOFOLLOW. Match
+    # it: a lock taken through a redirected `.short-drama` would leave two
+    # dashboards each believing they hold the project.
+    try:
+        operations = os.lstat(root / ".short-drama")
+    except FileNotFoundError:
+        operations = None
+    if operations is not None and _is_link_or_reparse(operations):
+        raise OSError("project operations directory is unsafe")
     with _project_lock(root):
         current = sha256_bytes(_read_regular(root, normalized))
         if current != expected_version:

@@ -165,9 +165,7 @@ def _is_link_or_reparse(details: os.stat_result) -> bool:
     """Say whether a stat result describes something that must not be traversed.
 
     ``S_ISLNK`` alone is not enough on Windows: junctions and every other
-    reparse point redirect just as effectively, and an unprivileged creator can
-    make them. This mirrors the same predicate in ``project_tool``; a test
-    holds the two to the same answers.
+    reparse point redirect just as well, and need no privilege to create.
     """
 
     attributes = getattr(details, "st_file_attributes", 0)
@@ -176,8 +174,6 @@ def _is_link_or_reparse(details: os.stat_result) -> bool:
 
 
 def _entry_is_link(entry: os.DirEntry) -> bool:
-    """Say whether a scanned entry must be skipped rather than walked."""
-
     try:
         if entry.is_symlink():
             return True
@@ -204,8 +200,8 @@ class _DescriptorDirectory:
     """A directory pinned by descriptor, the POSIX backend.
 
     Every operation names a file relative to a descriptor the request already
-    holds, so nothing between the workspace and the target can be swapped
-    mid-request: the pin *is* the directory, not a name that resolves to one.
+    holds, so the pin is the directory itself rather than a name that resolves
+    to one, and nothing in between can be swapped mid-request.
     """
 
     __slots__ = ("_fd",)
@@ -278,18 +274,16 @@ class _DescriptorDirectory:
 class _PathDirectory:
     """A directory pinned by verified path, for platforms without ``openat``.
 
-    Windows has no way to name a file relative to an open directory, so the
-    guarantee is rebuilt from two checks. Every component is inspected with
-    ``os.lstat``, which never follows, and rejected if it is a link or any
-    other reparse point. Then the pinned directory's own identity is re-checked
-    before each operation, and an opened file's identity is compared against
-    what was inspected, so a swap that lands between the two fails the request
-    instead of redirecting it.
+    Windows cannot name a file relative to an open directory, so the guarantee
+    is rebuilt from two checks: every component is inspected with ``os.lstat``,
+    which never follows, and refused if it is a link or any other reparse
+    point; then the pinned directory's identity is re-checked before each
+    operation and an opened file's identity against what was inspected.
 
-    This is weaker than a descriptor: a swap timed inside one of those windows
-    is not caught. It is also the boundary this server already accepts
-    elsewhere on Windows, and the adversary it admits -- a local process
-    running as the creator -- can already open these files directly.
+    This is weaker than a descriptor -- a swap timed between the two checks is
+    not caught. It is the boundary this suite already accepts for Windows
+    ``verify``, and the adversary it admits, a local process running as the
+    creator, can open these files directly anyway.
     """
 
     __slots__ = ("_path", "_identity")
@@ -814,10 +808,11 @@ class ProjectStore:
                 parent.replace(temporary_name, name)
             except PermissionError as exc:
                 # Windows refuses the rename while anything else holds the
-                # target open. That is a creator with the file open elsewhere,
-                # not an unsafe path, and it must not read as one.
+                # target open; elsewhere the same errno means the file is
+                # write-protected. Neither is an unsafe path, so neither may
+                # report as one.
                 raise DashboardError(
-                    HTTPStatus.CONFLICT, "file is open in another program"
+                    HTTPStatus.CONFLICT, "file is locked or not writable"
                 ) from exc
             replaced = True
             parent.sync()
@@ -845,6 +840,13 @@ class ProjectStore:
             if isinstance(exc, ValueError):
                 raise DashboardError(
                     HTTPStatus.FORBIDDEN, "project path changed during the save"
+                ) from exc
+            if isinstance(exc, OSError):
+                # Both backends refuse to take the project lock through a
+                # redirected `.short-drama`. That is a refused path, not the
+                # internal error it used to surface as.
+                raise DashboardError(
+                    HTTPStatus.FORBIDDEN, "text file cannot be replaced safely"
                 ) from exc
             raise
 
