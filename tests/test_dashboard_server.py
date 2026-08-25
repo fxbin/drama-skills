@@ -27,6 +27,25 @@ ProjectStore = dashboard_server.ProjectStore
 create_server = dashboard_server.create_server
 
 
+def run_node(script: str) -> "subprocess.CompletedProcess[str]":
+    """Run one Node snippet and read its output as UTF-8.
+
+    Without an explicit encoding Windows decodes the child's pipe with the ANSI
+    code page, which is cp1252 on the runner. The creator-facing Chinese these
+    assertions are about then comes back as mojibake -- or, on the five bytes
+    cp1252 leaves undefined, kills the reader thread and hands back no output
+    at all.
+    """
+
+    return subprocess.run(
+        ["node", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+
 def redirect_directory(link: Path, target: Path) -> bool:
     """Point ``link`` at ``target``, however this platform can.
 
@@ -1119,12 +1138,7 @@ const result = {{
 }};
 process.stdout.write(JSON.stringify(result));
 """
-        completed = subprocess.run(
-            ["node", "-e", script],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        completed = run_node(script)
         result = json.loads(completed.stdout)
 
         self.assertEqual(result["draft"], ["创作中", "neutral"])
@@ -1167,12 +1181,7 @@ const paths = [
 ];
 process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(path))));
 """
-        completed = subprocess.run(
-            ["node", "-e", script],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        completed = run_node(script)
 
         self.assertEqual(
             json.loads(completed.stdout),
@@ -1220,9 +1229,7 @@ process.stdout.write(JSON.stringify({{
   size: logic.formatBytes(2048),
 }}));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         self.assertEqual(
             json.loads(completed.stdout),
             {
@@ -1267,12 +1274,7 @@ const projected = logic.creatorProjection({{
 }});
 process.stdout.write(JSON.stringify(projected));
 """
-        completed = subprocess.run(
-            ["node", "-e", script],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        completed = run_node(script)
         visible = completed.stdout
         projected = json.loads(visible)
 
@@ -1367,9 +1369,7 @@ process.stdout.write(JSON.stringify([
   logic.friendlyKey("look_id") !== logic.friendlyKey("base_look_id"),
 ]));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         self.assertEqual(
             json.loads(completed.stdout),
             ["EP003/SC004/BLK-EP003-SC004-A01", False, True],
@@ -1388,9 +1388,7 @@ process.stdout.write(JSON.stringify(
   suffixes.map((suffix) => logic.creatorEditable({{ writable: true, path: `a/b${{suffix}}` }})),
 ));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         self.assertEqual(json.loads(completed.stdout), [True] * len(editable))
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
@@ -1409,9 +1407,7 @@ const paths = [
 ];
 process.stdout.write(JSON.stringify(paths.map((path) => logic.creatorSection(path))));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         self.assertEqual(
             json.loads(completed.stdout),
             ["other", "other", None, None, None],
@@ -1427,9 +1423,7 @@ const logic = require({json.dumps(str(app))});
 const rows = logic.readJsonLines('{{"a":1}}\\n{{broken\\n{{"c":3}}');
 process.stdout.write(JSON.stringify(rows.map((row) => (row.error ? "error" : "record"))));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         self.assertEqual(json.loads(completed.stdout), ["record", "error", "record"])
 
     @unittest.skipUnless(shutil.which("node"), "Node.js is unavailable")
@@ -1464,9 +1458,7 @@ process.stdout.write(JSON.stringify([
   escaped.text === attack && globalThis.projectTextExecuted === undefined,
 ]));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         tags, fence_kept, html_kept_as_text = json.loads(completed.stdout)
         self.assertEqual(tags, ["PRE", "OL", "UL"])
         self.assertTrue(fence_kept)
@@ -1493,9 +1485,7 @@ process.stdout.write(JSON.stringify({{
   legacyReviewSection: logic.creatorSection("审查/EP001-findings.jsonl"),
 }}));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         result = json.loads(completed.stdout)
         self.assertEqual(result["order"][0], "剧本.md")
         self.assertEqual(
@@ -1526,9 +1516,7 @@ process.stdout.write(JSON.stringify([
   logic.creatorTitle("\u9006\u5149\u544a\u767d"),
 ]));
 """
-        completed = subprocess.run(
-            ["node", "-e", script], check=True, capture_output=True, text=True
-        )
+        completed = run_node(script)
         translated, busy, passthrough, guarded, kept = json.loads(completed.stdout)
         self.assertNotIn("file changed", translated)
         self.assertNotIn("another program", busy)
