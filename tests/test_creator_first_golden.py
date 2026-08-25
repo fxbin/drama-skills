@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shutil
 import tempfile
 import unittest
 from pathlib import Path, PurePosixPath
@@ -117,6 +118,13 @@ INDEXER_SPEC = importlib.util.spec_from_file_location(
 assert INDEXER_SPEC and INDEXER_SPEC.loader
 screenplay_index = importlib.util.module_from_spec(INDEXER_SPEC)
 INDEXER_SPEC.loader.exec_module(screenplay_index)
+VALIDATOR_SPEC = importlib.util.spec_from_file_location(
+    "creator_markdown_check",
+    ROOT / "skills/short-drama/scripts/creator_markdown_check.py",
+)
+assert VALIDATOR_SPEC and VALIDATOR_SPEC.loader
+creator_markdown_check = importlib.util.module_from_spec(VALIDATOR_SPEC)
+VALIDATOR_SPEC.loader.exec_module(creator_markdown_check)
 
 
 def text(name: str) -> str:
@@ -140,7 +148,11 @@ def frozen_prompt(document: str, shot_id: str) -> str:
 def sections(document: str, prefix: str) -> dict[str, str]:
     matches = list(re.finditer(rf"^## ({prefix}[A-Z0-9-]+)\b", document, re.MULTILINE))
     return {
-        match.group(1): document[match.start() : matches[index + 1].start() if index + 1 < len(matches) else None]
+        match.group(1): document[
+            match.start() : matches[index + 1].start()
+            if index + 1 < len(matches)
+            else None
+        ]
         for index, match in enumerate(matches)
     }
 
@@ -156,10 +168,11 @@ def image_prompt_references(value: str) -> list[tuple[str, str, str]]:
     )
 
 
-def input_image_references(value: str) -> list[tuple[str, str, str, str, str]]:
+def input_image_references(value: str) -> list[tuple[str, str, str, str, str, str]]:
     return re.findall(
         r"(REF-[A-Z0-9-]+)（顺序：([1-9]\d*)）· "
-        r"([^；]+?\.(?:png|jpe?g|webp))《([^》]+)》（控制：([^）]+)）",
+        r"([^；]+?\.(?:png|jpe?g|webp))《([^》]+)》"
+        r"（控制：([^；）]+)；不得控制：([^）]+)）",
         value,
         re.IGNORECASE,
     )
@@ -219,7 +232,9 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         visual = text("视觉设定.md")
         visual_entries = [heading.split(" · ", 1) for heading in headings(visual, 2)]
         self.assertTrue(all(len(entry) == 2 and all(entry) for entry in visual_entries))
-        self.assertEqual({entry[0] for entry in visual_entries}, {"人物", "地点", "道具"})
+        self.assertEqual(
+            {entry[0] for entry in visual_entries}, {"人物", "地点", "道具"}
+        )
         self.assertEqual(
             len(re.findall(r"^- 识别锚点：\S.+$", visual, re.MULTILINE)),
             len(visual_entries),
@@ -291,7 +306,9 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                     self.assertRegex(label, r"[\u4e00-\u9fff]")
                     self.assertRegex(scope, r"[\u4e00-\u9fff]")
 
-    def test_storyboard_reference_contract_supports_independent_state_axes(self) -> None:
+    def test_storyboard_reference_contract_supports_independent_state_axes(
+        self,
+    ) -> None:
         contract = CREATOR_DOCUMENTS.read_text(encoding="utf-8")
         markdown_examples = re.findall(r"```markdown\n(.*?)```", contract, re.DOTALL)
         reference_states = [
@@ -349,10 +366,11 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             orders = [int(reference[1]) for reference in references]
             self.assertEqual(len(slots), len(set(slots)))
             self.assertEqual(len(orders), len(set(orders)))
-            for _, _, raw_path, label, scope in references:
+            for _, _, raw_path, label, scope, excluded_scope in references:
                 self.assertTrue(is_portable_project_relative_path(raw_path))
                 self.assertRegex(label, r"[\u4e00-\u9fff]")
                 self.assertRegex(scope, r"[\u4e00-\u9fff]")
+                self.assertRegex(excluded_scope, r"[\u4e00-\u9fff]")
 
         for unsafe_path in (
             "",
@@ -372,6 +390,189 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             with self.subTest(shot=shot_id):
                 fields = bullet_fields(body)
                 self.assertRegex(fields["输入参考图"], r"^无(?:（[^）]+）)?。?$")
+
+    def test_creator_markdown_validator_accepts_the_golden_episode(self) -> None:
+        self.assertEqual(creator_markdown_check.validate_episode(EPISODE, ROOT), [])
+
+    def test_creator_markdown_validator_accepts_a_real_ref_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            episode = project / "剧集/EP001"
+            shutil.copytree(EPISODE, episode)
+            reference = project / "输入/参考图/江晨定妆.png"
+            reference.parent.mkdir(parents=True)
+            reference.write_bytes(b"not decoded by the structural validator")
+            declaration = (
+                "REF-JIANGCHEN-LOOK（顺序：1）· 输入/参考图/江晨定妆.png"
+                "《江晨定妆照》（控制：身份、造型；不得控制：构图、动作、表情）"
+            )
+            for name in ("分镜.md", "视频提示词.md"):
+                path = episode / name
+                document = path.read_text(encoding="utf-8")
+                path.write_text(
+                    document.replace(
+                        "- 输入参考图：无。", f"- 输入参考图：{declaration}", 1
+                    ),
+                    encoding="utf-8",
+                )
+            video = episode / "视频提示词.md"
+            video.write_text(
+                video.read_text(encoding="utf-8").replace(
+                    "- 生成方式：文生视频", "- 生成方式：图生视频", 1
+                ),
+                encoding="utf-8",
+            )
+            image_prompts = episode / "图片提示词.md"
+            image_prompts.write_text(
+                image_prompts.read_text(encoding="utf-8").replace(
+                    "- 参考：无外部参考；三视图必须保持同一脸型、身高比例和服装细节。",
+                    f"- 参考：{declaration}",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                creator_markdown_check.validate_episode(episode, project), []
+            )
+
+    def test_creator_markdown_validator_rejects_cross_document_contract_breaks(
+        self,
+    ) -> None:
+        mutations = {
+            "missing IMG": (
+                "分镜.md",
+                "IMG-JIANGCHEN-SHEET《江晨角色板》",
+                "IMG-NOT-DEFINED《江晨角色板》",
+                "IMG 标题不存在",
+            ),
+            "missing motion": (
+                "视频提示词.md",
+                "- 分镜：SHOT-EP001-001",
+                "- 分镜：SHOT-EP001-999",
+                "SHOT 与 MOTION 未一一对应",
+            ),
+            "reference mismatch": (
+                "视频提示词.md",
+                "- 输入参考图：无。",
+                "- 输入参考图：REF-X（顺序：1）· 输入/x.png《参考图》（控制：身份；不得控制：动作）",
+                "输入参考图与 SHOT-EP001-001 不一致",
+            ),
+            "missing static anchor": (
+                "视频提示词.md",
+                "- 静态视觉锚点：A clean young East Asian man's right hand rests palm-down",
+                "- 静态视觉锚点：无\n- 删除字段：A clean young East Asian man's right hand rests palm-down",
+                "文生视频缺少静态视觉锚点",
+            ),
+            "duplicate reference field": (
+                "视频提示词.md",
+                "- 输入参考图：无。",
+                "- 输入参考图：无。\n- 输入参考图：无。",
+                "字段重复: 输入参考图",
+            ),
+            "hidden REF in no-input marker": (
+                "视频提示词.md",
+                "- 输入参考图：无。",
+                "- 输入参考图：无（ref-HERO）",
+                "完整 REF 语法",
+            ),
+            "missing image prompt item": (
+                "分镜.md",
+                "- 图片提示词项：IMG-JIANGCHEN-SHEET",
+                "- 删除字段：IMG-JIANGCHEN-SHEET",
+                "缺少图片提示词项字段",
+            ),
+            "missing IMG copyable prompt": (
+                "图片提示词.md",
+                "### 可复制提示词",
+                "### 普通说明",
+                "缺少唯一且非空的可复制提示词",
+            ),
+            "unquoted IMG prompt content": (
+                "图片提示词.md",
+                "### 可复制提示词",
+                "### 可复制提示词\nTHIS CRITICAL LINE IS NOT QUOTED",
+                "缺少唯一且非空的可复制提示词",
+            ),
+            "invalid image reference declaration": (
+                "图片提示词.md",
+                "- 参考：无外部参考；三视图必须保持同一脸型、身高比例和服装细节。",
+                "- 参考：随便写，不是无，也不是完整 REF",
+                "参考必须声明无外部参考或使用完整 REF 语法",
+            ),
+            "hidden REF after no-reference prefix": (
+                "图片提示词.md",
+                "- 参考：无外部参考；三视图必须保持同一脸型、身高比例和服装细节。",
+                "- 参考：无外部参考；REF-X（顺序：1）· 输入/x.png"
+                "《人物参考》（控制：身份；不得控制：动作）",
+                "完整 REF 语法",
+            ),
+        }
+        for label, (name, old, new, expected) in mutations.items():
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as directory:
+                project = Path(directory)
+                episode = project / "剧集/EP001"
+                shutil.copytree(EPISODE, episode)
+                path = episode / name
+                document = path.read_text(encoding="utf-8")
+                self.assertIn(old, document)
+                path.write_text(document.replace(old, new, 1), encoding="utf-8")
+                errors = creator_markdown_check.validate_episode(episode, project)
+                self.assertTrue(any(expected in error for error in errors), errors)
+
+    def test_creator_markdown_validator_rejects_missing_and_reordered_ref_files(
+        self,
+    ) -> None:
+        bad_declarations = {
+            "missing file": (
+                "REF-A（顺序：1）· 输入/不存在.png《人物参考》（控制：身份；不得控制：动作）",
+                "REF 文件不存在",
+            ),
+            "duplicate order": (
+                "REF-A（顺序：1）· 输入/a.png《人物参考》（控制：身份；不得控制：动作）；"
+                "REF-B（顺序：1）· 输入/b.png《场景参考》（控制：地理；不得控制：人物身份）",
+                "REF 顺序必须唯一",
+            ),
+            "missing separator": (
+                "REF-A（顺序：1）· 输入/a.png《人物参考》（控制：身份；不得控制：动作）"
+                "REF-B（顺序：2）· 输入/b.png《场景参考》（控制：地理；不得控制：人物身份）",
+                "完整 REF 语法",
+            ),
+            "duplicate path": (
+                "REF-A（顺序：1）· 输入/a.png《人物参考》（控制：身份；不得控制：动作）；"
+                "REF-B（顺序：2）· 输入/a.png《另一人物参考》（控制：造型；不得控制：构图）",
+                "REF 路径重复",
+            ),
+            "conflicting scope": (
+                "REF-A（顺序：1）· 输入/a.png《人物参考》（控制：身份；不得控制：身份）",
+                "控制与不得控制范围冲突",
+            ),
+        }
+        for label, (declaration, expected) in bad_declarations.items():
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as directory:
+                project = Path(directory)
+                episode = project / "剧集/EP001"
+                shutil.copytree(EPISODE, episode)
+                (project / "输入").mkdir()
+                (project / "输入/a.png").write_bytes(b"a")
+                (project / "输入/b.png").write_bytes(b"b")
+                for name in ("分镜.md", "视频提示词.md"):
+                    path = episode / name
+                    document = path.read_text(encoding="utf-8")
+                    path.write_text(
+                        document.replace(
+                            "- 输入参考图：无。", f"- 输入参考图：{declaration}", 1
+                        ),
+                        encoding="utf-8",
+                    )
+                video = episode / "视频提示词.md"
+                video.write_text(
+                    video.read_text(encoding="utf-8").replace(
+                        "- 生成方式：文生视频", "- 生成方式：图生视频", 1
+                    ),
+                    encoding="utf-8",
+                )
+                errors = creator_markdown_check.validate_episode(episode, project)
+                self.assertTrue(any(expected in error for error in errors), errors)
 
     def test_frozen_keyframes_are_copyable_markdown_blocks(self) -> None:
         storyboard = text("分镜.md")
@@ -405,7 +606,9 @@ class CreatorFirstGoldenTests(unittest.TestCase):
     def test_every_creator_knowledge_reference_is_reachable(self) -> None:
         for skill_name in ACTIVE_CREATOR_SKILLS:
             skill_root = ROOT / "skills" / skill_name
-            references = {path.resolve() for path in (skill_root / "references").rglob("*.md")}
+            references = {
+                path.resolve() for path in (skill_root / "references").rglob("*.md")
+            }
             reachable = reachable_markdown(skill_root / "SKILL.md", skill_root)
             with self.subTest(skill=skill_name):
                 self.assertEqual(
@@ -445,9 +648,12 @@ class CreatorFirstGoldenTests(unittest.TestCase):
             contract = (
                 ROOT / "skills" / skill_name / "references/stage-contract.md"
             ).read_text(encoding="utf-8")
-            actual = set(re.findall(r"\b(?:SCR|AST|IMG|SHT|VID|CON|REV)-\d{2}\b", contract))
+            actual = set(
+                re.findall(r"\b(?:SCR|AST|IMG|SHT|VID|CON|REV)-\d{2}\b", contract)
+            )
             with self.subTest(skill=skill_name):
                 self.assertEqual(actual, rule_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,17 @@ SPEC.loader.exec_module(provider_adapters)
 
 
 class ProviderCompilerTests(unittest.TestCase):
+    def reference_binding(self) -> dict[str, object]:
+        return {
+            "slot_id": "REF-HERO",
+            "order": 1,
+            "path": "输入/reference.png",
+            "label": "女主定妆照",
+            "role": "identity",
+            "may_control": ["脸型", "发型"],
+            "must_not_control": ["构图", "动作"],
+        }
+
     def image_job(self, **parameters: object) -> dict[str, object]:
         return {
             "modality": "image",
@@ -107,6 +118,34 @@ class ProviderCompilerTests(unittest.TestCase):
             allowed_ratios={"adaptive"},
         )
         self.assertTrue(adaptive["content"][0]["text"].endswith("--ratio adaptive"))
+
+    def test_provider_prompts_preserve_confirmed_reference_semantics(self) -> None:
+        video = self.video_job()
+        video["references"] = ["输入/reference.png"]
+        video["reference_bindings"] = [self.reference_binding()]
+        seedance = provider_adapters.compile_seedance_payload(
+            video,
+            model="configured",
+            reference_urls=["asset://asset-202608160001-example"],
+        )
+        text = seedance["content"][0]["text"]
+        self.assertIn("Reference image 1 (女主定妆照), role identity", text)
+        self.assertIn("May control: 脸型, 发型", text)
+        self.assertIn("Must not control: 构图, 动作", text)
+
+        image = self.image_job()
+        image["references"] = ["输入/reference.png"]
+        image["reference_bindings"] = [self.reference_binding()]
+        gpt_image = provider_adapters.compile_gpt_image_2_payload(image)
+        self.assertIn("Reference contract:", gpt_image["prompt"])
+        self.assertIn("Must not control: 构图, 动作", gpt_image["prompt"])
+
+    def test_provider_rejects_reference_semantics_that_do_not_match_paths(self) -> None:
+        image = self.image_job()
+        image["references"] = ["输入/another.png"]
+        image["reference_bindings"] = [self.reference_binding()]
+        with self.assertRaisesRegex(ValueError, "path does not match"):
+            provider_adapters.compile_gpt_image_2_payload(image)
 
     def test_gpt_image_2_payload_matches_the_current_contract(self) -> None:
         payload = provider_adapters.compile_gpt_image_2_payload(
