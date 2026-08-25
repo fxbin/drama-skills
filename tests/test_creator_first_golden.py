@@ -6,7 +6,7 @@ import importlib.util
 import re
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
 
@@ -28,6 +28,7 @@ CREATOR_SKILLS = (
     "short-drama-video-prompts",
 )
 ACTIVE_CREATOR_SKILLS = (*CREATOR_SKILLS, "short-drama-review")
+CREATOR_DOCUMENTS = ROOT / "skills/short-drama/references/creator-documents.md"
 EXPECTED_KNOWHOW = {
     "short-drama": {
         "audience-reveal.md",
@@ -144,6 +145,35 @@ def sections(document: str, prefix: str) -> dict[str, str]:
     }
 
 
+def bullet_fields(document: str) -> dict[str, str]:
+    return dict(re.findall(r"^- ([^：\n]+)：(.+)$", document, re.MULTILINE))
+
+
+def image_prompt_references(value: str) -> list[tuple[str, str, str]]:
+    return re.findall(
+        r"\b(IMG-[A-Z0-9-]+)《([^》]+)》（控制：([^）]+)）",
+        value,
+    )
+
+
+def input_image_references(value: str) -> list[tuple[str, str, str, str, str]]:
+    return re.findall(
+        r"(REF-[A-Z0-9-]+)（顺序：([1-9]\d*)）· "
+        r"([^；]+?\.(?:png|jpe?g|webp))《([^》]+)》（控制：([^）]+)）",
+        value,
+        re.IGNORECASE,
+    )
+
+
+def is_portable_project_relative_path(value: str) -> bool:
+    if not value or "\\" in value or re.match(r"^[A-Za-z]:", value):
+        return False
+    components = value.split("/")
+    if any(component in {"", ".", ".."} for component in components):
+        return False
+    return not PurePosixPath(value).is_absolute()
+
+
 def reachable_markdown(start: Path, root: Path) -> set[Path]:
     link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+\.md(?:#[^)]+)?)\)")
     seen: set[Path] = set()
@@ -229,15 +259,119 @@ class CreatorFirstGoldenTests(unittest.TestCase):
         }
         self.assertEqual(storyboard_scenes, screenplay_scenes)
 
-    def test_each_shot_names_its_image_references(self) -> None:
-        image_ids = set(heading_ids(text("图片提示词.md"), "IMG-"))
+    def test_each_storyboard_image_prompt_id_has_a_matching_heading(self) -> None:
+        image_headings = dict(
+            re.findall(
+                r"^## (IMG-[A-Z0-9-]+) · (.+)$",
+                text("图片提示词.md"),
+                re.MULTILINE,
+            )
+        )
         for shot_id, body in sections(text("分镜.md"), "SHOT-").items():
             with self.subTest(shot=shot_id):
-                reference_line = re.search(r"^- 参考：(.+)$", body, re.MULTILINE)
-                self.assertIsNotNone(reference_line)
-                referenced = set(re.findall(r"\bIMG-[A-Z0-9-]+\b", reference_line.group(1)))
+                fields = bullet_fields(body)
+                references = image_prompt_references(fields["图片提示词项"])
+                referenced = {item[0] for item in references}
                 self.assertTrue(referenced)
-                self.assertLessEqual(referenced, image_ids)
+                self.assertLessEqual(referenced, image_headings.keys())
+                for image_id, label, _ in references:
+                    self.assertEqual(label, image_headings[image_id])
+
+    def test_storyboard_image_prompt_references_explain_labels_and_scope(self) -> None:
+        for shot_id, body in sections(text("分镜.md"), "SHOT-").items():
+            with self.subTest(shot=shot_id):
+                fields = bullet_fields(body)
+                value = fields["图片提示词项"]
+                references = image_prompt_references(value)
+                self.assertEqual(
+                    len(references),
+                    len(re.findall(r"\bIMG-[A-Z0-9-]+\b", value)),
+                )
+                for _, label, scope in references:
+                    self.assertRegex(label, r"[\u4e00-\u9fff]")
+                    self.assertRegex(scope, r"[\u4e00-\u9fff]")
+
+    def test_storyboard_reference_contract_supports_independent_state_axes(self) -> None:
+        contract = CREATOR_DOCUMENTS.read_text(encoding="utf-8")
+        markdown_examples = re.findall(r"```markdown\n(.*?)```", contract, re.DOTALL)
+        reference_states = [
+            fields
+            for example in markdown_examples
+            if {
+                "图片提示词项",
+                "输入参考图",
+            }.issubset(fields := bullet_fields(example))
+        ]
+
+        prompt_without_image = [
+            state
+            for state in reference_states
+            if image_prompt_references(state["图片提示词项"])
+            and re.fullmatch(r"无(?:（[^）]+）)?。?", state["输入参考图"])
+        ]
+        self.assertEqual(len(prompt_without_image), 1)
+
+        fallback_states = [
+            state
+            for state in reference_states
+            if state["图片提示词项"] == "无"
+            and re.fullmatch(r"无(?:（[^）]+）)?。?", state["输入参考图"])
+            and "视觉依据" in state
+        ]
+        self.assertEqual(len(fallback_states), 1)
+        fallback = fallback_states[0]
+        self.assertRegex(fallback["输入参考图"], r"^无(?:（[^）]+）)?$")
+        self.assertNotRegex(fallback["输入参考图"], r"\bIMG-[A-Z0-9-]+\b")
+        self.assertRegex(fallback["视觉依据"], r"《视觉设定\.md》")
+        self.assertRegex(fallback["视觉依据"], r"（控制：[^）]+）")
+
+        image_without_prompt = [
+            state
+            for state in reference_states
+            if state["图片提示词项"] == "无"
+            and input_image_references(state["输入参考图"])
+        ]
+        self.assertEqual(len(image_without_prompt), 1)
+
+        prompt_with_image = [
+            state
+            for state in reference_states
+            if image_prompt_references(state["图片提示词项"])
+            and input_image_references(state["输入参考图"])
+        ]
+        self.assertEqual(len(prompt_with_image), 1)
+
+        for state in (*image_without_prompt, *prompt_with_image):
+            input_field = state["输入参考图"]
+            self.assertNotRegex(input_field, r"\bIMG-[A-Z0-9-]+\b")
+            references = input_image_references(input_field)
+            slots = [reference[0] for reference in references]
+            orders = [int(reference[1]) for reference in references]
+            self.assertEqual(len(slots), len(set(slots)))
+            self.assertEqual(len(orders), len(set(orders)))
+            for _, _, raw_path, label, scope in references:
+                self.assertTrue(is_portable_project_relative_path(raw_path))
+                self.assertRegex(label, r"[\u4e00-\u9fff]")
+                self.assertRegex(scope, r"[\u4e00-\u9fff]")
+
+        for unsafe_path in (
+            "",
+            r"..\secret.jpg",
+            r"C:\Users\me\portrait.jpg",
+            r"\\server\share\portrait.jpg",
+            "../secret.jpg",
+            "/absolute/portrait.jpg",
+            "input//portrait.jpg",
+            "input/./portrait.jpg",
+            "input/../portrait.jpg",
+        ):
+            with self.subTest(unsafe_path=unsafe_path):
+                self.assertFalse(is_portable_project_relative_path(unsafe_path))
+
+        for shot_id, body in sections(text("分镜.md"), "SHOT-").items():
+            with self.subTest(shot=shot_id):
+                fields = bullet_fields(body)
+                self.assertRegex(fields["输入参考图"], r"^无(?:（[^）]+）)?。?$")
 
     def test_frozen_keyframes_are_copyable_markdown_blocks(self) -> None:
         storyboard = text("分镜.md")
