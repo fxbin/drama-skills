@@ -52,9 +52,7 @@ def _sections(document: str, kind: str) -> dict[str, str]:
     }
 
 
-def _fields(
-    section: str, *, owner: str, errors: list[str]
-) -> dict[str, str]:
+def _fields(section: str, *, owner: str, errors: list[str]) -> dict[str, str]:
     pairs = re.findall(r"^- ([^：\n]+)：(.+)$", section, re.MULTILINE)
     fields: dict[str, str] = {}
     for key, value in pairs:
@@ -68,30 +66,37 @@ def _plain(value: str) -> str:
     return value.strip().rstrip("。")
 
 
+def _contains_ref_token(value: str) -> bool:
+    return "ref-" in value.casefold()
+
+
 def _is_none(value: str) -> bool:
-    return bool(re.fullmatch(r"无(?:（[^）]+）)?", _plain(value)))
+    return not _contains_ref_token(value) and bool(
+        re.fullmatch(r"无(?:（[^）]+）)?", _plain(value))
+    )
 
 
 def _is_no_external_reference(value: str) -> bool:
-    return bool(
+    return not _contains_ref_token(value) and bool(
         re.fullmatch(r"无(?:外部参考)?(?:；[^\n]*)?。?", value.strip())
     )
 
 
-def _has_copyable_prompt(section: str) -> bool:
+def _copyable_prompt(section: str) -> Optional[str]:
     markers = list(
         re.finditer(r"^### 可复制(?:通用)?提示词\s*$", section, re.MULTILINE)
     )
     if len(markers) != 1:
-        return False
+        return None
     body = section[markers[0].end() :]
     following = re.search(r"^###\s+|^##\s+", body, re.MULTILINE)
     if following is not None:
         body = body[: following.start()]
     lines = [line for line in body.splitlines() if line.strip()]
-    return bool(lines) and all(line.startswith(">") for line in lines) and any(
-        line[1:].strip() for line in lines
-    )
+    if not lines or any(not line.startswith(">") for line in lines):
+        return None
+    prompt = "\n".join(line[1:].lstrip() for line in lines).strip()
+    return prompt or None
 
 
 def _portable_path(value: str) -> bool:
@@ -108,11 +113,9 @@ def _inside(path: Path, root: Path) -> bool:
     return resolved == root or root in resolved.parents
 
 
-def _references(
-    value: str, owner: str, project_root: Path, errors: list[str]
-) -> list[tuple[str, int, str]]:
+def _references(value: str, owner: str, project_root: Path, errors: list[str]) -> None:
     if _is_none(value):
-        return []
+        return
     matches = list(REF_RE.finditer(value))
     cursor = 0
     separators_are_valid = True
@@ -128,7 +131,7 @@ def _references(
         or trailing not in {"", "。"}
     ):
         errors.append(f"{owner}: 输入参考图必须使用完整 REF 语法")
-        return []
+        return
     refs = [(match.group(1), int(match.group(2)), match.group(3)) for match in matches]
     slots = [item[0] for item in refs]
     orders = [item[1] for item in refs]
@@ -160,12 +163,9 @@ def _references(
         if not may_control.strip() or not must_not_control.strip():
             errors.append(f"{owner}: REF 必须同时声明控制与不得控制: {match.group(1)}")
         allowed = {item.strip() for item in re.split(r"[、,，]", may_control)}
-        prohibited = {
-            item.strip() for item in re.split(r"[、,，]", must_not_control)
-        }
+        prohibited = {item.strip() for item in re.split(r"[、,，]", must_not_control)}
         if "" in allowed or "" in prohibited or allowed & prohibited:
             errors.append(f"{owner}: REF 控制与不得控制范围冲突: {match.group(1)}")
-    return refs
 
 
 def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list[str]:
@@ -197,9 +197,9 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
             if index + 1 < len(image_matches)
             else None
         ]
-        reference_value = _fields(
-            body, owner=match.group(1), errors=errors
-        ).get("参考", "")
+        reference_value = _fields(body, owner=match.group(1), errors=errors).get(
+            "参考", ""
+        )
         if not reference_value:
             errors.append(f"{match.group(1)}: 缺少参考字段")
         elif _is_no_external_reference(reference_value):
@@ -207,8 +207,10 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         elif "REF-" in reference_value:
             _references(reference_value, match.group(1), project_root, errors)
         else:
-            errors.append(f"{match.group(1)}: 参考必须声明无外部参考或使用完整 REF 语法")
-        if not _has_copyable_prompt(body):
+            errors.append(
+                f"{match.group(1)}: 参考必须声明无外部参考或使用完整 REF 语法"
+            )
+        if _copyable_prompt(body) is None:
             errors.append(f"{match.group(1)}: 缺少唯一且非空的可复制提示词")
 
     shots = _sections(storyboard, "SHOT")
@@ -240,19 +242,20 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
     if not motions:
         errors.append("视频提示词.md: 没有 MOTION 条目")
 
-    motion_by_shot: dict[str, tuple[str, str]] = {}
+    motion_by_shot: dict[str, tuple[str, str, Optional[str]]] = {}
     for motion_id, body in motions.items():
         fields = _fields(body, owner=motion_id, errors=errors)
         shot_id = _plain(fields.get("分镜", ""))
+        copyable_prompt = _copyable_prompt(body)
         if not shot_id:
             errors.append(f"{motion_id}: 缺少分镜字段")
         elif shot_id in motion_by_shot:
             errors.append(f"{motion_id}: 分镜 {shot_id} 被多个 MOTION 引用")
         else:
-            motion_by_shot[shot_id] = (motion_id, body)
+            motion_by_shot[shot_id] = (motion_id, body, copyable_prompt)
         if motion_id.removeprefix("MOTION-") != shot_id.removeprefix("SHOT-"):
             errors.append(f"{motion_id}: ID 必须与分镜 {shot_id} 一一对应")
-        if not _has_copyable_prompt(body):
+        if copyable_prompt is None:
             errors.append(f"{motion_id}: 缺少唯一且非空的可复制提示词")
 
     if set(motion_by_shot) != set(shots):
@@ -284,7 +287,7 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
         motion = motion_by_shot.get(shot_id)
         if not motion:
             continue
-        motion_id, motion_body = motion
+        motion_id, motion_body, copyable_prompt = motion
         motion_fields = _fields(motion_body, owner=motion_id, errors=errors)
         motion_input = motion_fields.get("输入参考图", "")
         _references(motion_input, motion_id, project_root, errors)
@@ -299,13 +302,12 @@ def validate_episode(episode: Path, project_root: Optional[Path] = None) -> list
             anchor = _plain(motion_fields.get("静态视觉锚点", ""))
             if not anchor or anchor == "无":
                 errors.append(f"{motion_id}: 文生视频缺少静态视觉锚点")
-            prompt_match = re.search(
-                r"^### 可复制提示词\s*\n(?:\s*\n)?(?:> .+\n?)+",
-                motion_body,
-                re.MULTILINE,
-            )
-            prompt = prompt_match.group(0) if prompt_match else ""
-            if anchor and anchor != "无" and anchor not in prompt:
+            if (
+                copyable_prompt is not None
+                and anchor
+                and anchor != "无"
+                and anchor not in copyable_prompt
+            ):
                 errors.append(f"{motion_id}: 可复制提示词没有包含静态视觉锚点")
 
     return errors

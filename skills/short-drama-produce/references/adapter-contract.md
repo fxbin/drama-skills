@@ -35,15 +35,15 @@
 - `source`: optional current project text/spec that owns the prompt.
 - `source_entry`: for a creator-first job, the exact uppercase `IMG-*` or `MOTION-*`
   H2 ID inside the canonical `剧集|episodes/<EP>/图片提示词.md|视频提示词.md`
-  `source`. A new job pointing to either canonical filename must provide the
-  matching selector; an arbitrary Markdown file cannot impersonate a creator
-  source. `prepare` selects that section and requires `prompt` to equal its
-  copyable prompt byte-for-text after Markdown quote markers are removed.
+  `source`. A new image/video job pointing to either canonical filename must
+  provide the matching selector; an arbitrary Markdown file cannot impersonate a
+  creator source. `prepare` selects that section and requires `prompt` to exactly
+  equal its copyable prompt after Markdown quote markers are removed.
 - `reference_bindings`: zero to sixteen ordered semantic bindings. Every entry has
   exactly `slot_id`, contiguous `order`, project-relative `path`, Chinese `label`,
   non-empty `role`, and non-empty `may_control` / `must_not_control` lists. When
   `source_entry` is present, these fields must exactly match that entry's
-  `参考`（IMG）or `输入参考图`（MOTION）declaration (except `role`, which is
+  `参考` (IMG) or `输入参考图` (MOTION) declaration (except `role`, which is
   production metadata). Allowed and prohibited scopes may not overlap.
 - `references`: zero to sixteen current project files actually sent to production.
   It may be omitted when `reference_bindings` is present, in which case the paths

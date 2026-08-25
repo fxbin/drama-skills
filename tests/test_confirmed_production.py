@@ -126,8 +126,16 @@ class ConfirmedProductionTests(unittest.TestCase):
                             "path": reference_path,
                             "label": "女主定妆照",
                             "role": "identity_and_look",
-                            "may_control": may_control or ["身份", "造型"],
-                            "must_not_control": must_not_control or ["构图", "动作"],
+                            "may_control": (
+                                ["身份", "造型"]
+                                if may_control is None
+                                else may_control
+                            ),
+                            "must_not_control": (
+                                ["构图", "动作"]
+                                if must_not_control is None
+                                else must_not_control
+                            ),
                         }
                     ],
                     "outputs": ["剧集/EP001/制作成果/video/SHOT-EP001-001.mp4"],
@@ -400,6 +408,34 @@ class ConfirmedProductionTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
+            job = self.write_creator_video_job(root)
+            source = root / "剧集/EP001/视频提示词.md"
+            source.write_text(
+                source.read_text(encoding="utf-8").replace(
+                    "- 输入参考图：REF-HERO（顺序：1）· "
+                    "输入/reference.png《女主定妆照》"
+                    "（控制：身份、造型；不得控制：构图、动作）",
+                    "- 输入参考图：无（ref-HERO）",
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "declaration is invalid"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
+            declaration = (
+                "无外部参考；ref-HERO（顺序：1）· 输入/reference.png"
+                "《女主定妆照》（控制：身份；不得控制：动作）"
+            )
+            job = self.write_creator_image_job(
+                root, reference_declaration=declaration, include_binding=True
+            )
+            with self.assertRaisesRegex(ValueError, "declaration is invalid"):
+                production_tool.prepare_job(root, job)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_project(directory)
             declaration = (
                 "REF-HERO（顺序：1）· 输入/reference.png《女主定妆照》"
                 "（控制：身份；不得控制：动作）"
@@ -486,10 +522,7 @@ class ConfirmedProductionTests(unittest.TestCase):
     def test_reference_bindings_require_bounded_may_and_must_not_scopes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_project(directory)
-            job = self.write_creator_video_job(root)
-            document = json.loads(job.read_text(encoding="utf-8"))
-            document["reference_bindings"][0]["must_not_control"] = []
-            job.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            job = self.write_creator_video_job(root, must_not_control=[])
             with self.assertRaisesRegex(ValueError, "must_not_control"):
                 production_tool.prepare_job(root, job)
 

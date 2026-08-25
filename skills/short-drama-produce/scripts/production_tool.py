@@ -787,6 +787,10 @@ def _scope_items(value: str) -> list[str]:
     return [item.strip() for item in re.split(r"[、,，]", value) if item.strip()]
 
 
+def _contains_ref_token(value: str) -> bool:
+    return "ref-" in value.casefold()
+
+
 def _markdown_reference_bindings(
     section: str, *, field_name: str
 ) -> list[dict[str, Any]]:
@@ -798,10 +802,16 @@ def _markdown_reference_bindings(
     if len(lines) != 1:
         raise ValueError(f"source entry has duplicate {field_name} declarations")
     value = lines[0].strip()
-    if field_name == "输入参考图" and re.fullmatch(r"无(?:（[^）\n]+）)?。?", value):
+    if (
+        field_name == "输入参考图"
+        and not _contains_ref_token(value)
+        and re.fullmatch(r"无(?:（[^）\n]+）)?。?", value)
+    ):
         return []
-    if field_name == "参考" and re.fullmatch(
-        r"无(?:外部参考)?(?:；[^\n]*)?。?", value
+    if (
+        field_name == "参考"
+        and not _contains_ref_token(value)
+        and re.fullmatch(r"无(?:外部参考)?(?:；[^\n]*)?。?", value)
     ):
         return []
     matches = list(REFERENCE_LINE_RE.finditer(value))
@@ -887,7 +897,6 @@ def _normalize_job(root: Path, raw: object) -> dict[str, Any]:
         raise ValueError("source_entry must be a visible uppercase Markdown entry ID")
     if source_entry is not None and source is None:
         raise ValueError("source_entry requires source")
-    source_path = PurePosixPath(source) if source is not None else None
     creator_source_modality = _canonical_creator_source_modality(source)
     if creator_source_modality == modality and source_entry is None:
         raise ValueError("creator Markdown source requires source_entry")
@@ -905,19 +914,8 @@ def _normalize_job(root: Path, raw: object) -> dict[str, Any]:
         or not source_entry.startswith(expected_entry_prefix)
     ):
         raise ValueError("source_entry does not match the job modality")
-    if source_entry is not None:
-        expected_source_name = {
-            "image": "图片提示词.md",
-            "video": "视频提示词.md",
-        }[str(modality)]
-        if (
-            source_path is None
-            or source_path.name != expected_source_name
-            or len(source_path.parts) != 3
-            or source_path.parts[0] not in {"剧集", "episodes"}
-            or not source_path.parts[1]
-        ):
-            raise ValueError("source_entry requires the canonical creator Markdown path")
+    if source_entry is not None and creator_source_modality != modality:
+        raise ValueError("source_entry requires the canonical creator Markdown path")
     references_supplied = "references" in raw
     supplied_references = [
         _relative_path(path)
@@ -1052,7 +1050,6 @@ def _validate_stored_job(
         or not source_entry.startswith(expected_entry_prefix)
     ):
         raise ValueError("stored job source entry has the wrong modality")
-    source_path = PurePosixPath(source) if source is not None else None
     creator_source_modality = _canonical_creator_source_modality(
         str(source) if source is not None else None
     )
@@ -1064,19 +1061,8 @@ def _validate_stored_job(
         and source_entry is None
     ):
         raise ValueError("stored creator Markdown source has the wrong modality")
-    if source_entry is not None:
-        expected_source_name = {
-            "image": "图片提示词.md",
-            "video": "视频提示词.md",
-        }.get(str(modality))
-        if (
-            source_path is None
-            or source_path.name != expected_source_name
-            or len(source_path.parts) != 3
-            or source_path.parts[0] not in {"剧集", "episodes"}
-            or not source_path.parts[1]
-        ):
-            raise ValueError("stored job creator source path is invalid")
+    if source_entry is not None and creator_source_modality != modality:
+        raise ValueError("stored job creator source path is invalid")
     references = _string_list(
         document.get("references"), label="stored references", limit=16
     )
@@ -1085,13 +1071,10 @@ def _validate_stored_job(
     reference_bindings = _normalize_reference_bindings(
         document.get("reference_bindings")
     )
-    if source_entry is not None and [
-        binding["path"] for binding in reference_bindings
-    ] != references:
-        raise ValueError("stored creator references do not match reference bindings")
-    if reference_bindings and [
-        binding["path"] for binding in reference_bindings
-    ] != references:
+    binding_references = [binding["path"] for binding in reference_bindings]
+    if (
+        source_entry is not None or reference_bindings
+    ) and binding_references != references:
         raise ValueError("stored job references do not match reference bindings")
     outputs = _string_list(document.get("outputs"), label="stored outputs", limit=16)
     if not outputs or len(outputs) != len(set(outputs)):

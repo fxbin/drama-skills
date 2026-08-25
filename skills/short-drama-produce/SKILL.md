@@ -45,8 +45,9 @@ job、prompt、参数、输出路径或直接输入任一变化，旧确认立�
 creator-first job 必须从 `图片提示词.md` 或 `视频提示词.md` 的对应条目建立绑定；`prepare` 展示的
 `reference_bindings`、`references` 与已确认 job 才是本次 adapter 实际读取哪些文件字节、各自允许
 影响什么的权威。非 creator 的结构化规格可不填 `source_entry`/`reference_bindings`，继续只使用显式
-`references`；但新 job 只要 `source` 指向 canonical `图片提示词.md` 或 `视频提示词.md` 就强制使用
-对应 selector，不能靠省略字段降级绕过。升级前已经 prepare 并落盘的旧 job 仍可按原指纹读取。
+`references`；但新的 image/video job 只要 `source` 指向 canonical `图片提示词.md` 或
+`视频提示词.md` 就强制使用对应 selector，不能靠省略字段降级绕过。升级前已经 prepare 并落盘的
+旧 job 仍可按原指纹读取。
 新生产结果不自动回填或刷新分镜；需要把它改为后续输入时，由分镜 owner 修订文档，再建立新 job
 并重新预览、确认。
 

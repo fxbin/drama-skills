@@ -469,6 +469,12 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 "- 输入参考图：无。\n- 输入参考图：无。",
                 "字段重复: 输入参考图",
             ),
+            "hidden REF in no-input marker": (
+                "视频提示词.md",
+                "- 输入参考图：无。",
+                "- 输入参考图：无（ref-HERO）",
+                "完整 REF 语法",
+            ),
             "missing image prompt item": (
                 "分镜.md",
                 "- 图片提示词项：IMG-JIANGCHEN-SHEET",
@@ -492,6 +498,13 @@ class CreatorFirstGoldenTests(unittest.TestCase):
                 "- 参考：无外部参考；三视图必须保持同一脸型、身高比例和服装细节。",
                 "- 参考：随便写，不是无，也不是完整 REF",
                 "参考必须声明无外部参考或使用完整 REF 语法",
+            ),
+            "hidden REF after no-reference prefix": (
+                "图片提示词.md",
+                "- 参考：无外部参考；三视图必须保持同一脸型、身高比例和服装细节。",
+                "- 参考：无外部参考；REF-X（顺序：1）· 输入/x.png"
+                "《人物参考》（控制：身份；不得控制：动作）",
+                "完整 REF 语法",
             ),
         }
         for label, (name, old, new, expected) in mutations.items():
